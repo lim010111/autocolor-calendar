@@ -22,7 +22,6 @@ function buildAddOn(e) {
 function buildWelcomeCard() {
   var builder = CardService.newCardBuilder();
   
-  // Header
   builder.setHeader(CardService.newCardHeader()
     .setTitle("AI가 캘린더를 예쁘게 정리해 드립니다.")
     .setImageUrl("https://www.gstatic.com/images/icons/material/system/1x/palette_black_48dp.png"));
@@ -30,7 +29,11 @@ function buildWelcomeCard() {
   var section = CardService.newCardSection();
   
   section.addWidget(CardService.newDecoratedText()
-    .setText("AutoColor를 사용하려면 캘린더 접근 권한이 필요합니다.")
+    .setText("✨ 캘린더 자동 색상 분류")
+    .setWrapText(true));
+    
+  section.addWidget(CardService.newDecoratedText()
+    .setText("🔒 안전한 개인정보 보호")
     .setWrapText(true));
   
   section.addWidget(CardService.newDecoratedText()
@@ -50,11 +53,7 @@ function buildWelcomeCard() {
   return builder.build();
 }
 
-/**
- * Action: Complete onboarding and navigate to Home.
- */
 function actionCompleteOnboarding(e) {
-  // Mock saving onboarding state
   return CardService.newActionResponseBuilder()
     .setNavigation(CardService.newNavigation().pushCard(buildHomeCard()))
     .setNotification(CardService.newNotification().setText("환영합니다!"))
@@ -62,13 +61,16 @@ function actionCompleteOnboarding(e) {
 }
 
 /**
- * Screen 2: Home Card (메인 대시보드)
+ * Screen 2: Home Card (메인 대시보드 - homepageTrigger)
  */
 function buildHomeCard() {
   var builder = CardService.newCardBuilder();
+  
+  builder.setHeader(CardService.newCardHeader()
+    .setTitle("AutoColor 대시보드"));
+  
   var section = CardService.newCardSection();
   
-  // Auto-categorization toggle
   var switchControl = CardService.newSwitch()
     .setFieldName("auto_color_enabled")
     .setValue("true")
@@ -76,12 +78,16 @@ function buildHomeCard() {
     .setOnChangeAction(CardService.newAction().setFunctionName("actionToggleAutoColor"));
     
   section.addWidget(CardService.newDecoratedText()
-    .setText("자동 분류")
+    .setText("자동 분류 활성화")
     .setSwitchControl(switchControl));
     
-  // Stats
-  section.addWidget(CardService.newTextParagraph()
-    .setText("이번 주 자동 분류된 일정: <b>15건</b>"));
+  section.addWidget(CardService.newDecoratedText()
+    .setText("이번 주 분류된 일정: 15건")
+    .setStartIcon(CardService.newIconImage().setIcon(CardService.Icon.EVENT_AVAILABLE)));
+    
+  section.addWidget(CardService.newDecoratedText()
+    .setText("최근 동기화: 10분 전")
+    .setStartIcon(CardService.newIconImage().setIcon(CardService.Icon.CLOCK)));
     
   builder.addSection(section);
   
@@ -89,7 +95,6 @@ function buildHomeCard() {
   
   var ruleButton = CardService.newTextButton()
     .setText("매핑 규칙 관리")
-    .setTextButtonStyle(CardService.TextButtonStyle.FILLED)
     .setOnClickAction(CardService.newAction().setFunctionName("actionGoToRuleManagement"));
     
   var settingsButton = CardService.newTextButton()
@@ -101,50 +106,50 @@ function buildHomeCard() {
     .addButton(settingsButton));
     
   builder.addSection(actionSection);
+  
+  var fixedFooter = CardService.newFixedFooter()
+    .setPrimaryButton(CardService.newTextButton()
+      .setText("지금 즉시 동기화")
+      .setTextButtonStyle(CardService.TextButtonStyle.FILLED)
+      .setOnClickAction(CardService.newAction().setFunctionName("actionSyncNow")));
+      
+  builder.setFixedFooter(fixedFooter);
+  
   return builder.build();
 }
 
-/**
- * Action: Toggle auto color (Mock)
- */
 function actionToggleAutoColor(e) {
   var isEnabled = e.formInput.auto_color_enabled === "true";
-  var msg = isEnabled ? "자동 분류가 켜졌습니다." : "자동 분류가 꺼졌습니다.";
+  var msg = isEnabled ? "자동 분류가 활성화되었습니다." : "자동 분류가 비활성화되었습니다.";
   return CardService.newActionResponseBuilder()
     .setNotification(CardService.newNotification().setText(msg))
     .build();
 }
 
-/**
- * Action: Go Back
- */
+function actionSyncNow(e) {
+  return CardService.newActionResponseBuilder()
+    .setNotification(CardService.newNotification().setText("동기화가 완료되었습니다."))
+    .build();
+}
+
 function actionGoBack(e) {
   return CardService.newActionResponseBuilder()
     .setNavigation(CardService.newNavigation().popCard())
     .build();
 }
 
-/**
- * Action: Navigate to Rule Management (Screen 3)
- */
 function actionGoToRuleManagement(e) {
   return CardService.newActionResponseBuilder()
     .setNavigation(CardService.newNavigation().pushCard(buildRuleManagementCard()))
     .build();
 }
 
-/**
- * Action: Navigate to Settings (Screen 4)
- */
 function actionGoToSettings(e) {
   return CardService.newActionResponseBuilder()
     .setNavigation(CardService.newNavigation().pushCard(buildSettingsCard()))
     .build();
 }
 
-/**
- * Mock Data for Rules
- */
 function getMockRules() {
   return [
     { keyword: "회의", colorLabel: "🔵 파란색" },
@@ -153,7 +158,114 @@ function getMockRules() {
 }
 
 /**
- * Screen 3: Rule Management Card (규칙 관리 및 전체 목록)
+ * Screen 3: Event Insight Card (일정 상세 - eventOpenTrigger)
+ */
+function onEventOpen(e) {
+  var title = "선택된 일정 없음";
+  if (e && e.calendar && e.calendar.id) {
+    try {
+      var event = CalendarApp.getCalendarById(e.calendar.calendarId).getEventById(e.calendar.id);
+      title = event.getTitle() || "제목 없음";
+    } catch(err) {
+      // Cannot access event or event doesn't exist
+    }
+  }
+
+  var builder = CardService.newCardBuilder();
+  builder.setHeader(CardService.newCardHeader()
+    .setTitle("일정 색상 분석")
+    .setSubtitle(title));
+  
+  var statusSection = CardService.newCardSection()
+    .setHeader("현재 상태");
+    
+  statusSection.addWidget(CardService.newDecoratedText()
+    .setText("적용된 색상: 🔵 파란색"));
+    
+  statusSection.addWidget(CardService.newDecoratedText()
+    .setText("매칭된 규칙: '주간회의' (규칙 기반)"));
+    
+  builder.addSection(statusSection);
+  
+  var overrideSection = CardService.newCardSection()
+    .setHeader("수동 오버라이드 및 상태 변경");
+    
+  // Use Grid widget for visualizing colors
+  var colorGrid = CardService.newGrid()
+    .setTitle("색상 선택")
+    .setNumColumns(4)
+    .setOnClickAction(CardService.newAction().setFunctionName("actionSelectColor"));
+    
+  // Mock placeholders for color icons
+  var colors = [
+    { id: "1", label: "파랑", url: "https://www.gstatic.com/images/icons/material/system/1x/palette_black_48dp.png" },
+    { id: "2", label: "초록", url: "https://www.gstatic.com/images/icons/material/system/1x/palette_black_48dp.png" },
+    { id: "4", label: "주황", url: "https://www.gstatic.com/images/icons/material/system/1x/palette_black_48dp.png" },
+    { id: "11", label: "빨강", url: "https://www.gstatic.com/images/icons/material/system/1x/palette_black_48dp.png" }
+  ];
+  
+  colors.forEach(function(c) {
+    colorGrid.addItem(CardService.newGridItem()
+      .setIdentifier(c.id)
+      .setTitle(c.label)
+      .setImage(CardService.newImageComponent().setImageUrl(c.url)));
+  });
+  
+  overrideSection.addWidget(colorGrid);
+  
+  overrideSection.addWidget(CardService.newTextButton()
+    .setText("이 일정은 자동 분류에서 제외")
+    .setOnClickAction(CardService.newAction().setFunctionName("actionExcludeEvent")));
+    
+  builder.addSection(overrideSection);
+  
+  // Example of Error State section
+  // var errorSection = CardService.newCardSection();
+  // errorSection.addWidget(CardService.newDecoratedText()
+  //   .setText("⚠️ AI 서버 응답이 지연되고 있습니다.")
+  //   .setWrapText(true));
+  // errorSection.addWidget(CardService.newTextButton()
+  //   .setText("다시 시도")
+  //   .setOnClickAction(CardService.newAction().setFunctionName("actionRetryAnalysis")));
+  // builder.addSection(errorSection);
+  
+  var fixedFooter = CardService.newFixedFooter()
+    .setPrimaryButton(CardService.newTextButton()
+      .setText("변경사항 저장")
+      .setTextButtonStyle(CardService.TextButtonStyle.FILLED)
+      .setOnClickAction(CardService.newAction().setFunctionName("actionSaveEventOverride")));
+      
+  builder.setFixedFooter(fixedFooter);
+  
+  return builder.build();
+}
+
+function actionSelectColor(e) {
+  return CardService.newActionResponseBuilder()
+    .setNotification(CardService.newNotification().setText("색상이 선택되었습니다."))
+    .build();
+}
+
+function actionExcludeEvent(e) {
+  return CardService.newActionResponseBuilder()
+    .setNotification(CardService.newNotification().setText("자동 분류에서 제외되었습니다."))
+    .build();
+}
+
+function actionRetryAnalysis(e) {
+  return CardService.newActionResponseBuilder()
+    .setNotification(CardService.newNotification().setText("재분석을 요청했습니다."))
+    .build();
+}
+
+function actionSaveEventOverride(e) {
+  return CardService.newActionResponseBuilder()
+    .setNotification(CardService.newNotification().setText("일정 색상이 업데이트되었습니다."))
+    .build();
+}
+
+/**
+ * Screen 4: Rule Management Card (규칙 관리)
  */
 function buildRuleManagementCard() {
   var builder = CardService.newCardBuilder();
@@ -164,7 +276,6 @@ function buildRuleManagementCard() {
     .setOnClickAction(CardService.newAction().setFunctionName("actionGoBack"))));
   builder.addSection(navSection);
   
-  // Input Section
   var addSection = CardService.newCardSection()
     .setHeader("새 규칙 추가");
     
@@ -172,56 +283,73 @@ function buildRuleManagementCard() {
     .setFieldName("rule_keyword")
     .setTitle("키워드 (예: 주간회의)"));
     
-  var colorSelect = CardService.newSelectionInput()
-    .setType(CardService.SelectionInputType.DROPDOWN)
+  var colorGrid = CardService.newGrid()
     .setTitle("캘린더 색상 선택")
-    .setFieldName("rule_color");
+    .setNumColumns(4)
+    .setOnClickAction(CardService.newAction().setFunctionName("actionSelectColorForRule"));
     
-  colorSelect.addItem("🔵 파란색", "1", true);
-  colorSelect.addItem("🟢 초록색", "2", false);
-  colorSelect.addItem("🔴 빨간색", "11", false);
+  var colors = [
+    { id: "1", label: "파랑", url: "https://www.gstatic.com/images/icons/material/system/1x/palette_black_48dp.png" },
+    { id: "2", label: "초록", url: "https://www.gstatic.com/images/icons/material/system/1x/palette_black_48dp.png" },
+    { id: "4", label: "주황", url: "https://www.gstatic.com/images/icons/material/system/1x/palette_black_48dp.png" },
+    { id: "11", label: "빨강", url: "https://www.gstatic.com/images/icons/material/system/1x/palette_black_48dp.png" }
+  ];
   
-  addSection.addWidget(colorSelect);
+  colors.forEach(function(c) {
+    colorGrid.addItem(CardService.newGridItem()
+      .setIdentifier(c.id)
+      .setTitle(c.label)
+      .setImage(CardService.newImageComponent().setImageUrl(c.url)));
+  });
+  
+  addSection.addWidget(colorGrid);
+  
+  addSection.addWidget(CardService.newTextButton()
+    .setText("규칙 추가")
+    .setTextButtonStyle(CardService.TextButtonStyle.FILLED)
+    .setOnClickAction(CardService.newAction().setFunctionName("actionAddRule")));
+    
   builder.addSection(addSection);
   
-  // List Section
   var listSection = CardService.newCardSection()
     .setHeader("내 규칙 목록");
     
   var rules = getMockRules();
   
-  rules.forEach(function(rule, index) {
-    var deleteButton = CardService.newTextButton()
-      .setText("삭제")
-      .setOnClickAction(CardService.newAction()
-        .setFunctionName("actionDeleteRule")
-        .setParameters({index: index.toString()}));
-        
+  if (rules.length === 0) {
     listSection.addWidget(CardService.newDecoratedText()
-      .setText(rule.keyword)
-      .setBottomLabel(rule.colorLabel)
-      .setButton(deleteButton));
-  });
+      .setText("아직 등록된 규칙이 없습니다. 위에서 첫 규칙을 만들어보세요.")
+      .setWrapText(true));
+  } else {
+    rules.forEach(function(rule, index) {
+      var deleteButton = CardService.newTextButton()
+        .setText("삭제 🗑️")
+        .setOnClickAction(CardService.newAction()
+          .setFunctionName("actionDeleteRule")
+          .setParameters({index: index.toString()}));
+          
+      listSection.addWidget(CardService.newDecoratedText()
+        .setTopLabel(rule.colorLabel)
+        .setText(rule.keyword)
+        .setButton(deleteButton));
+    });
+  }
   
   listSection.addWidget(CardService.newDecoratedText()
-    .setText("💡 일괄 업로드 등 대규모 규칙 관리는 <a href='https://example.com'>웹 대시보드</a>에서도 가능합니다.")
+    .setText("💡 복잡한 규칙은 <a href='https://example.com'>웹 대시보드</a>에서 관리하세요.")
     .setWrapText(true));
     
   builder.addSection(listSection);
   
-  var fixedFooter = CardService.newFixedFooter()
-    .setPrimaryButton(CardService.newTextButton()
-      .setText("추가하기")
-      .setOnClickAction(CardService.newAction().setFunctionName("actionAddRule")));
-      
-  builder.setFixedFooter(fixedFooter);
-  
   return builder.build();
 }
 
-/**
- * Action: Add a new rule (Mock)
- */
+function actionSelectColorForRule(e) {
+  return CardService.newActionResponseBuilder()
+    .setNotification(CardService.newNotification().setText("규칙 색상이 선택되었습니다."))
+    .build();
+}
+
 function actionAddRule(e) {
   var keyword = e.formInput.rule_keyword;
   if (!keyword) {
@@ -230,18 +358,13 @@ function actionAddRule(e) {
       .build();
   }
   
-  // Re-build card to simulate refresh
   return CardService.newActionResponseBuilder()
     .setNavigation(CardService.newNavigation().updateCard(buildRuleManagementCard()))
-    .setNotification(CardService.newNotification().setText("규칙이 추가되었습니다."))
+    .setNotification(CardService.newNotification().setText("새 규칙이 저장되었습니다."))
     .build();
 }
 
-/**
- * Action: Delete a rule (Mock)
- */
 function actionDeleteRule(e) {
-  // Re-build card to simulate refresh
   return CardService.newActionResponseBuilder()
     .setNavigation(CardService.newNavigation().updateCard(buildRuleManagementCard()))
     .setNotification(CardService.newNotification().setText("규칙이 삭제되었습니다."))
@@ -249,7 +372,7 @@ function actionDeleteRule(e) {
 }
 
 /**
- * Screen 4: Settings Card (상세 설정)
+ * Screen 5: Settings Card (상세 설정)
  */
 function buildSettingsCard() {
   var builder = CardService.newCardBuilder();
@@ -261,64 +384,45 @@ function buildSettingsCard() {
   builder.addSection(navSection);
   
   var section = CardService.newCardSection()
-    .setHeader("분류 정책 설정");
+    .setHeader("정책 설정");
     
   var policyGroup = CardService.newSelectionInput()
     .setType(CardService.SelectionInputType.CHECK_BOX)
     .setFieldName("policy_settings");
     
   policyGroup.addItem("수동 색상 덮어쓰기 방지", "prevent_overwrite", true);
-  policyGroup.addItem("AI(LLM) 자동 추론 사용 (규칙 매칭 실패 시)", "use_llm", true);
+  policyGroup.addItem("AI(LLM) 자동 추론 사용", "use_llm", true);
   policyGroup.addItem("설명(Description) 필드도 분석에 포함", "use_description", false);
   
   section.addWidget(policyGroup);
-  
-  var calendarSelect = CardService.newSelectionInput()
-    .setType(CardService.SelectionInputType.DROPDOWN)
-    .setTitle("적용할 캘린더 선택")
-    .setFieldName("target_calendar");
-    
-  calendarSelect.addItem("기본 캘린더", "primary", true);
-  calendarSelect.addItem("업무 캘린더", "work", false);
-  
-  section.addWidget(calendarSelect);
   builder.addSection(section);
   
-  var actionSection = CardService.newCardSection();
-  var logoutButton = CardService.newTextButton()
-    .setText("로그아웃")
-    .setOnClickAction(CardService.newAction().setFunctionName("actionLogout"));
+  var accountSection = CardService.newCardSection()
+    .setHeader("계정 관리");
     
-  actionSection.addWidget(CardService.newButtonSet().addButton(logoutButton));
-  builder.addSection(actionSection);
+  var email = "user@example.com";
+  try {
+    email = Session.getActiveUser().getEmail() || email;
+  } catch (err) {}
+  
+  accountSection.addWidget(CardService.newDecoratedText()
+    .setText(email)
+    .setStartIcon(CardService.newIconImage().setIcon(CardService.Icon.PERSON)));
+    
+  accountSection.addWidget(CardService.newTextButton()
+    .setText("로그아웃")
+    .setOnClickAction(CardService.newAction().setFunctionName("actionLogout")));
+    
+  builder.addSection(accountSection);
   
   return builder.build();
 }
 
-/**
- * Action: Logout (Mock)
- */
 function actionLogout(e) {
   return CardService.newActionResponseBuilder()
     .setNavigation(CardService.newNavigation().popToRoot().updateCard(buildWelcomeCard()))
     .setNotification(CardService.newNotification().setText("로그아웃 되었습니다."))
     .build();
-}
-
-/**
- * Event Open Trigger (Contextual Awareness)
- */
-function onEventOpen(e) {
-  var builder = CardService.newCardBuilder();
-  builder.setHeader(CardService.newCardHeader().setTitle("일정 상세 분석"));
-  
-  var section = CardService.newCardSection();
-  section.addWidget(CardService.newDecoratedText()
-    .setText("선택한 일정에 대한 분석 정보를 보여줍니다.")
-    .setWrapText(true));
-    
-  builder.addSection(section);
-  return builder.build();
 }
 
 /**
