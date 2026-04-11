@@ -5,7 +5,8 @@
   "oauthScopes": [
     "https://www.googleapis.com/auth/calendar",
     "https://www.googleapis.com/auth/script.external_request",
-    "https://www.googleapis.com/auth/script.locale"
+    "https://www.googleapis.com/auth/script.locale",
+    "https://www.googleapis.com/auth/calendar.addons.execute"
   ],
   "dependencies": {
     "enabledAdvancedServices": [
@@ -27,9 +28,16 @@
       }
     },
     "calendar": {
+      "currentEventAccess": "READ_WRITE",
       "homepageTrigger": {
         "runFunction": "buildAddOn",
         "enabled": true
+      },
+      "eventOpenTrigger": {
+        "runFunction": "onEventOpen"
+      },
+      "eventUpdateTrigger": {
+        "runFunction": "onEventUpdate"
       }
     }
   }
