@@ -34,7 +34,7 @@ function buildWelcomeCard() {
     .setWrapText(true));
   
   section.addWidget(CardService.newDecoratedText()
-    .setText("가입 시 <a href='#'>개인정보처리방침</a> 및 <a href='#'>서비스 약관</a>에 동의하는 것으로 간주됩니다.")
+    .setText("가입 시 <a href='https://example.com/privacy'>개인정보처리방침</a> 및 <a href='https://example.com/terms'>서비스 약관</a>에 동의하는 것으로 간주됩니다.")
     .setWrapText(true));
     
   builder.addSection(section);
@@ -159,9 +159,9 @@ function buildRuleManagementCard() {
   var builder = CardService.newCardBuilder();
   
   var navSection = CardService.newCardSection();
-  navSection.addWidget(CardService.newTextButton()
+  navSection.addWidget(CardService.newButtonSet().addButton(CardService.newTextButton()
     .setText("⬅ 뒤로 가기")
-    .setOnClickAction(CardService.newAction().setFunctionName("actionGoBack")));
+    .setOnClickAction(CardService.newAction().setFunctionName("actionGoBack"))));
   builder.addSection(navSection);
   
   // Input Section
@@ -177,7 +177,7 @@ function buildRuleManagementCard() {
     .setTitle("캘린더 색상 선택")
     .setFieldName("rule_color");
     
-  colorSelect.addItem("🔵 파란색", "1", false);
+  colorSelect.addItem("🔵 파란색", "1", true);
   colorSelect.addItem("🟢 초록색", "2", false);
   colorSelect.addItem("🔴 빨간색", "11", false);
   
@@ -204,7 +204,7 @@ function buildRuleManagementCard() {
   });
   
   listSection.addWidget(CardService.newDecoratedText()
-    .setText("💡 일괄 업로드 등 대규모 규칙 관리는 <a href='#'>웹 대시보드</a>에서도 가능합니다.")
+    .setText("💡 일괄 업로드 등 대규모 규칙 관리는 <a href='https://example.com'>웹 대시보드</a>에서도 가능합니다.")
     .setWrapText(true));
     
   builder.addSection(listSection);
@@ -212,7 +212,6 @@ function buildRuleManagementCard() {
   var fixedFooter = CardService.newFixedFooter()
     .setPrimaryButton(CardService.newTextButton()
       .setText("추가하기")
-      .setTextButtonStyle(CardService.TextButtonStyle.FILLED)
       .setOnClickAction(CardService.newAction().setFunctionName("actionAddRule")));
       
   builder.setFixedFooter(fixedFooter);
@@ -256,9 +255,9 @@ function buildSettingsCard() {
   var builder = CardService.newCardBuilder();
   
   var navSection = CardService.newCardSection();
-  navSection.addWidget(CardService.newTextButton()
+  navSection.addWidget(CardService.newButtonSet().addButton(CardService.newTextButton()
     .setText("⬅ 뒤로 가기")
-    .setOnClickAction(CardService.newAction().setFunctionName("actionGoBack")));
+    .setOnClickAction(CardService.newAction().setFunctionName("actionGoBack"))));
   builder.addSection(navSection);
   
   var section = CardService.newCardSection()
