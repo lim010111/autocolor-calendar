@@ -83,7 +83,7 @@ function buildHomeCard() {
     
   section.addWidget(CardService.newDecoratedText()
     .setText("이번 주 분류된 일정: 15건")
-    .setStartIcon(CardService.newIconImage().setIcon(CardService.Icon.EVENT_AVAILABLE)));
+    .setStartIcon(CardService.newIconImage().setIcon(CardService.Icon.BOOKMARK)));
     
   section.addWidget(CardService.newDecoratedText()
     .setText("최근 동기화: 10분 전")
