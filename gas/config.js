@@ -7,7 +7,8 @@ var ACFC_CONFIG = {
   },
   PROPERTY_KEYS: {
     SETTINGS: 'acfc.settings',
-    RULES: 'acfc.rules'
+    RULES: 'acfc.rules',
+    ONBOARDED: 'acfc.onboarded'
   },
   PROPERTY_PREFIXES: {
     SYNC_TOKEN: 'acfc.syncToken.'

@@ -21,10 +21,7 @@ function getCalendarColors() {
  * @return {CardService.Card} The constructed Card.
  */
 function buildAddOn(e) {
-  // For MVP/testing, we default to the Home Card.
-  // In a full implementation, you'd check a user property here to see if they are onboarded,
-  // and if not, return buildWelcomeCard() instead.
-  var isOnboarded = true; // Mock state
+  var isOnboarded = AutoColorStorage.isOnboarded();
   
   if (!isOnboarded) {
     return buildWelcomeCard();
@@ -81,6 +78,15 @@ function buildWelcomeCard() {
 }
 
 function actionCompleteOnboarding(e) {
+  AutoColorStorage.ensureDefaults();
+  AutoColorStorage.setOnboarded(true);
+  try {
+    AutoColorTriggers.installManagedTriggers();
+  } catch (err) {
+    // Triggers might fail if the user didn't grant the proper scopes yet or other issues.
+    console.error("Failed to install triggers during onboarding", err);
+  }
+  
   return CardService.newActionResponseBuilder()
     .setNavigation(CardService.newNavigation().pushCard(buildHomeCard()))
     .setNotification(CardService.newNotification().setText("환영합니다!"))
@@ -489,32 +495,121 @@ function buildSettingsCard() {
   
   var accountSection = CardService.newCardSection()
     .setHeader("계정 관리");
-    
+
   var email = "user@example.com";
   try {
     email = Session.getActiveUser().getEmail() || email;
   } catch (err) {}
-  
+
   accountSection.addWidget(CardService.newDecoratedText()
     .setText(email)
     .setStartIcon(CardService.newIconImage().setIcon(CardService.Icon.PERSON)));
-    
+
   accountSection.addWidget(CardService.newTextButton()
     .setText("로그아웃")
     .setOnClickAction(CardService.newAction().setFunctionName("actionLogout")));
-    
+
+  accountSection.addWidget(CardService.newTextButton()
+    .setText("서비스 해지 (Cancel Service)")
+    .setTextButtonStyle(CardService.TextButtonStyle.TEXT)
+    .setOnClickAction(CardService.newAction().setFunctionName("actionGoToCancelConfirm")));
+
   builder.addSection(accountSection);
-  
+
   return builder.build();
 }
 
 function actionLogout(e) {
+  // 로그아웃 시 온보딩 상태만 초기화합니다.
+  AutoColorStorage.setOnboarded(false);
   return CardService.newActionResponseBuilder()
     .setNavigation(CardService.newNavigation().popToRoot().updateCard(buildWelcomeCard()))
     .setNotification(CardService.newNotification().setText("로그아웃 되었습니다."))
     .build();
 }
 
+function actionGoToCancelConfirm(e) {
+  return CardService.newActionResponseBuilder()
+    .setNavigation(CardService.newNavigation().pushCard(buildCancelConfirmCard()))
+    .build();
+}
+
+function buildCancelConfirmCard() {
+  var builder = CardService.newCardBuilder();
+
+  builder.setHeader(CardService.newCardHeader()
+    .setTitle("서비스 해지")
+    .setSubtitle("정말 해지하시겠습니까?"));
+
+  var warningSection = CardService.newCardSection();
+  warningSection.addWidget(CardService.newDecoratedText()
+    .setText("⚠️ <b>주의</b>: 모든 설정과 연동된 규칙이 삭제됩니다. 이 작업은 되돌릴 수 없습니다.")
+    .setWrapText(true));
+
+  builder.addSection(warningSection);
+
+  var actionSection = CardService.newCardSection();
+  actionSection.addWidget(CardService.newButtonSet()
+    .addButton(CardService.newTextButton()
+      .setText("⬅ 취소")
+      .setOnClickAction(CardService.newAction().setFunctionName("actionGoBack")))
+    .addButton(CardService.newTextButton()
+      .setText("네, 해지합니다")
+      .setTextButtonStyle(CardService.TextButtonStyle.FILLED)
+      .setOnClickAction(CardService.newAction().setFunctionName("actionConfirmCancelService"))));
+
+  builder.addSection(actionSection);
+
+  return builder.build();
+}
+
+function actionConfirmCancelService(e) {
+  try {
+    AutoColorTriggers.clearManagedTriggers();
+  } catch (err) {
+    console.error("Failed to clear triggers:", err);
+  }
+  AutoColorStorage.clearAllState();
+
+  return CardService.newActionResponseBuilder()
+    .setNavigation(CardService.newNavigation().popToRoot().updateCard(buildWelcomeCard()))
+    .setNotification(CardService.newNotification().setText("서비스가 해지되었습니다."))
+    .build();
+}
+
+function buildReconnectCard(errorMsg) {
+  var builder = CardService.newCardBuilder();
+
+  builder.setHeader(CardService.newCardHeader()
+    .setTitle("재연결 필요")
+    .setSubtitle("권한 부족 또는 토큰 만료"));
+
+  var msgSection = CardService.newCardSection();
+  msgSection.addWidget(CardService.newDecoratedText()
+    .setText(errorMsg || "세션이 만료되었거나 권한이 부족합니다. 다시 연결해주세요.")
+    .setWrapText(true));
+
+  builder.addSection(msgSection);
+
+  var fixedFooter = CardService.newFixedFooter()
+    .setPrimaryButton(CardService.newTextButton()
+      .setText("OAuth 연동 (재로그인)")
+      .setTextButtonStyle(CardService.TextButtonStyle.FILLED)
+      .setOnClickAction(CardService.newAction().setFunctionName("actionReconnectOAuth")));
+
+  builder.setFixedFooter(fixedFooter);
+
+  return builder.build();
+}
+
+function actionReconnectOAuth(e) {
+  // TODO: Stage 2 OAuth 연동 플로우 추가 (예: URL 열기 또는 토큰 갱신 로직)
+  // 현재는 임시로 홈 카드로 되돌아가는 로직을 구현합니다.
+  return CardService.newActionResponseBuilder()
+    .setNavigation(CardService.newNavigation().popToRoot().updateCard(buildHomeCard()))
+    .setNotification(CardService.newNotification().setText("재연결 되었습니다. (임시 동작)"))
+    .build();
+}
 /**
  * Event Update Trigger
  */
