@@ -1,0 +1,47 @@
+{
+  "timeZone": "Asia/Seoul",
+  "exceptionLogging": "STACKDRIVER",
+  "runtimeVersion": "V8",
+  "oauthScopes": [
+    "https://www.googleapis.com/auth/calendar",
+    "https://www.googleapis.com/auth/script.external_request",
+    "https://www.googleapis.com/auth/script.locale",
+    "https://www.googleapis.com/auth/calendar.addons.execute",
+    "https://www.googleapis.com/auth/calendar.addons.current.event.read",
+    "https://www.googleapis.com/auth/calendar.addons.current.event.write",
+    "https://www.googleapis.com/auth/userinfo.email"
+  ],
+  "dependencies": {
+    "enabledAdvancedServices": [
+      {
+        "userSymbol": "Calendar",
+        "serviceId": "calendar",
+        "version": "v3"
+      }
+    ]
+  },
+  "addOns": {
+    "common": {
+      "name": "AutoColor",
+      "logoUrl": "https://www.gstatic.com/images/icons/material/system/1x/palette_black_48dp.png",
+      "useLocaleFromApp": true,
+      "homepageTrigger": {
+        "runFunction": "buildAddOn",
+        "enabled": true
+      }
+    },
+    "calendar": {
+      "currentEventAccess": "READ_WRITE",
+      "homepageTrigger": {
+        "runFunction": "buildAddOn",
+        "enabled": true
+      },
+      "eventOpenTrigger": {
+        "runFunction": "onEventOpen"
+      },
+      "eventUpdateTrigger": {
+        "runFunction": "onEventUpdate"
+      }
+    }
+  }
+}
