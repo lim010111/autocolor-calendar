@@ -8,7 +8,8 @@
     "https://www.googleapis.com/auth/script.locale",
     "https://www.googleapis.com/auth/calendar.addons.execute",
     "https://www.googleapis.com/auth/calendar.addons.current.event.read",
-    "https://www.googleapis.com/auth/calendar.addons.current.event.write"
+    "https://www.googleapis.com/auth/calendar.addons.current.event.write",
+    "https://www.googleapis.com/auth/userinfo.email"
   ],
   "dependencies": {
     "enabledAdvancedServices": [

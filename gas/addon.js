@@ -227,10 +227,11 @@ function onEventOpen(e) {
   var colors = getCalendarColors();
   
   var selectedColorId = null;
-  try {
-      var userProps = PropertiesService.getUserProperties();
-      selectedColorId = userProps.getProperty("selectedColorId");
-  } catch (err) {}
+  if (e && e.parameters && e.parameters.selectedColorId) {
+    selectedColorId = e.parameters.selectedColorId;
+  } else if (e && e.commonEventObject && e.commonEventObject.parameters && e.commonEventObject.parameters.selectedColorId) {
+    selectedColorId = e.commonEventObject.parameters.selectedColorId;
+  }
 
   colors.forEach(function(c) {
     var url = c.url;
@@ -286,13 +287,8 @@ function actionSelectColor(e) {
     }
   }
 
-  // Update properties to save the selected color for this event
-  if (selectedColorId) {
-      try {
-        var userProps = PropertiesService.getUserProperties();
-        userProps.setProperty("selectedColorId", selectedColorId);
-      } catch (err) {}
-  }
+  if (!e.parameters) e.parameters = {};
+  e.parameters.selectedColorId = selectedColorId;
   
   return CardService.newActionResponseBuilder()
     .setNavigation(CardService.newNavigation().updateCard(onEventOpen(e)))
@@ -321,7 +317,7 @@ function actionSaveEventOverride(e) {
 /**
  * Screen 4: Rule Management Card (규칙 관리)
  */
-function buildRuleManagementCard() {
+function buildRuleManagementCard(e) {
   var builder = CardService.newCardBuilder();
   
   var navSection = CardService.newCardSection();
@@ -345,10 +341,11 @@ function buildRuleManagementCard() {
   var colors = getCalendarColors();
   
   var selectedColorId = null;
-  try {
-      var userProps = PropertiesService.getUserProperties();
-      selectedColorId = userProps.getProperty("selectedColorIdForRule");
-  } catch (err) {}
+  if (e && e.parameters && e.parameters.selectedColorIdForRule) {
+    selectedColorId = e.parameters.selectedColorIdForRule;
+  } else if (e && e.commonEventObject && e.commonEventObject.parameters && e.commonEventObject.parameters.selectedColorIdForRule) {
+    selectedColorId = e.commonEventObject.parameters.selectedColorIdForRule;
+  }
 
   colors.forEach(function(c) {
     var url = c.url;
@@ -459,7 +456,7 @@ function actionAddRule(e) {
 
 function actionDeleteRule(e) {
   return CardService.newActionResponseBuilder()
-    .setNavigation(CardService.newNavigation().updateCard(buildRuleManagementCard()))
+    .setNavigation(CardService.newNavigation().updateCard(buildRuleManagementCard(e)))
     .setNotification(CardService.newNotification().setText("규칙이 삭제되었습니다."))
     .build();
 }
