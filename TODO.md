@@ -13,7 +13,7 @@
 - [x] 기존 `gas/` 코드를 활용하여 Google Workspace Add-on 스캐폴딩
 - [x] Add-on UI (CardService) 개발: 사이드바 기본 요약 및 설정 진입부
 - [x] Add-on UI 디자인 개선
-- [ ] 복잡한 규칙 설정을 위한 별도 Web UI (HTML Service 또는 외부 링크) 개발
+- [ ] 복잡한 규칙 설정을 위한 별도 Web UI (HTML Service 또는 외부 링크) 개발(Addon UI로 충분히 기능 수행 가능하다고 판단되어, 추후에 필요 시 개발 예정)
 - [ ] 최초 온보딩, 권한 부족/토큰 만료 시 재연결 UI, 서비스 해지 플로우 구현
 - [ ] 사용자 OAuth 인증 및 백엔드 API 통신(URL Fetch App) 연동 모듈 작성
 
