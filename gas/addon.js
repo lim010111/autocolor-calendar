@@ -26,6 +26,7 @@ function buildAddOn(e) {
   if (!isOnboarded) {
     return buildWelcomeCard();
   }
+  
   return buildHomeCard();
 }
 
@@ -87,8 +88,10 @@ function actionCompleteOnboarding(e) {
     console.error("Failed to install triggers during onboarding", err);
   }
   
+  var nextCard = buildHomeCard();
+  
   return CardService.newActionResponseBuilder()
-    .setNavigation(CardService.newNavigation().pushCard(buildHomeCard()))
+    .setNavigation(CardService.newNavigation().pushCard(nextCard))
     .setNotification(CardService.newNotification().setText("환영합니다!"))
     .build();
 }
@@ -101,6 +104,17 @@ function buildHomeCard() {
   
   builder.setHeader(CardService.newCardHeader()
     .setTitle("AutoColor 대시보드"));
+    
+  if (!AutoColorAuth.isAuthenticated()) {
+    var loginBanner = CardService.newCardSection();
+    loginBanner.addWidget(CardService.newDecoratedText()
+      .setText("백엔드 연동(로그인)을 통해 고급 AI 분류 기능을 사용해보세요.")
+      .setWrapText(true)
+      .setButton(CardService.newTextButton()
+        .setText("로그인 (OAuth)")
+        .setOnClickAction(CardService.newAction().setFunctionName("actionStartOAuth"))));
+    builder.addSection(loginBanner);
+  }
   
   var section = CardService.newCardSection();
   
@@ -520,11 +534,11 @@ function buildSettingsCard() {
 }
 
 function actionLogout(e) {
-  // 로그아웃 시 온보딩 상태만 초기화합니다.
-  AutoColorStorage.setOnboarded(false);
+  // 로그아웃 시 토큰 폐기 및 로컬 폴백.
+  AutoColorAuth.clearSessionToken();
   return CardService.newActionResponseBuilder()
-    .setNavigation(CardService.newNavigation().popToRoot().updateCard(buildWelcomeCard()))
-    .setNotification(CardService.newNotification().setText("로그아웃 되었습니다."))
+    .setNavigation(CardService.newNavigation().popToRoot().updateCard(buildHomeCard()))
+    .setNotification(CardService.newNotification().setText("로그아웃 되었습니다. Stage 1 모드로 전환됩니다."))
     .build();
 }
 
@@ -577,6 +591,62 @@ function actionConfirmCancelService(e) {
     .build();
 }
 
+function buildLoginCard() {
+  var builder = CardService.newCardBuilder();
+  
+  builder.setHeader(CardService.newCardHeader()
+    .setTitle("로그인이 필요합니다")
+    .setSubtitle("AutoColor 백엔드 연동"));
+    
+  var section = CardService.newCardSection();
+  section.addWidget(CardService.newDecoratedText()
+    .setText("향상된 AI 색상 분류 및 동기화를 위해 백엔드 계정 연동이 필요합니다. 아래 버튼을 눌러 로그인해주세요.")
+    .setWrapText(true));
+    
+  builder.addSection(section);
+  
+  var fixedFooter = CardService.newFixedFooter()
+    .setPrimaryButton(CardService.newTextButton()
+      .setText("로그인 (OAuth)")
+      .setTextButtonStyle(CardService.TextButtonStyle.FILLED)
+      .setOnClickAction(CardService.newAction().setFunctionName("actionStartOAuth")));
+      
+  builder.setFixedFooter(fixedFooter);
+  
+  return builder.build();
+}
+
+function actionStartOAuth(e) {
+  if (AutoColorAuth.isAuthenticated()) {
+    return CardService.newActionResponseBuilder()
+      .setNavigation(CardService.newNavigation().updateCard(buildHomeCard()))
+      .setNotification(CardService.newNotification().setText("인증이 완료되었습니다."))
+      .build();
+  }
+
+  var scriptProps = PropertiesService.getScriptProperties();
+  var authUrl = scriptProps.getProperty('OAUTH_AUTH_URL') || "https://api.example.com/oauth/google";
+
+  CardService.newAuthorizationException()
+    .setAuthorizationUrl(authUrl)
+    .setResourceDisplayName("AutoColor Backend")
+    .throwException();
+}
+function doGet(e) {
+  var token = e.parameter.token;
+  if (token) {
+    AutoColorAuth.saveSessionToken(token);
+    var html = '<!DOCTYPE html><html><head><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>인증 완료</title></head><body style="font-family: sans-serif; text-align: center; padding: 50px;">' +
+               '<h2>인증이 완료되었습니다</h2>' +
+               '<p>이 창을 닫고 캘린더로 돌아가 주세요.</p>' +
+               '<script>setTimeout(function(){ window.top.close(); }, 500);</script>' +
+               '</body></html>';
+    return HtmlService.createHtmlOutput(html);
+  }
+  var errHtml = '<!DOCTYPE html><html><head><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>인증 실패</title></head><body style="font-family: sans-serif; text-align: center; padding: 50px;"><h2>인증 실패</h2><p>다시 시도해 주세요.</p></body></html>';
+  return HtmlService.createHtmlOutput(errHtml);
+}
+
 function buildReconnectCard(errorMsg) {
   var builder = CardService.newCardBuilder();
 
@@ -603,12 +673,8 @@ function buildReconnectCard(errorMsg) {
 }
 
 function actionReconnectOAuth(e) {
-  // TODO: Stage 2 OAuth 연동 플로우 추가 (예: URL 열기 또는 토큰 갱신 로직)
-  // 현재는 임시로 홈 카드로 되돌아가는 로직을 구현합니다.
-  return CardService.newActionResponseBuilder()
-    .setNavigation(CardService.newNavigation().popToRoot().updateCard(buildHomeCard()))
-    .setNotification(CardService.newNotification().setText("재연결 되었습니다. (임시 동작)"))
-    .build();
+  // Reconnect logic delegates to normal OAuth flow
+  return actionStartOAuth(e);
 }
 /**
  * Event Update Trigger
