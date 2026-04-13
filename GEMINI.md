@@ -4,6 +4,7 @@ This `GEMINI.md` file provides context and instructions for AI agents interactin
 
 ## 프로젝트 문서 (Project Documentation)
 
+- Web UI 스펙 및 규칙: @web/GEMINI.md
 - 프로젝트 개요 및 기술 스택: @docs/project-overview.md
 - 아키텍처 가이드라인 및 컨벤션: @docs/architecture-guidelines.md
 
