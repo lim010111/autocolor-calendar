@@ -1,3 +1,19 @@
+function getCalendarColors() {
+  return [
+    { id: "11", label: "토마토", url: "https://placehold.co/48x48/D50000/D50000.png?text=%20&radius=24" },
+    { id: "4", label: "플라밍고", url: "https://placehold.co/48x48/E67C73/E67C73.png?text=%20&radius=24" },
+    { id: "6", label: "귤", url: "https://placehold.co/48x48/F4511E/F4511E.png?text=%20&radius=24" },
+    { id: "5", label: "바나나", url: "https://placehold.co/48x48/F6BF26/F6BF26.png?text=%20&radius=24" },
+    { id: "2", label: "세이지", url: "https://placehold.co/48x48/33B679/33B679.png?text=%20&radius=24" },
+    { id: "10", label: "바질", url: "https://placehold.co/48x48/0B8043/0B8043.png?text=%20&radius=24" },
+    { id: "7", label: "공작", url: "https://placehold.co/48x48/039BE5/039BE5.png?text=%20&radius=24" },
+    { id: "9", label: "블루베리", url: "https://placehold.co/48x48/3F51B5/3F51B5.png?text=%20&radius=24" },
+    { id: "1", label: "라벤더", url: "https://placehold.co/48x48/7986CB/7986CB.png?text=%20&radius=24" },
+    { id: "3", label: "포도", url: "https://placehold.co/48x48/8E24AA/8E24AA.png?text=%20&radius=24" },
+    { id: "8", label: "회연필", url: "https://placehold.co/48x48/616161/616161.png?text=%20&radius=24" }
+  ];
+}
+
 /**
  * Entry point for the Google Workspace Add-on (Homepage Trigger).
  *
@@ -23,24 +39,35 @@ function buildWelcomeCard() {
   var builder = CardService.newCardBuilder();
   
   builder.setHeader(CardService.newCardHeader()
-    .setTitle("AI가 캘린더를 예쁘게 정리해 드립니다.")
+    .setTitle("AutoColor 사용 가이드")
+    .setSubtitle("AI가 캘린더를 예쁘게 정리해 드립니다.")
     .setImageUrl("https://www.gstatic.com/images/icons/material/system/1x/palette_black_48dp.png"));
     
-  var section = CardService.newCardSection();
+  var tutorialSection = CardService.newCardSection().setHeader("💡 이렇게 사용해보세요!");
   
-  section.addWidget(CardService.newDecoratedText()
-    .setText("✨ 캘린더 자동 색상 분류")
+  tutorialSection.addWidget(CardService.newDecoratedText()
+    .setTopLabel("1단계. 규칙 만들기")
+    .setText("키워드(예: '회의')와 원하는 색상을 선택해 나만의 규칙을 만드세요.")
     .setWrapText(true));
     
-  section.addWidget(CardService.newDecoratedText()
-    .setText("🔒 안전한 개인정보 보호")
-    .setWrapText(true));
-  
-  section.addWidget(CardService.newDecoratedText()
-    .setText("가입 시 <a href='https://example.com/privacy'>개인정보처리방침</a> 및 <a href='https://example.com/terms'>서비스 약관</a>에 동의하는 것으로 간주됩니다.")
+  tutorialSection.addWidget(CardService.newDecoratedText()
+    .setTopLabel("2단계. 일정 등록하기")
+    .setText("평소처럼 캘린더에 일정을 등록합니다. 제목이나 설명에 키워드가 포함되면 됩니다.")
     .setWrapText(true));
     
-  builder.addSection(section);
+  tutorialSection.addWidget(CardService.newDecoratedText()
+    .setTopLabel("3단계. 자동 색상 적용")
+    .setText("백그라운드에서 AutoColor가 자동으로 일정을 찾아 예쁜 색상을 입혀줍니다! ✨")
+    .setWrapText(true));
+    
+  builder.addSection(tutorialSection);
+
+  var authSection = CardService.newCardSection();
+  authSection.addWidget(CardService.newDecoratedText()
+    .setText("시작하려면 Google 계정 연동이 필요합니다. 가입 시 <a href='https://example.com/privacy'>개인정보처리방침</a> 및 <a href='https://example.com/terms'>서비스 약관</a>에 동의하는 것으로 간주됩니다.")
+    .setWrapText(true));
+    
+  builder.addSection(authSection);
   
   var fixedFooter = CardService.newFixedFooter()
     .setPrimaryButton(CardService.newTextButton()
@@ -152,8 +179,8 @@ function actionGoToSettings(e) {
 
 function getMockRules() {
   return [
-    { keyword: "회의", colorLabel: "🔵 파란색" },
-    { keyword: "개인", colorLabel: "🟢 초록색" }
+    { keyword: "주간회의", colorId: "9" },
+    { keyword: "개인 일정", colorId: "2" }
   ];
 }
 
@@ -193,22 +220,28 @@ function onEventOpen(e) {
   // Use Grid widget for visualizing colors
   var colorGrid = CardService.newGrid()
     .setTitle("색상 선택")
-    .setNumColumns(4)
+    .setNumColumns(6)
     .setOnClickAction(CardService.newAction().setFunctionName("actionSelectColor"));
     
   // Mock placeholders for color icons
-  var colors = [
-    { id: "1", label: "파랑", url: "https://www.gstatic.com/images/icons/material/system/1x/palette_black_48dp.png" },
-    { id: "2", label: "초록", url: "https://www.gstatic.com/images/icons/material/system/1x/palette_black_48dp.png" },
-    { id: "4", label: "주황", url: "https://www.gstatic.com/images/icons/material/system/1x/palette_black_48dp.png" },
-    { id: "11", label: "빨강", url: "https://www.gstatic.com/images/icons/material/system/1x/palette_black_48dp.png" }
-  ];
+  var colors = getCalendarColors();
   
+  var selectedColorId = null;
+  try {
+      var userProps = PropertiesService.getUserProperties();
+      selectedColorId = userProps.getProperty("selectedColorId");
+  } catch (err) {}
+
   colors.forEach(function(c) {
+    var url = c.url;
+    if (c.id === selectedColorId) {
+      url = url.replace("text=%20", "text=%E2%9C%93");
+    }
     colorGrid.addItem(CardService.newGridItem()
       .setIdentifier(c.id)
-      .setTitle(c.label)
-      .setImage(CardService.newImageComponent().setImageUrl(c.url)));
+      .setImage(CardService.newImageComponent()
+        .setImageUrl(url)
+        .setCropStyle(CardService.newImageCropStyle().setImageCropType(CardService.ImageCropType.CIRCLE))));
   });
   
   overrideSection.addWidget(colorGrid);
@@ -241,8 +274,29 @@ function onEventOpen(e) {
 }
 
 function actionSelectColor(e) {
+  var selectedColorId = e.parameters.selectedColorId || (e.commonEventObject && e.commonEventObject.parameters ? e.commonEventObject.parameters.selectedColorId : null) || e.parameters.id;
+
+  var colors = getCalendarColors();
+
+  var selectedLabel = "색상";
+  for (var i = 0; i < colors.length; i++) {
+    if (colors[i].id === selectedColorId) {
+      selectedLabel = colors[i].label;
+      break;
+    }
+  }
+
+  // Update properties to save the selected color for this event
+  if (selectedColorId) {
+      try {
+        var userProps = PropertiesService.getUserProperties();
+        userProps.setProperty("selectedColorId", selectedColorId);
+      } catch (err) {}
+  }
+  
   return CardService.newActionResponseBuilder()
-    .setNotification(CardService.newNotification().setText("색상이 선택되었습니다."))
+    .setNavigation(CardService.newNavigation().updateCard(onEventOpen(e)))
+    .setNotification(CardService.newNotification().setText(selectedLabel + " 색상이 선택되었습니다."))
     .build();
 }
 
@@ -285,21 +339,27 @@ function buildRuleManagementCard() {
     
   var colorGrid = CardService.newGrid()
     .setTitle("캘린더 색상 선택")
-    .setNumColumns(4)
+    .setNumColumns(6)
     .setOnClickAction(CardService.newAction().setFunctionName("actionSelectColorForRule"));
     
-  var colors = [
-    { id: "1", label: "파랑", url: "https://www.gstatic.com/images/icons/material/system/1x/palette_black_48dp.png" },
-    { id: "2", label: "초록", url: "https://www.gstatic.com/images/icons/material/system/1x/palette_black_48dp.png" },
-    { id: "4", label: "주황", url: "https://www.gstatic.com/images/icons/material/system/1x/palette_black_48dp.png" },
-    { id: "11", label: "빨강", url: "https://www.gstatic.com/images/icons/material/system/1x/palette_black_48dp.png" }
-  ];
+  var colors = getCalendarColors();
   
+  var selectedColorId = null;
+  try {
+      var userProps = PropertiesService.getUserProperties();
+      selectedColorId = userProps.getProperty("selectedColorIdForRule");
+  } catch (err) {}
+
   colors.forEach(function(c) {
+    var url = c.url;
+    if (c.id === selectedColorId) {
+      url = url.replace("text=%20", "text=%E2%9C%93");
+    }
     colorGrid.addItem(CardService.newGridItem()
       .setIdentifier(c.id)
-      .setTitle(c.label)
-      .setImage(CardService.newImageComponent().setImageUrl(c.url)));
+      .setImage(CardService.newImageComponent()
+        .setImageUrl(url)
+        .setCropStyle(CardService.newImageCropStyle().setImageCropType(CardService.ImageCropType.CIRCLE))));
   });
   
   addSection.addWidget(colorGrid);
@@ -321,16 +381,28 @@ function buildRuleManagementCard() {
       .setText("아직 등록된 규칙이 없습니다. 위에서 첫 규칙을 만들어보세요.")
       .setWrapText(true));
   } else {
+    var colors = getCalendarColors();
     rules.forEach(function(rule, index) {
+      var colorObj = null;
+      for (var i = 0; i < colors.length; i++) {
+        if (colors[i].id === rule.colorId) {
+          colorObj = colors[i];
+          break;
+        }
+      }
+      var colorName = colorObj ? colorObj.label : "색상 없음";
+      var colorUrl = colorObj ? colorObj.url : "";
+
       var deleteButton = CardService.newTextButton()
-        .setText("삭제 🗑️")
+        .setText("삭제")
         .setOnClickAction(CardService.newAction()
           .setFunctionName("actionDeleteRule")
           .setParameters({index: index.toString()}));
           
       listSection.addWidget(CardService.newDecoratedText()
-        .setTopLabel(rule.colorLabel)
+        .setStartIcon(CardService.newIconImage().setIconUrl(colorUrl).setImageCropType(CardService.ImageCropType.CIRCLE))
         .setText(rule.keyword)
+        .setBottomLabel(colorName)
         .setButton(deleteButton));
     });
   }
@@ -345,8 +417,29 @@ function buildRuleManagementCard() {
 }
 
 function actionSelectColorForRule(e) {
+  var selectedColorId = e.parameters.selectedColorId || (e.commonEventObject && e.commonEventObject.parameters ? e.commonEventObject.parameters.selectedColorId : null) || e.parameters.id;
+
+  var colors = getCalendarColors();
+
+  var selectedLabel = "색상";
+  for (var i = 0; i < colors.length; i++) {
+    if (colors[i].id === selectedColorId) {
+      selectedLabel = colors[i].label;
+      break;
+    }
+  }
+
+  // Update properties to save the selected color for this rule
+  if (selectedColorId) {
+      try {
+        var userProps = PropertiesService.getUserProperties();
+        userProps.setProperty("selectedColorIdForRule", selectedColorId);
+      } catch (err) {}
+  }
+  
   return CardService.newActionResponseBuilder()
-    .setNotification(CardService.newNotification().setText("규칙 색상이 선택되었습니다."))
+    .setNavigation(CardService.newNavigation().updateCard(buildRuleManagementCard()))
+    .setNotification(CardService.newNotification().setText(selectedLabel + " 색상이 선택되었습니다."))
     .build();
 }
 
