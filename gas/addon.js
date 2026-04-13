@@ -111,8 +111,8 @@ function buildHomeCard() {
       .setText("백엔드 연동(로그인)을 통해 고급 AI 분류 기능을 사용해보세요.")
       .setWrapText(true)
       .setButton(CardService.newTextButton()
-        .setText("로그인 (OAuth)")
-        .setOnClickAction(CardService.newAction().setFunctionName("actionStartOAuth"))));
+        .setText("자세히 알아보기")
+        .setOnClickAction(CardService.newAction().setFunctionName("actionGoToLogin"))));
     builder.addSection(loginBanner);
   }
   
@@ -591,6 +591,12 @@ function actionConfirmCancelService(e) {
     .build();
 }
 
+function actionGoToLogin(e) {
+  return CardService.newActionResponseBuilder()
+    .setNavigation(CardService.newNavigation().pushCard(buildLoginCard()))
+    .build();
+}
+
 function buildLoginCard() {
   var builder = CardService.newCardBuilder();
   
@@ -627,10 +633,12 @@ function actionStartOAuth(e) {
   var scriptProps = PropertiesService.getScriptProperties();
   var authUrl = scriptProps.getProperty('OAUTH_AUTH_URL') || "https://api.example.com/oauth/google";
 
-  CardService.newAuthorizationException()
-    .setAuthorizationUrl(authUrl)
-    .setResourceDisplayName("AutoColor Backend")
-    .throwException();
+  return CardService.newActionResponseBuilder()
+    .setOpenLink(CardService.newOpenLink()
+      .setUrl(authUrl)
+      .setOpenAs(CardService.OpenAs.OVERLAY)
+      .setOnClose(CardService.OnClose.RELOAD_ADD_ON))
+    .build();
 }
 function doGet(e) {
   var token = e.parameter.token;

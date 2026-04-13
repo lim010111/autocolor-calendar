@@ -47,8 +47,5 @@
   "webapp": {
     "executeAs": "USER_ACCESSING",
     "access": "ANYONE"
-  },
-  "urlFetchWhitelist": [
-    "https://api.example.com/"
-  ]
+  }
 }
