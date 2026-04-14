@@ -508,11 +508,11 @@ function buildSettingsCard() {
 }
 
 function actionLogout(e) {
-  // 로그아웃 시 토큰 폐기 및 로컬 폴백.
+  // 로그아웃 시 토큰 폐기
   AutoColorAuth.clearSessionToken();
   return CardService.newActionResponseBuilder()
     .setNavigation(CardService.newNavigation().popToRoot().updateCard(buildWelcomeCard()))
-    .setNotification(CardService.newNotification().setText("로그아웃 되었습니다. Stage 1 모드로 전환됩니다."))
+    .setNotification(CardService.newNotification().setText("로그아웃 되었습니다."))
     .build();
 }
 
@@ -552,11 +552,6 @@ function buildCancelConfirmCard() {
 }
 
 function actionConfirmCancelService(e) {
-  try {
-    AutoColorTriggers.clearManagedTriggers();
-  } catch (err) {
-    console.error("Failed to clear triggers:", err);
-  }
   AutoColorStorage.clearAllState();
 
   return CardService.newActionResponseBuilder()
@@ -576,11 +571,12 @@ function actionStartOAuth(e) {
   var scriptProps = PropertiesService.getScriptProperties();
   var authUrl = scriptProps.getProperty('OAUTH_AUTH_URL') || "https://api.example.com/oauth/google";
 
-  CardService.newAuthorizationException()
-    .setAuthorizationUrl(authUrl)
-    .setResourceDisplayName("AutoColor Backend")
-    .setCustomUiCallback("buildWelcomeCard")
-    .throwException();
+  return CardService.newActionResponseBuilder()
+    .setOpenLink(CardService.newOpenLink()
+      .setUrl(authUrl)
+      .setOpenAs(CardService.OpenAs.FULL_SIZE)
+      .setOnClose(CardService.OnClose.RELOAD_ADD_ON))
+    .build();
 }
 
 function doGet(e) {

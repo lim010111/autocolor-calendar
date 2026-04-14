@@ -1,5 +1,5 @@
 /**
- * API Module for communicating with Stage 2 Backend
+ * API Module for communicating with the Backend
  */
 var AutoColorAPI = (function () {
   var BACKEND_BASE_URL = 'https://api.example.com'; 
