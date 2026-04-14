@@ -9,9 +9,9 @@ This `GEMINI.md` file provides context and instructions for AI agents interactin
 
 ## 개발 및 운영 가이드 (Development & Operations)
 
-### Stage 2: Cloudflare Workers Backend (WIP)
+### Cloudflare Workers Backend
 
 - **Package Management:** The project uses `npm` or `pnpm`.
 - **Development:** Use `wrangler dev` for local development.
 
-_Note: For Stage 1 (GAS) specifics, Gemini will automatically load `gas/GEMINI.md` when working in the `gas/` directory._
+_Note: For Google Apps Script Add-on specifics, Gemini will automatically load `gas/GEMINI.md` when working in the `gas/` directory._

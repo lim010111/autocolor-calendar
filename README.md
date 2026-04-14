@@ -1,16 +1,15 @@
 # AutoColor for Calendar
 
-AutoColor for Calendar assigns Google Calendar event colors from user-defined semantic rules. Stage 1 is a user-owned Google Apps Script MVP that focuses on deterministic, title-heavy matching. Optional LLM support is explicitly deferred until the rule engine proves useful.
+**AutoColor for Calendar** automatically assigns colors to Google Calendar events based on user-defined semantic rules or contextual analysis. It is a multi-tenant SaaS application for the Google Workspace Marketplace that leverages a Serverless backend (Cloudflare Workers) and a 3-stage hybrid classification engine (Rule -> Embedding -> LLM) for advanced contextual category matching.
 
 ## Repository layout
 
-- `docs/architecture-stage1.md`: staged architecture, sync model, and what belongs in Stage 1 versus Stage 2.
-- `gas/`: Stage 1 Google Apps Script project files.
-- `gas/README.md`: setup and operating notes for the Apps Script MVP.
+- `docs/`: Architectural documentation, UI plans, and guidelines.
+- `gas/`: Source code for the Google Workspace Add-on (UI).
+- `src/`: Source code for the Cloudflare Workers backend (E2E processing).
 
 ## Start here
 
-1. Read `docs/architecture-stage1.md` for the product idea, staged architecture, and sync design.
-2. Read `gas/README.md` for the concrete Stage 1 setup flow.
-3. Copy the files under `gas/` into your own Apps Script project, enable the Advanced Calendar service, and run `installStage1Mvp()`.
-# autocolor-calendar
+1. Read `docs/project-overview.md` for a comprehensive overview of the application and its architecture.
+2. Read `docs/architecture-guidelines.md` for the core architectural rules, sync flows, and Add-on constraints.
+3. See `gas/README.md` for setting up the frontend Google Workspace Add-on.

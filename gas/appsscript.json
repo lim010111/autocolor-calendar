@@ -11,20 +11,15 @@
     "https://www.googleapis.com/auth/calendar.addons.current.event.write",
     "https://www.googleapis.com/auth/userinfo.email"
   ],
-  "dependencies": {
-    "enabledAdvancedServices": [
-      {
-        "userSymbol": "Calendar",
-        "serviceId": "calendar",
-        "version": "v3"
-      }
-    ]
-  },
   "addOns": {
     "common": {
       "name": "AutoColor",
       "logoUrl": "https://www.gstatic.com/images/icons/material/system/1x/palette_black_48dp.png",
       "useLocaleFromApp": true,
+      "openLinkUrlPrefixes": [
+        "https://example.com",
+        "https://api.example.com"
+      ],
       "homepageTrigger": {
         "runFunction": "buildAddOn",
         "enabled": true
@@ -43,5 +38,9 @@
         "runFunction": "onEventUpdate"
       }
     }
+  },
+  "webapp": {
+    "executeAs": "USER_ACCESSING",
+    "access": "ANYONE"
   }
 }

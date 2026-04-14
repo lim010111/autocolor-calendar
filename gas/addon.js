@@ -21,11 +21,13 @@ function getCalendarColors() {
  * @return {CardService.Card} The constructed Card.
  */
 function buildAddOn(e) {
-  var isOnboarded = AutoColorStorage.isOnboarded();
-  
-  if (!isOnboarded) {
+  if (!AutoColorAuth.isAuthenticated()) {
     return buildWelcomeCard();
   }
+  
+  // 백엔드 연동된 상태에서는 로컬 스토리지 상의 온보딩 여부도 true로 강제 설정 (하위 호환 및 일관성)
+  AutoColorStorage.setOnboarded(true);
+  
   return buildHomeCard();
 }
 
@@ -70,28 +72,14 @@ function buildWelcomeCard() {
     .setPrimaryButton(CardService.newTextButton()
       .setText("Google 계정으로 시작하기")
       .setTextButtonStyle(CardService.TextButtonStyle.FILLED)
-      .setOnClickAction(CardService.newAction().setFunctionName("actionCompleteOnboarding")));
+      .setOnClickAction(CardService.newAction().setFunctionName("actionStartOAuth")));
       
   builder.setFixedFooter(fixedFooter);
   
   return builder.build();
 }
 
-function actionCompleteOnboarding(e) {
-  AutoColorStorage.ensureDefaults();
-  AutoColorStorage.setOnboarded(true);
-  try {
-    AutoColorTriggers.installManagedTriggers();
-  } catch (err) {
-    // Triggers might fail if the user didn't grant the proper scopes yet or other issues.
-    console.error("Failed to install triggers during onboarding", err);
-  }
-  
-  return CardService.newActionResponseBuilder()
-    .setNavigation(CardService.newNavigation().pushCard(buildHomeCard()))
-    .setNotification(CardService.newNotification().setText("환영합니다!"))
-    .build();
-}
+
 
 /**
  * Screen 2: Home Card (메인 대시보드 - homepageTrigger)
@@ -101,7 +89,7 @@ function buildHomeCard() {
   
   builder.setHeader(CardService.newCardHeader()
     .setTitle("AutoColor 대시보드"));
-  
+    
   var section = CardService.newCardSection();
   
   var switchControl = CardService.newSwitch()
@@ -520,8 +508,8 @@ function buildSettingsCard() {
 }
 
 function actionLogout(e) {
-  // 로그아웃 시 온보딩 상태만 초기화합니다.
-  AutoColorStorage.setOnboarded(false);
+  // 로그아웃 시 토큰 폐기
+  AutoColorAuth.clearSessionToken();
   return CardService.newActionResponseBuilder()
     .setNavigation(CardService.newNavigation().popToRoot().updateCard(buildWelcomeCard()))
     .setNotification(CardService.newNotification().setText("로그아웃 되었습니다."))
@@ -564,17 +552,40 @@ function buildCancelConfirmCard() {
 }
 
 function actionConfirmCancelService(e) {
-  try {
-    AutoColorTriggers.clearManagedTriggers();
-  } catch (err) {
-    console.error("Failed to clear triggers:", err);
-  }
   AutoColorStorage.clearAllState();
 
   return CardService.newActionResponseBuilder()
     .setNavigation(CardService.newNavigation().popToRoot().updateCard(buildWelcomeCard()))
     .setNotification(CardService.newNotification().setText("서비스가 해지되었습니다."))
     .build();
+}
+
+function actionStartOAuth(e) {
+  if (AutoColorAuth.isAuthenticated()) {
+    return CardService.newActionResponseBuilder()
+      .setNavigation(CardService.newNavigation().updateCard(buildHomeCard()))
+      .setNotification(CardService.newNotification().setText("인증이 완료되었습니다."))
+      .build();
+  }
+
+  var scriptProps = PropertiesService.getScriptProperties();
+  var authUrl = scriptProps.getProperty('OAUTH_AUTH_URL') || "https://api.example.com/oauth/google";
+
+  return CardService.newActionResponseBuilder()
+    .setOpenLink(CardService.newOpenLink()
+      .setUrl(authUrl)
+      .setOpenAs(CardService.OpenAs.FULL_SIZE)
+      .setOnClose(CardService.OnClose.RELOAD_ADD_ON))
+    .build();
+}
+
+function doGet(e) {
+  var token = e.parameter.token;
+  if (token) {
+    AutoColorAuth.saveSessionToken(token);
+    return HtmlService.createHtmlOutputFromFile('authCallback');
+  }
+  return HtmlService.createHtmlOutputFromFile('authError');
 }
 
 function buildReconnectCard(errorMsg) {
@@ -603,12 +614,8 @@ function buildReconnectCard(errorMsg) {
 }
 
 function actionReconnectOAuth(e) {
-  // TODO: Stage 2 OAuth 연동 플로우 추가 (예: URL 열기 또는 토큰 갱신 로직)
-  // 현재는 임시로 홈 카드로 되돌아가는 로직을 구현합니다.
-  return CardService.newActionResponseBuilder()
-    .setNavigation(CardService.newNavigation().popToRoot().updateCard(buildHomeCard()))
-    .setNotification(CardService.newNotification().setText("재연결 되었습니다. (임시 동작)"))
-    .build();
+  // Reconnect logic delegates to normal OAuth flow
+  return actionStartOAuth(e);
 }
 /**
  * Event Update Trigger
