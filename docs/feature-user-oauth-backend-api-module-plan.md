@@ -39,8 +39,9 @@
 - **재시도 로직(Retry & Exponential Backoff):** 지수 백오프를 적용하되, **GAS 한 번 실행 최대 시간(6분) 및 권장 UI 응답 제한 시간(약 30초 내외)을 초과하여 타임아웃 오류가 나지 않도록 최대 재시도 횟수(예: 3회)와 대기 시간을 보수적으로 제한**.
 
 ### Step 3: Add-on UI 반영 (`gas/addon.js`)
-- `buildLoginCard()`: 미인증 상태일 때 표시되는 로그인 안내 및 `AuthorizationException`을 통한 백엔드 로그인 연결 카드 생성.
-- `buildSettingsCard()`: 기존 설정 화면에 "Logout (Disconnect)" 버튼 추가.
+- `buildAddOn()`: 진입점(homepageTrigger)에서 `isAuthenticated()`를 체크하여, `false`면 Welcome Card를 반환하고 `true`면 Home Card(대시보드)를 반환하도록 분기를 단순화합니다.
+- `buildWelcomeCard()`: 온보딩 화면에서 "시작하기" 버튼 클릭 시 `AuthorizationException`을 발생시켜 백엔드 OAuth 플로우를 시작하도록 변경합니다.
+- `buildSettingsCard()`: 기존 설정 화면에 "로그아웃" 버튼을 유지하여, 로그아웃 시 인증 토큰을 삭제하고 UI가 다시 Welcome Card로 돌아갈 수 있도록 합니다.
 
 ## 6. Verification
 - `gas/auth.js`의 토큰 저장이 정상 수행되며, 인증 성공 시 기존 로컬 `ScriptApp` 트리거들이 확실히 삭제되는지 디버거로 확인.

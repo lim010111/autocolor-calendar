@@ -21,11 +21,12 @@ function getCalendarColors() {
  * @return {CardService.Card} The constructed Card.
  */
 function buildAddOn(e) {
-  var isOnboarded = AutoColorStorage.isOnboarded();
-  
-  if (!isOnboarded) {
+  if (!AutoColorAuth.isAuthenticated()) {
     return buildWelcomeCard();
   }
+  
+  // 백엔드 연동된 상태에서는 로컬 스토리지 상의 온보딩 여부도 true로 강제 설정 (하위 호환 및 일관성)
+  AutoColorStorage.setOnboarded(true);
   
   return buildHomeCard();
 }
@@ -71,30 +72,14 @@ function buildWelcomeCard() {
     .setPrimaryButton(CardService.newTextButton()
       .setText("Google 계정으로 시작하기")
       .setTextButtonStyle(CardService.TextButtonStyle.FILLED)
-      .setOnClickAction(CardService.newAction().setFunctionName("actionCompleteOnboarding")));
+      .setOnClickAction(CardService.newAction().setFunctionName("actionStartOAuth")));
       
   builder.setFixedFooter(fixedFooter);
   
   return builder.build();
 }
 
-function actionCompleteOnboarding(e) {
-  AutoColorStorage.ensureDefaults();
-  AutoColorStorage.setOnboarded(true);
-  try {
-    AutoColorTriggers.installManagedTriggers();
-  } catch (err) {
-    // Triggers might fail if the user didn't grant the proper scopes yet or other issues.
-    console.error("Failed to install triggers during onboarding", err);
-  }
-  
-  var nextCard = buildHomeCard();
-  
-  return CardService.newActionResponseBuilder()
-    .setNavigation(CardService.newNavigation().pushCard(nextCard))
-    .setNotification(CardService.newNotification().setText("환영합니다!"))
-    .build();
-}
+
 
 /**
  * Screen 2: Home Card (메인 대시보드 - homepageTrigger)
@@ -105,17 +90,6 @@ function buildHomeCard() {
   builder.setHeader(CardService.newCardHeader()
     .setTitle("AutoColor 대시보드"));
     
-  if (!AutoColorAuth.isAuthenticated()) {
-    var loginBanner = CardService.newCardSection();
-    loginBanner.addWidget(CardService.newDecoratedText()
-      .setText("백엔드 연동(로그인)을 통해 고급 AI 분류 기능을 사용해보세요.")
-      .setWrapText(true)
-      .setButton(CardService.newTextButton()
-        .setText("자세히 알아보기")
-        .setOnClickAction(CardService.newAction().setFunctionName("actionGoToLogin"))));
-    builder.addSection(loginBanner);
-  }
-  
   var section = CardService.newCardSection();
   
   var switchControl = CardService.newSwitch()
@@ -537,7 +511,7 @@ function actionLogout(e) {
   // 로그아웃 시 토큰 폐기 및 로컬 폴백.
   AutoColorAuth.clearSessionToken();
   return CardService.newActionResponseBuilder()
-    .setNavigation(CardService.newNavigation().popToRoot().updateCard(buildHomeCard()))
+    .setNavigation(CardService.newNavigation().popToRoot().updateCard(buildWelcomeCard()))
     .setNotification(CardService.newNotification().setText("로그아웃 되었습니다. Stage 1 모드로 전환됩니다."))
     .build();
 }
@@ -591,37 +565,6 @@ function actionConfirmCancelService(e) {
     .build();
 }
 
-function actionGoToLogin(e) {
-  return CardService.newActionResponseBuilder()
-    .setNavigation(CardService.newNavigation().pushCard(buildLoginCard()))
-    .build();
-}
-
-function buildLoginCard() {
-  var builder = CardService.newCardBuilder();
-  
-  builder.setHeader(CardService.newCardHeader()
-    .setTitle("로그인이 필요합니다")
-    .setSubtitle("AutoColor 백엔드 연동"));
-    
-  var section = CardService.newCardSection();
-  section.addWidget(CardService.newDecoratedText()
-    .setText("향상된 AI 색상 분류 및 동기화를 위해 백엔드 계정 연동이 필요합니다. 아래 버튼을 눌러 로그인해주세요.")
-    .setWrapText(true));
-    
-  builder.addSection(section);
-  
-  var fixedFooter = CardService.newFixedFooter()
-    .setPrimaryButton(CardService.newTextButton()
-      .setText("로그인 (OAuth)")
-      .setTextButtonStyle(CardService.TextButtonStyle.FILLED)
-      .setOnClickAction(CardService.newAction().setFunctionName("actionStartOAuth")));
-      
-  builder.setFixedFooter(fixedFooter);
-  
-  return builder.build();
-}
-
 function actionStartOAuth(e) {
   if (AutoColorAuth.isAuthenticated()) {
     return CardService.newActionResponseBuilder()
@@ -633,26 +576,20 @@ function actionStartOAuth(e) {
   var scriptProps = PropertiesService.getScriptProperties();
   var authUrl = scriptProps.getProperty('OAUTH_AUTH_URL') || "https://api.example.com/oauth/google";
 
-  return CardService.newActionResponseBuilder()
-    .setOpenLink(CardService.newOpenLink()
-      .setUrl(authUrl)
-      .setOpenAs(CardService.OpenAs.OVERLAY)
-      .setOnClose(CardService.OnClose.RELOAD_ADD_ON))
-    .build();
+  CardService.newAuthorizationException()
+    .setAuthorizationUrl(authUrl)
+    .setResourceDisplayName("AutoColor Backend")
+    .setCustomUiCallback("buildWelcomeCard")
+    .throwException();
 }
+
 function doGet(e) {
   var token = e.parameter.token;
   if (token) {
     AutoColorAuth.saveSessionToken(token);
-    var html = '<!DOCTYPE html><html><head><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>인증 완료</title></head><body style="font-family: sans-serif; text-align: center; padding: 50px;">' +
-               '<h2>인증이 완료되었습니다</h2>' +
-               '<p>이 창을 닫고 캘린더로 돌아가 주세요.</p>' +
-               '<script>setTimeout(function(){ window.top.close(); }, 500);</script>' +
-               '</body></html>';
-    return HtmlService.createHtmlOutput(html);
+    return HtmlService.createHtmlOutputFromFile('authCallback');
   }
-  var errHtml = '<!DOCTYPE html><html><head><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>인증 실패</title></head><body style="font-family: sans-serif; text-align: center; padding: 50px;"><h2>인증 실패</h2><p>다시 시도해 주세요.</p></body></html>';
-  return HtmlService.createHtmlOutput(errHtml);
+  return HtmlService.createHtmlOutputFromFile('authError');
 }
 
 function buildReconnectCard(errorMsg) {

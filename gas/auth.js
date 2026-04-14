@@ -26,7 +26,7 @@ var AutoColorAuth = (function () {
     var userProps = PropertiesService.getUserProperties();
     userProps.deleteProperty(TOKEN_KEY);
     
-    // Fallback to local mode: restore local triggers
+    // 로그아웃 시 로컬 트리거 재등록 로직을 호출하여 Stage 1으로 폴백합니다.
     try {
       AutoColorTriggers.installManagedTriggers();
     } catch (e) {
