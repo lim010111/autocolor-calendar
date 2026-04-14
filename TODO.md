@@ -15,7 +15,7 @@
 - [x] Add-on UI 디자인 개선
 - [ ] 복잡한 규칙 설정을 위한 별도 Web UI (HTML Service 또는 외부 링크) 개발(Addon UI로 충분히 기능 수행 가능하다고 판단되어, 추후에 필요 시 개발 예정)
 - [x] 최초 온보딩, 권한 부족/토큰 만료 시 재연결 UI, 서비스 해지 플로우 구현
-- [ ] 사용자 OAuth 인증 및 백엔드 API 통신(URL Fetch App) 연동 모듈 작성
+- [x] 사용자 OAuth 인증 및 백엔드 API 통신(URL Fetch App) 연동 모듈 작성
 
 ## 3. 백엔드 (Cloudflare Workers + Supabase) 인프라 및 기반 구축
 
