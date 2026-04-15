@@ -21,10 +21,13 @@
 
 - [ ] 기존 Python(FastAPI) 파일(`pyproject.toml`, `main.py` 등) 삭제 및 정리
 - [ ] `wrangler`를 활용한 Cloudflare Workers 프로젝트 초기화 및 TypeScript 셋업
-- [ ] Supabase 프로젝트 생성 및 Drizzle ORM 연동, 스키마 마이그레이션 도구 설정
-- [ ] 사용자, Category, SyncState, OAuthToken 정보 저장을 위한 DB 스키마 작성 (RLS 적용)
+  - [ ] 3.2a 린트·포맷·테스트 하네스(ESLint/Prettier/Vitest) 스캐폴드 + crypto/state 유닛 테스트
+- [ ] Supabase 프로젝트 생성 및 Drizzle ORM 연동, 스키마 마이그레이션 도구 설정 (Direct URL 로컬 실행)
+- [ ] 사용자, Category, SyncState, OAuthToken 정보 저장을 위한 DB 스키마 작성 (RLS 적용 — Workers 경로는 애플리케이션 `where(user_id)`가 유일 격리 수단)
 - [ ] Google OAuth 2.0 서버사이드 연동 (Refresh token 애플리케이션 암호화 및 격리 저장)
+  - [ ] 3.5a 보호된 `GET /me` 스텁(`needs_reauth` 필드 포함) + `POST /auth/logout` + 구조화 JSON 로깅 미들웨어(redaction) + OAuth 에러 리다이렉트 규약(`?error=<code>`)
 - [ ] Secret 관리(Wrangler secrets) 및 Dev/Prod 환경 분리
+  - [ ] 3.6a `scripts/gen-secrets.ts`로 dev/prod 키 3종(TOKEN/HMAC/PEPPER) 생성·주입·팀 보관소 백업 + 로테이션 절차 문서화(`src/CLAUDE.md`)
 
 ## 4. 핵심 동기화(Sync) 로직 및 Watch API 안정화
 
@@ -40,7 +43,7 @@
 - [ ] **Step 1 (Rule-based):** Supabase DB에서 사용자 규칙 조회 후 즉시 매칭하는 로직 구현
 - [ ] **Step 2 (Embedding):** Rule 실패 시, Supabase Vector를 활용한 임베딩 유사도 기반 매칭 구현
 - [ ] 캘린더 이벤트 설명(Description) 내 민감정보(PII: 이메일, URL 등) 마스킹(Redaction) 구현
-- [ ] **Step 3 (LLM Fallback):** 마스킹된 데이터를 기반으로 소형 LLM(Gemini API 등) Fallback 추론 클라이언트 연동
+- [ ] **Step 3 (LLM Fallback):** 마스킹된 데이터를 기반으로 소형 LLM(Openai API 등) Fallback 추론 클라이언트 연동
 - [ ] 색상 적용 정책 구현 (수동 설정 덮어쓰기 방지 여부, 적용 필드 제한 등)
 
 ## 6. 테스트 및 관측성(Observability) 확보
