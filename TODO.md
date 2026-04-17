@@ -19,15 +19,24 @@
 
 ## 3. 백엔드 (Cloudflare Workers + Supabase) 인프라 및 기반 구축
 
-- [ ] 기존 Python(FastAPI) 파일(`pyproject.toml`, `main.py` 등) 삭제 및 정리
-- [ ] `wrangler`를 활용한 Cloudflare Workers 프로젝트 초기화 및 TypeScript 셋업
-  - [ ] 3.2a 린트·포맷·테스트 하네스(ESLint/Prettier/Vitest) 스캐폴드 + crypto/state 유닛 테스트
-- [ ] Supabase 프로젝트 생성 및 Drizzle ORM 연동, 스키마 마이그레이션 도구 설정 (Direct URL 로컬 실행)
-- [ ] 사용자, Category, SyncState, OAuthToken 정보 저장을 위한 DB 스키마 작성 (RLS 적용 — Workers 경로는 애플리케이션 `where(user_id)`가 유일 격리 수단)
-- [ ] Google OAuth 2.0 서버사이드 연동 (Refresh token 애플리케이션 암호화 및 격리 저장)
-  - [ ] 3.5a 보호된 `GET /me` 스텁(`needs_reauth` 필드 포함) + `POST /auth/logout` + 구조화 JSON 로깅 미들웨어(redaction) + OAuth 에러 리다이렉트 규약(`?error=<code>`)
-- [ ] Secret 관리(Wrangler secrets) 및 Dev/Prod 환경 분리
-  - [ ] 3.6a `scripts/gen-secrets.ts`로 dev/prod 키 3종(TOKEN/HMAC/PEPPER) 생성·주입·팀 보관소 백업 + 로테이션 절차 문서화(`src/CLAUDE.md`)
+- [x] 기존 Python(FastAPI) 파일(`pyproject.toml`, `main.py` 등) 삭제 및 정리
+- [x] `wrangler`를 활용한 Cloudflare Workers 프로젝트 초기화 및 TypeScript 셋업
+  - [x] 3.2a 린트·포맷·테스트 하네스(ESLint/Prettier/Vitest) 스캐폴드 + crypto/state 유닛 테스트
+- [x] Supabase 프로젝트 생성 및 Drizzle ORM 연동, 스키마 마이그레이션 도구 설정 (Direct URL 로컬 실행)
+- [x] 사용자, Category, SyncState, OAuthToken 정보 저장을 위한 DB 스키마 작성 (RLS 적용 — Workers 경로는 애플리케이션 `where(user_id)`가 유일 격리 수단)
+- [x] Google OAuth 2.0 서버사이드 연동 (Refresh token 애플리케이션 암호화 및 격리 저장)
+  - [x] 3.5a 보호된 `GET /me` 스텁(`needs_reauth` 필드 포함) + `POST /auth/logout` + 구조화 JSON 로깅 미들웨어(redaction) + OAuth 에러 리다이렉트 규약(`?error=<code>`)
+- [x] Secret 관리(Wrangler secrets) 및 Dev/Prod 환경 분리
+  - [x] 3.6a `scripts/gen-secrets.ts`로 dev/prod 키 3종(TOKEN/HMAC/PEPPER) 생성·주입·팀 보관소 백업 + 로테이션 절차 문서화(`src/CLAUDE.md`)
+
+### 3 후속 작업 (§3 범위 밖 이월)
+
+- [ ] **채팅 노출 자격증명 로테이션 (사용자 수동, 우선순위 높음)** — §3 작업 중 Supabase DB password와 `GOOGLE_CLIENT_SECRET`이 세션 로그에 제시된 값으로 노출됨. (a) Supabase → Settings → Database → Reset database password 후 `.dev.vars` + `pnpm wrangler hyperdrive update 0adfbd41c67e4225a63894c3768bb837 --connection-string=...` 재주입. (b) GCP Console → OAuth client → Reset Client Secret 후 `.dev.vars` + `pnpm wrangler secret put GOOGLE_CLIENT_SECRET --env dev` 재주입.
+- [ ] **Prod 환경 활성화** — Supabase prod 프로젝트 생성 + 마이그레이션, GCP prod OAuth Web Client(별도 Consent Screen 또는 production 전환) + prod redirect URI 등록, `gen-secrets.ts`로 prod 3종 키 생성, `sync-secrets.ts prod`로 시크릿 일괄 주입, prod Hyperdrive config 생성 + 바인딩, GAS prod `/exec` URL로 `GAS_REDIRECT_URL` 설정.
+- [ ] **GAS UX 개선** — `gas/authCallback.html`에 `history.replaceState`로 `?token=` 쿼리 제거 + 자동 창 닫힘 안내; `gas/authError.html`에 `?error=<code>`별 한국어 메시지 분기(`state_invalid` / `consent_denied` / `token_exchange_failed` / `invalid_grant` / `server_error`).
+- [ ] **`buildHomeCard` 사전 검증** — ScriptProperties `BACKEND_BASE_URL`·`OAUTH_AUTH_URL` 미설정 시 "백엔드 구성 필요" 안내 카드 표시.
+- [ ] **세션 GC** — Supabase `pg_cron` 활성화 후 주 1회 `DELETE FROM sessions WHERE expires_at < now() - interval '7 days'` 스케줄 (§6 관측성 범위).
+- [ ] **`TOKEN_ENCRYPTION_KEY` 배치 로테이션** — `token_version` 컬럼 기반 전 `oauth_tokens` 재암호화 job (§6 관측성 범위, 키 교체 전 선행 필수).
 
 ## 4. 핵심 동기화(Sync) 로직 및 Watch API 안정화
 

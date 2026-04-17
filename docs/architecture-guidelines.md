@@ -12,5 +12,5 @@
 - **Workspace Add-on Constraints:** The main Add-on UI MUST be built using `CardService` in the `gas/` directory. Complex configuration UIs can be implemented via `HTMLService` or external Web UIs linked from the cards.
 - **Domain Verification:** Real-time sync via Webhooks (Watch API) requires a verified domain via Google Search Console. Ensure the production endpoint is properly registered.
 - **E2E Backend Mandatory:** All users MUST complete backend (Supabase/Workers) authentication during onboarding to use the service. Local GAS Triggers for syncing or coloring are **DEPRECATED and MUST NOT BE USED**.
-- **Halt on Failure:** If the backend fails or API communication errors occur, processing must halt. There is NO fallback to local rules.
+- **Halt on Failure:** If the backend fails or API communication errors occur, processing must halt. There is NO fallback to local rules. (OAuth `invalid_grant` is the narrow exception: the refresh token is revoked, so the failure path must surface a re-login prompt to the user rather than silently retrying.)
 - **Hybrid Classification Engine:** The backend utilizes a 3-step pipeline: Rule-based (Supabase DB) -> Vector Embedding Similarity -> LLM Fallback, prioritizing speed and cost-efficiency while ensuring PII redaction before any LLM calls.

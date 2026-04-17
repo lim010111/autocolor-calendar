@@ -6,6 +6,7 @@ This `CLAUDE.md` file provides context and instructions for Claude Code when wor
 
 - 프로젝트 개요 및 기술 스택: @docs/project-overview.md
 - 아키텍처 가이드라인 및 컨벤션: @docs/architecture-guidelines.md
+- Backend 모듈 운영 규칙: @src/CLAUDE.md
 
 ## 개발 및 운영 가이드 (Development & Operations)
 
