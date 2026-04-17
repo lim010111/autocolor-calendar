@@ -3,9 +3,81 @@
 <head>
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>인증 실패</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; padding: 48px 24px; color: #202124; max-width: 520px; margin: 0 auto; }
+    h2 { margin: 0 0 12px; font-size: 20px; text-align: center; }
+    .badge { display: block; text-align: center; margin-bottom: 16px; }
+    .badge span { display: inline-block; background: #fce8e6; color: #c5221f; padding: 4px 10px; border-radius: 999px; font-size: 12px; }
+    .message { background: #f8f9fa; border-left: 3px solid #c5221f; padding: 12px 16px; margin: 16px 0; border-radius: 4px; }
+    .message p { margin: 0 0 6px; line-height: 1.5; color: #3c4043; font-size: 14px; }
+    .message p:last-child { margin-bottom: 0; }
+    .hint { text-align: center; color: #5f6368; font-size: 13px; margin-top: 20px; line-height: 1.5; }
+    code { background: #f1f3f4; padding: 1px 6px; border-radius: 3px; font-size: 12px; }
+  </style>
 </head>
-<body style="font-family: sans-serif; text-align: center; padding: 50px;">
-  <h2>인증 실패</h2>
-  <p>다시 시도해 주세요.</p>
+<body>
+  <div class="badge"><span>✕ 인증 실패</span></div>
+  <h2>로그인을 완료하지 못했습니다</h2>
+  <div class="message" id="message-box">
+    <p id="primary-message">인증 과정에서 문제가 발생했습니다.</p>
+    <p id="secondary-message">잠시 후 애드온에서 다시 시도해 주세요.</p>
+  </div>
+  <p class="hint">이 창을 닫고 Google Calendar 애드온에서 <strong>Google 계정으로 시작하기</strong>를 다시 눌러 주세요.</p>
+
+  <script>
+    // Error code -> user-facing Korean message. Keys mirror
+    // `OAuthErrorCode` in src/config/constants.ts.
+    var MESSAGES = {
+      state_invalid: {
+        primary: '보안 검증(state)에 실패했습니다.',
+        secondary: '로그인 링크가 만료되었거나 중간에 변조되었습니다. 애드온에서 다시 시도해 주세요.'
+      },
+      consent_denied: {
+        primary: 'Google 동의 화면에서 권한 부여가 취소되었습니다.',
+        secondary: 'AutoColor를 사용하려면 캘린더 접근 권한이 필요합니다. 애드온에서 다시 시도해 주세요.'
+      },
+      provider_error: {
+        primary: 'Google OAuth 서버에서 오류를 반환했습니다.',
+        secondary: 'Google 측 일시적인 문제일 수 있습니다. 잠시 후 다시 시도해 주세요.'
+      },
+      token_exchange_failed: {
+        primary: 'Google과의 토큰 교환에 실패했습니다.',
+        secondary: '네트워크 문제이거나 백엔드 설정(Client ID/Secret)이 잘못되었을 수 있습니다. 잠시 후 재시도하고 지속되면 관리자에게 문의하세요.'
+      },
+      invalid_grant: {
+        primary: 'Google 리프레시 토큰이 무효화되었습니다.',
+        secondary: 'AutoColor 권한이 계정에서 해지되었거나 토큰이 만료되었습니다. 애드온에서 다시 로그인해 주세요.'
+      },
+      server_error: {
+        primary: '서버 내부 오류가 발생했습니다.',
+        secondary: '잠시 후 다시 시도해 주세요. 문제가 지속되면 관리자에게 문의하세요.'
+      }
+    };
+
+    function renderMessage(code) {
+      var entry = MESSAGES[code] || {
+        primary: '알 수 없는 오류가 발생했습니다.',
+        secondary: '잠시 후 다시 시도해 주세요. 문제가 지속되면 관리자에게 문의하세요.'
+      };
+      var primaryEl = document.getElementById('primary-message');
+      var secondaryEl = document.getElementById('secondary-message');
+      var suffix = code ? ' (코드: ' + code + ')' : '';
+      primaryEl.textContent = entry.primary + suffix;
+      secondaryEl.textContent = entry.secondary;
+    }
+
+    // doGet serves this page when ?token= is absent. The original request
+    // URL — and its ?error= param — is visible to this iframe via
+    // google.script.url.getLocation, which is the supported way to read
+    // query params from the sandboxed container.
+    if (typeof google !== 'undefined' && google.script && google.script.url) {
+      google.script.url.getLocation(function (location) {
+        var code = (location && location.parameter && location.parameter.error) || '';
+        renderMessage(code);
+      });
+    } else {
+      renderMessage('');
+    }
+  </script>
 </body>
 </html>

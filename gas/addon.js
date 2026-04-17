@@ -21,14 +21,67 @@ function getCalendarColors() {
  * @return {CardService.Card} The constructed Card.
  */
 function buildAddOn(e) {
+  var missing = missingBackendProperties();
+  if (missing.length > 0) {
+    return buildConfigNeededCard(missing);
+  }
+
   if (!AutoColorAuth.isAuthenticated()) {
     return buildWelcomeCard();
   }
-  
+
   // 백엔드 연동된 상태에서는 로컬 스토리지 상의 온보딩 여부도 true로 강제 설정 (하위 호환 및 일관성)
   AutoColorStorage.setOnboarded(true);
-  
+
   return buildHomeCard();
+}
+
+/**
+ * Returns the list of required ScriptProperties that are not set. The
+ * Add-on needs both to reach the backend: BACKEND_BASE_URL for every API
+ * call in gas/api.js, and OAUTH_AUTH_URL for the "로그인" button to open
+ * the right /oauth/google endpoint.
+ */
+function missingBackendProperties() {
+  var props = PropertiesService.getScriptProperties();
+  var required = ["BACKEND_BASE_URL", "OAUTH_AUTH_URL"];
+  var missing = [];
+  for (var i = 0; i < required.length; i++) {
+    var val = props.getProperty(required[i]);
+    if (!val) missing.push(required[i]);
+  }
+  return missing;
+}
+
+/**
+ * Renders a blocking card instructing the operator to finish backend
+ * configuration before end-users can reach the OAuth flow. Shown instead
+ * of the welcome/home card when ScriptProperties are incomplete.
+ */
+function buildConfigNeededCard(missingKeys) {
+  var builder = CardService.newCardBuilder();
+
+  builder.setHeader(CardService.newCardHeader()
+    .setTitle("백엔드 구성 필요")
+    .setSubtitle("관리자 설정이 완료되지 않았습니다"));
+
+  var section = CardService.newCardSection();
+  section.addWidget(CardService.newDecoratedText()
+    .setText("이 애드온은 외부 백엔드에 연결되어 동작합니다. Apps Script 프로젝트의 스크립트 속성에서 아래 값이 설정되어야 합니다:")
+    .setWrapText(true));
+
+  for (var i = 0; i < missingKeys.length; i++) {
+    section.addWidget(CardService.newDecoratedText()
+      .setText("• " + missingKeys[i])
+      .setWrapText(true));
+  }
+
+  section.addWidget(CardService.newDecoratedText()
+    .setText("설정 위치: Apps Script 편집기 → 프로젝트 설정(⚙) → 스크립트 속성 → 스크립트 속성 추가")
+    .setWrapText(true));
+
+  builder.addSection(section);
+  return builder.build();
 }
 
 /**
