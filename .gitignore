@@ -9,6 +9,8 @@ build/
 .wrangler/
 .dev.vars
 .dev.vars.*
+.prod.vars
+.prod.vars.*
 !.dev.vars.example
 
 # Env
