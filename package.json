@@ -20,6 +20,7 @@
     "lint": "eslint .",
     "format": "prettier --write \"src/**/*.ts\" \"*.{json,md}\"",
     "gen-secrets": "tsx scripts/gen-secrets.ts",
+    "sync-secrets": "tsx scripts/sync-secrets.ts",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {

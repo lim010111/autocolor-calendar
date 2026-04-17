@@ -35,10 +35,16 @@ export async function issueSession(
 
 export type SessionContext = { userId: string; email: string };
 
+// Skip the rolling-TTL UPDATE unless we'd extend the window by at least this
+// much. Calendar Add-ons poll /me on every card render, so writing on every
+// hit would churn sessions and bloat pg dead-tuple chains inside the pooler.
+const ROLLING_REFRESH_THRESHOLD_MS = 60 * 1000;
+
 export async function verifySession(
   db: PostgresJsDatabase,
   pepper: string,
   token: string,
+  ctx?: { waitUntil: (promise: Promise<unknown>) => void },
 ): Promise<SessionContext | null> {
   const tokenHash = await hashToken(pepper, token);
   const now = new Date();
@@ -48,6 +54,7 @@ export async function verifySession(
       id: sessions.id,
       userId: sessions.userId,
       createdAt: sessions.createdAt,
+      expiresAt: sessions.expiresAt,
       email: users.email,
     })
     .from(sessions)
@@ -67,13 +74,23 @@ export async function verifySession(
   const absoluteExpiry = row.createdAt.getTime() + SESSION_ABSOLUTE_TTL_MS;
   if (now.getTime() > absoluteExpiry) return null;
 
-  const newRollingExpiry = new Date(
-    Math.min(now.getTime() + SESSION_ROLLING_TTL_MS, absoluteExpiry),
+  const newRollingExpiryMs = Math.min(
+    now.getTime() + SESSION_ROLLING_TTL_MS,
+    absoluteExpiry,
   );
-  await db
-    .update(sessions)
-    .set({ expiresAt: newRollingExpiry })
-    .where(eq(sessions.id, row.id));
+
+  if (newRollingExpiryMs - row.expiresAt.getTime() >= ROLLING_REFRESH_THRESHOLD_MS) {
+    const newRollingExpiry = new Date(newRollingExpiryMs);
+    const update = db
+      .update(sessions)
+      .set({ expiresAt: newRollingExpiry })
+      .where(eq(sessions.id, row.id));
+    // Defer the write off the request path when a Worker ExecutionContext is
+    // available. Response latency stays flat; the isolate keeps alive until
+    // the update settles.
+    if (ctx?.waitUntil) ctx.waitUntil(update);
+    else await update;
+  }
 
   return { userId: row.userId, email: row.email };
 }

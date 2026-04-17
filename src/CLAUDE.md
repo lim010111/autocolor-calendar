@@ -21,10 +21,12 @@ tables keyed on `(user_id, ...)`. Never rely on "RLS will catch it."
 - Runtime path: Hono → `getDb(c.env)` → postgres.js against
   `env.HYPERDRIVE.connectionString`. The Worker never sees the origin DB
   credentials — those live in the Hyperdrive config.
-- Pool settings (`max: 1`, `idle_timeout: 0`, `fetch_types: false`) are
-  deliberate: postgres.js's defaults burn through the Worker subrequest
-  budget during the Supabase pooler handshake. Don't raise `max` without
-  re-testing `/me` and `/oauth/google/callback` under load.
+- Pool settings (`prepare: false`, `max: 1`, `idle_timeout: 0`,
+  `fetch_types: false`) are deliberate: postgres.js's defaults burn through
+  the Worker subrequest budget during the Supabase pooler handshake, and
+  `prepare: false` is mandatory because Supabase's pooler disallows server-
+  prepared statements. Don't raise `max` or enable prepares without re-
+  testing `/me` and `/oauth/google/callback` under load.
 - Always wrap DB work in `try { ... } finally { c.executionCtx.waitUntil(close()); }`
   so the socket is released after the response.
 - Migrations run locally with `pnpm db:migrate`, using

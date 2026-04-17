@@ -2,16 +2,13 @@ import { Hono } from "hono";
 
 import { getDb } from "../db";
 import type { HonoEnv } from "../env";
+import { parseBearerToken } from "../lib/bearer";
 import { revokeSession } from "../services/sessionService";
 
 export const authRoutes = new Hono<HonoEnv>();
 
 authRoutes.post("/logout", async (c) => {
-  const header = c.req.header("authorization");
-  if (!header?.toLowerCase().startsWith("bearer ")) {
-    return c.json({ error: "unauthorized" }, 401);
-  }
-  const token = header.slice(7).trim();
+  const token = parseBearerToken(c.req.header("authorization"));
   if (!token) return c.json({ error: "unauthorized" }, 401);
 
   const { db, close } = getDb(c.env);

@@ -1,9 +1,14 @@
 import { readFileSync } from "node:fs";
 import { spawnSync } from "node:child_process";
 
-// Pipes the seven Worker-runtime secrets from `.dev.vars` into
+// Pipes the six Worker-runtime secrets from `.dev.vars` / `.prod.vars` into
 // `wrangler secret put <NAME> --env <target>` via stdin so values never hit
 // the shell history. Usage: pnpm tsx scripts/sync-secrets.ts dev
+//
+// Parser contract: one KEY=VALUE per line, no shell quoting. Surrounding
+// whitespace on the key and value is trimmed, but inner whitespace is kept
+// verbatim. Wrapping the value in quotes (`FOO="bar"`) is NOT unwrapped —
+// the quotes would be sent to Wrangler as part of the secret.
 //
 // Excluded intentionally:
 //   - ENV, GOOGLE_OAUTH_REDIRECT_URI -> wrangler.toml [env.*.vars]
@@ -33,7 +38,9 @@ for (const line of raw.split("\n")) {
   if (!trimmed || trimmed.startsWith("#")) continue;
   const eq = trimmed.indexOf("=");
   if (eq < 0) continue;
-  values.set(trimmed.slice(0, eq).trim(), trimmed.slice(eq + 1));
+  const key = trimmed.slice(0, eq).trim();
+  const value = trimmed.slice(eq + 1).trim();
+  values.set(key, value);
 }
 
 for (const name of WORKER_SECRETS) {
