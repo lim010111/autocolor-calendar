@@ -2,7 +2,10 @@ export type Bindings = {
   ENV: "dev" | "prod";
   GOOGLE_OAUTH_REDIRECT_URI: string;
 
-  HYPERDRIVE: Hyperdrive;
+  // Optional because the prod worker is a URL-reserving shell that does not
+  // yet have a Hyperdrive binding. `getDb` throws a clear error if a caller
+  // tries to use the DB in an environment where it is not configured.
+  HYPERDRIVE?: Hyperdrive;
 
   GOOGLE_CLIENT_ID: string;
   GOOGLE_CLIENT_SECRET: string;

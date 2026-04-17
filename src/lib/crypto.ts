@@ -1,27 +1,22 @@
 import { fromBase64Url, randomBytes } from "./random";
 
-function keyFromBase64(base64: string): Uint8Array {
-  const b64 = base64.replace(/-/g, "+").replace(/_/g, "/");
-  const pad = b64.length % 4 === 0 ? "" : "=".repeat(4 - (b64.length % 4));
-  const binary = atob(b64 + pad);
-  const bytes = new Uint8Array(binary.length);
-  for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
-  return bytes;
-}
-
+// `fromBase64Url` accepts both base64url (`-`/`_`) and base64 (`+`/`/`) input
+// because it normalizes before decoding, so we can pass either flavor of key
+// material through a single decoder.
 async function importAesKey(base64Key: string): Promise<CryptoKey> {
-  const raw = keyFromBase64(base64Key);
-  return crypto.subtle.importKey("raw", raw, { name: "AES-GCM" }, false, [
-    "encrypt",
-    "decrypt",
-  ]);
+  return crypto.subtle.importKey(
+    "raw",
+    fromBase64Url(base64Key),
+    { name: "AES-GCM" },
+    false,
+    ["encrypt", "decrypt"],
+  );
 }
 
 async function importHmacKey(base64Key: string): Promise<CryptoKey> {
-  const raw = keyFromBase64(base64Key);
   return crypto.subtle.importKey(
     "raw",
-    raw,
+    fromBase64Url(base64Key),
     { name: "HMAC", hash: "SHA-256" },
     false,
     ["sign", "verify"],

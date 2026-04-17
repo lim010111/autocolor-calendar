@@ -19,6 +19,7 @@ export const GOOGLE_USERINFO_URL = "https://openidconnect.googleapis.com/v1/user
 export type OAuthErrorCode =
   | "state_invalid"
   | "consent_denied"
+  | "provider_error"
   | "token_exchange_failed"
   | "invalid_grant"
   | "server_error";

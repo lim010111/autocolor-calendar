@@ -15,6 +15,13 @@
       "when": 1776392378731,
       "tag": "0001_rls",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1776406371871,
+      "tag": "0002_categories_color_id_check",
+      "breakpoints": true
     }
   ]
 }

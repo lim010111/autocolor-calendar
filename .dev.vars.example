@@ -1,12 +1,10 @@
 # Copy to .dev.vars for local `wrangler dev`. Never commit real values.
 # Populated in Step 3+ of the backend setup plan.
 
-# Runtime DB is routed through Cloudflare Hyperdrive (bound in wrangler.toml);
-# DATABASE_URL is kept locally only for reference / fallback — not a Worker secret.
-DATABASE_URL=
-
 # Migrations / DDL only (Supabase Session Pooler, port 5432, IPv4) —
-# drizzle-kit runs locally via dotenv; never injected into the Worker.
+# drizzle-kit reads this locally via dotenv; it is never injected into the
+# Worker runtime. Runtime DB access goes through the HYPERDRIVE binding
+# declared in wrangler.toml, so DATABASE_URL is intentionally absent here.
 DIRECT_DATABASE_URL=
 
 # Google OAuth Web Client

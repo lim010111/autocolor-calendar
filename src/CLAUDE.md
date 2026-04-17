@@ -60,15 +60,18 @@ code under the same `/exec` URL.
 
 ## Log redaction contract
 
-`src/middleware/logger.ts` redacts these field names in query strings and
-bodies before emitting JSON log lines:
+`src/middleware/logger.ts` redacts these field names when they appear as
+**query-string parameters** before emitting each JSON log line:
 
 `authorization`, `token`, `code`, `state`, `refresh_token`, `access_token`,
 `id_token`, `email`, `sub`, `password`
 
-Any new route that logs additional input must either reuse the middleware or
-extend the same set. Do not log response bodies — carry only the fields you
-need into the structured entry.
+The middleware deliberately does not read or log request/response bodies —
+that keeps refresh tokens, opaque session tokens, and PII out of the log
+stream by construction. If a future route needs body-level diagnostics, add
+a body-scoped redactor that covers the same field set and keep the response
+body out of the log. Request headers are also excluded because `Authorization:
+Bearer …` tokens would otherwise be captured.
 
 ## Environments
 

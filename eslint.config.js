@@ -41,6 +41,8 @@ export default [
         btoa: "readonly",
         process: "readonly",
         Hyperdrive: "readonly",
+        ExecutionContext: "readonly",
+        RequestInit: "readonly",
       },
     },
     plugins: {

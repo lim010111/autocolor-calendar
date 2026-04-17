@@ -1,5 +1,6 @@
 import { sql } from "drizzle-orm";
 import {
+  check,
   customType,
   index,
   integer,
@@ -88,7 +89,15 @@ export const categories = pgTable(
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
-  (t) => [index("categories_user_priority_idx").on(t.userId, t.priority)],
+  (t) => [
+    index("categories_user_priority_idx").on(t.userId, t.priority),
+    // Google Calendar event color IDs are the string keys "1".."11" per
+    // https://developers.google.com/calendar/api/v3/reference/colors.
+    check(
+      "categories_color_id_check",
+      sql`${t.colorId} IN ('1','2','3','4','5','6','7','8','9','10','11')`,
+    ),
+  ],
 );
 
 export const syncState = pgTable(
