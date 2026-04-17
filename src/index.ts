@@ -1,8 +1,10 @@
 import { Hono } from "hono";
+
 import type { Bindings } from "./env";
+import { healthRoutes } from "./routes/health";
 
 const app = new Hono<{ Bindings: Bindings }>();
 
-app.get("/healthz", (c) => c.json({ ok: true, env: c.env.ENV }));
+app.route("/", healthRoutes);
 
 export default app;
