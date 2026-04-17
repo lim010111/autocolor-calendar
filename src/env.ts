@@ -10,3 +10,11 @@ export type Bindings = {
   SESSION_HMAC_KEY: string;
   SESSION_PEPPER: string;
 };
+
+export type Variables = {
+  reqId: string;
+  userId: string;
+  email: string;
+};
+
+export type HonoEnv = { Bindings: Bindings; Variables: Variables };

@@ -34,6 +34,12 @@ export default [
         Response: "readonly",
         URL: "readonly",
         URLSearchParams: "readonly",
+        TextEncoder: "readonly",
+        TextDecoder: "readonly",
+        CryptoKey: "readonly",
+        atob: "readonly",
+        btoa: "readonly",
+        process: "readonly",
       },
     },
     plugins: {
