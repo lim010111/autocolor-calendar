@@ -63,7 +63,7 @@ function buildWelcomeCard() {
 
   var authSection = CardService.newCardSection();
   authSection.addWidget(CardService.newDecoratedText()
-    .setText("시작하려면 Google 계정 연동이 필요합니다. 가입 시 <a href='https://example.com/privacy'>개인정보처리방침</a> 및 <a href='https://example.com/terms'>서비스 약관</a>에 동의하는 것으로 간주됩니다.")
+    .setText("시작하려면 Google 계정 연동이 필요합니다. 진행하면 개인정보처리방침 및 서비스 약관에 동의하는 것으로 간주됩니다. (정식 링크는 출시 시점에 제공됩니다.)")
     .setWrapText(true));
     
   builder.addSection(authSection);
@@ -399,7 +399,7 @@ function buildRuleManagementCard(e) {
   }
   
   listSection.addWidget(CardService.newDecoratedText()
-    .setText("💡 복잡한 규칙은 <a href='https://example.com'>웹 대시보드</a>에서 관리하세요.")
+    .setText("💡 더 복잡한 규칙 관리는 향후 웹 대시보드에서 제공될 예정입니다.")
     .setWrapText(true));
     
   builder.addSection(listSection);
