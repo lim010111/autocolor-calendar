@@ -274,6 +274,8 @@ async function runPagedList(
   summary.finished_at = new Date().toISOString();
 
   if (!continuation && finalSyncToken) {
+    // Stamp the flag BEFORE persisting so the stored summary is accurate.
+    summary.stored_next_sync_token = true;
     const update: Partial<typeof syncState.$inferInsert> = {
       nextSyncToken: finalSyncToken,
       lastError: null,
@@ -293,7 +295,6 @@ async function runPagedList(
           eq(syncState.calendarId, ctx.calendarId),
         ),
       );
-    summary.stored_next_sync_token = true;
   } else if (!finalSyncToken) {
     // Mid-chunked full_resync: record partial summary without touching token.
     await ctx.db
