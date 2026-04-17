@@ -14,7 +14,7 @@ app.use("*", loggerMiddleware);
 app.onError(errorHandler);
 
 app.route("/", healthRoutes);
-app.route("/oauth/google", oauthRoutes);
+app.route("/oauth", oauthRoutes);
 app.route("/auth", authRoutes);
 app.route("/me", meRoutes);
 

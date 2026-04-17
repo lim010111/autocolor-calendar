@@ -40,6 +40,7 @@ export default [
         atob: "readonly",
         btoa: "readonly",
         process: "readonly",
+        Hyperdrive: "readonly",
       },
     },
     plugins: {

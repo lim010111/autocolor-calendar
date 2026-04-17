@@ -2,7 +2,8 @@ export type Bindings = {
   ENV: "dev" | "prod";
   GOOGLE_OAUTH_REDIRECT_URI: string;
 
-  DATABASE_URL: string;
+  HYPERDRIVE: Hyperdrive;
+
   GOOGLE_CLIENT_ID: string;
   GOOGLE_CLIENT_SECRET: string;
   GAS_REDIRECT_URL: string;
