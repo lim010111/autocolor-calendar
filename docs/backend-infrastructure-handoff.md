@@ -1,162 +1,99 @@
-# Section 3 Backend Infrastructure — Session Handoff
+# Backend Infrastructure Handoff — §3 완료 / §4 진입 준비
 
-브랜치: `setup/backend-infrastructure`
+브랜치: `setup/backend-infrastructure` (PR #5, base `main`)
 
-이 문서는 현재 세션에서 완료한 작업과 **다음 세션에서 이어서 진행할 작업**을 정리한다. 상세 설계는 `docs/setup-backend-infrastructure-plan.md`에 이미 박제되어 있으며, 이 핸드오프는 "지금 어디까지 왔고, 다음에 무엇을 하면 되는지"만 본다.
+이 문서는 "§3이 지금 어디까지 왔고, 다음 세션이 무엇부터 집어들어야 하는지"만 정리한다. 상세 설계는 `docs/setup-backend-infrastructure-plan.md`, 백엔드 모듈 불변식은 `src/CLAUDE.md`를 단일 소스로 참조한다.
 
-## 완료된 작업 (현재 세션)
+## §3 완료 상태 (merge-ready)
 
-| Step | 커밋 | 내용 |
+**PR**: https://github.com/lim010111/autocolor-calendar/pull/5 — 15 commits · 58+ files · OPEN.
+
+핵심 커밋:
+| 커밋 | 내용 |
+|---|---|
+| `c17efaa` | Python 스캐폴딩 제거 + Node/Workers `.gitignore` |
+| `729231c` | pnpm + TS + Hono 스캐폴드, ESLint/Prettier/Vitest 하네스 |
+| `8796cfb` | Supabase 연결 (drizzle + postgres.js) |
+| `9e87791` | 스키마 5 테이블 + RLS 정책 |
+| `a0daea5` | Google OAuth + 세션 + `/me` + 구조화 로그 |
+| `fa7d96f` | Cloudflare Hyperdrive 전환 (subrequest 한도 해결) |
+| `6234bb1` | `src/CLAUDE.md` 런북 + TODO 갱신 (비밀번호 평문 제거 rebase 반영본) |
+| `004fbde` | GAS placeholder 링크 제거 (render 차단 해제) |
+| `1250553` | 코드 리뷰 대응 (OAuth 계약, HYPERDRIVE optional, 테스트, CHECK, 로그 문서) |
+| `3162c50` | `.prod.vars` gitignore |
+| `aa872b0` | 2차 리뷰 대응 (세션 TTL 임계값·waitUntil, bearer dedup, sync-secrets polish) |
+| `93bcf3d` | GAS auth UX — replaceState, 에러 코드 분기, 백엔드 구성 필요 카드 |
+
+**검증 상태**: `pnpm typecheck`·`pnpm lint` clean, `pnpm test` 26/26 green, 로그인 e2e (사용자→GAS→Consent→callback→세션 토큰 저장→홈 카드) 성공.
+
+## 라이브 리소스 카탈로그
+
+| 자원 | 식별자 / 위치 | 비고 |
 |---|---|---|
-| §3.1 (Step 1) | `c17efaa` | Python 스캐폴딩(`main.py`, `pyproject.toml`, `uv.lock`, `.python-version`, `.venv/`) 제거 + Node/Workers용 `.gitignore` 재작성 |
-| §3.2 + §3.2a (Step 2) | `729231c` | pnpm + TypeScript + Hono 스캐폴드 (`src/index.ts` `GET /healthz`), ESLint(flat)/Prettier/Vitest 하네스, `wrangler.toml` 공통+env 블록, `.dev.vars.example`, `tsconfig.json` |
+| Cloudflare 계정 | `Limwoohyun01@gmail.com's Account` · `c855da959680cad78ed7c4219361ac5c` | `wrangler whoami` |
+| 워커 서브도메인 | `autocolor-lim.workers.dev` | |
+| dev Worker | `https://autocolor-dev.autocolor-lim.workers.dev` | live; Hyperdrive + 6 secrets 주입 |
+| prod Worker | `https://autocolor-prod.autocolor-lim.workers.dev` | 빈 셸; `/healthz`만 응답, 시크릿/Hyperdrive 없음 |
+| Hyperdrive config (dev) | `0adfbd41c67e4225a63894c3768bb837` — `autocolor-dev-db` | origin: Supabase Session Pooler `aws-1-ap-southeast-1.pooler.supabase.com:5432` |
+| Supabase project | `tdbyaaedrvkjxidchvpa` (Northeast Asia) | extensions: `vector`, `pgcrypto` enabled |
+| GCP OAuth client (dev) | `500584277254-8l6atjhcvdil3r434qbe7dcf62o92603` | redirect URI 등록됨 |
+| GAS web app `/exec` | `https://script.google.com/macros/s/AKfycbzmpZKgeaXn4QDsUdYpXsKl8IiJSvUWpAzk8j2wiHMSNNAghyZ-8BfNw73HMr5GxUsYlA/exec` | HEAD test 배포 + versioned @2 |
+| GAS script ID | `13puaHq87p_yvDhDoVk9JDW6RHUxvHyXwIiuSKkY8wbdCkXjTIlkKBrbc` | `gas/.clasp.json` |
 
-**검증 완료**: `pnpm typecheck`, `pnpm test`, `pnpm lint`, `pnpm dev` → `curl http://127.0.0.1:8787/healthz` → `{"ok":true,"env":"dev"}`.
+## 자격증명 로테이션 이력
 
-## 현재 리포 상태 스냅샷 (다음 세션 진입 시 확인용)
+Session 종료 시점에 **Supabase DB password**와 **Google OAuth client secret**이 §3 작업 중 한 차례 대화에 노출되어 로테이션했다. 로테이션 후 현재 값은 사용자 로컬 `.dev.vars`에만 존재하며, Hyperdrive config / Worker secrets도 모두 갱신 완료.
 
-- 루트 TS/pnpm 프로젝트 (`package.json`, `pnpm-lock.yaml`, `tsconfig.json`)
-- `src/index.ts`, `src/env.ts`, `src/__tests__/sanity.test.ts`
-- `wrangler.toml`에 `[env.dev]`/`[env.prod]` 블록 존재(시크릿·redirect URI는 아직 비어 있음)
-- **아직 없음**: `src/db/*`, `src/routes/*` (healthz 제외), `src/services/*`, `src/lib/*`, `src/middleware/*`, `src/config/*`, `drizzle/`, `drizzle.config.ts`, `scripts/gen-secrets.ts`, `.dev.vars` (실제 값)
+- Supabase 새 password → `.dev.vars`(DATABASE_URL / DIRECT_DATABASE_URL 모두) + `pnpm wrangler hyperdrive update 0adfbd41c67e4225a63894c3768bb837 --connection-string=...` (Session Pooler URL 기준)
+- 새 `GOOGLE_CLIENT_SECRET` → `.dev.vars` + `pnpm sync-secrets dev`
 
-## 다음 세션 진입 전 — 사용자 수동 작업 (외부 리소스 셋업)
+`.dev.vars`는 `.gitignore`에 묶여 있어 커밋되지 않고, 과거 노출 값은 이전 rebase에서 git 히스토리에서도 제거됨 (`6234bb1`).
 
-Step 3(DB 연결) 진입에 아래 3가지가 선행되어야 한다. 완료 후 획득한 값들을 다음 세션에 전달한다.
+## 다음 세션 재개 전 사전 체크리스트
 
-### A. Supabase `autocolor-dev` 프로젝트 생성
-1. https://supabase.com → **New Project**
-   - Name: `autocolor-dev`
-   - Region: `Northeast Asia (Seoul)` 권장
-   - Database Password: 강력한 값 생성 후 1Password 등에 보관
-2. 프로젝트 생성 후 **Database → Extensions** 로 이동
-   - `vector` 활성화 (섹션 5 임베딩용)
-   - `pgcrypto` 활성화 (UUID 생성용)
-3. **Settings → Database → Connection string** 에서 두 URL 복사:
-   - **Transaction pooler (port 6543)** → `?sslmode=require` 포함 확인 → `DATABASE_URL`
-   - **Direct connection (port 5432)** → `DIRECT_DATABASE_URL`
-4. 두 URL + DB 비밀번호를 팀 보관소에 저장
+1. `git pull origin setup/backend-infrastructure` — 원격 tip 일치.
+2. `pnpm install` — lockfile 변경 반영.
+3. `.dev.vars` 존재·전체 12개 키 채움 상태 확인 (없으면 이전 세션 값 복구).
+4. `pnpm wrangler whoami` — Cloudflare 계정 재인증 필요 시 `pnpm wrangler login`.
+5. `pnpm typecheck && pnpm lint && pnpm test` — 로컬 기준선 26/26.
+6. `curl https://autocolor-dev.autocolor-lim.workers.dev/healthz` → 200 확인.
+7. (DB 수정이 필요한 작업일 때) `pnpm db:migrate` — 현재 journal은 0000/0001/0002까지 적용됨.
 
-> ⚠️ Pooler URL(6543)은 런타임 전용, Direct URL(5432)은 마이그레이션/DDL 전용. 두 용도를 섞어 쓰지 않는다.
+## 남은 §3 후속 작업 (이월)
 
-### B. Google Cloud Console OAuth 2.0 Web Client
-1. https://console.cloud.google.com → 프로젝트 선택 또는 새로 생성
-2. **APIs & Services → Library** 에서 활성화:
-   - Google Calendar API
-   - (userinfo 용) `openid`·`email` scope만 쓰면 별도 API 활성화 불필요
-3. **OAuth consent screen** (왼쪽 메뉴)
-   - User Type: **External**
-   - 앱 이름, 지원 이메일 입력
-   - **Scopes** 추가:
-     - `openid`
-     - `email`
-     - `https://www.googleapis.com/auth/calendar`
-     - `https://www.googleapis.com/auth/calendar.events`
-   - Test users 에 본인 이메일 추가(검수 전 테스트 단계)
-4. **Credentials → Create Credentials → OAuth client ID**
-   - Application type: **Web application**
-   - Name: `autocolor-dev`
-   - **Authorized redirect URIs**: 지금은 비워두고, Step 6에서 `wrangler deploy --env dev` 후 얻는 `https://autocolor-dev.<acct>.workers.dev/oauth/google/callback` 추가 예정
-5. 생성된 **Client ID**, **Client Secret** 을 보관
+`TODO.md` §3 후속 섹션 참조. 현재 미완료:
 
-### C. Cloudflare `wrangler login`
-터미널에서 직접 실행 (브라우저 인증 필요 — Claude가 수행 불가):
+- **Prod 환경 활성화** — Supabase prod 프로젝트 생성 + 마이그레이션, GCP prod OAuth Web Client + redirect URI, `pnpm gen-secrets` + `pnpm sync-secrets prod`, prod Hyperdrive config 생성 및 `[[env.prod.hyperdrive]]` 바인딩 추가. §4에서 Watch API 수신 엔드포인트가 필요해지면 prod custom domain 인증까지 같이 잡는 게 효율적.
+- **세션 GC** — Supabase `pg_cron` extension 활성화 후 주 1회 `DELETE FROM sessions WHERE expires_at < now() - interval '7 days'`. §6 관측성 범위에서 처리 권장.
+- **`TOKEN_ENCRYPTION_KEY` 배치 로테이션** — `token_version` 기반 전 `oauth_tokens` 재암호화 job. §6에서 구현. 이 job이 있어야 `TOKEN_ENCRYPTION_KEY` 실 로테이션이 가능.
 
-```bash
-pnpm exec wrangler login
-pnpm exec wrangler whoami
-```
+로테이션 후속 조치(§3 세션 중 노출된 자격증명 재발급)는 이번 세션에서 완료됨.
 
-`whoami` 출력에서 **워커 서브도메인**(`<acct>.workers.dev`) 을 확인 후 다음 세션에 전달.
+## §4 진입점
 
-### 다음 세션에 전달할 값 요약
+`TODO.md` §4: 핵심 동기화 로직 및 Watch API 안정화.
 
-| 이름 | 출처 | 용도 |
-|---|---|---|
-| `DATABASE_URL` | Supabase Pooler (6543, `?sslmode=require`) | 런타임 DB 연결 |
-| `DIRECT_DATABASE_URL` | Supabase Direct (5432) | drizzle-kit 마이그레이션 |
-| `GOOGLE_CLIENT_ID` | GCP OAuth Web Client | OAuth 플로우 |
-| `GOOGLE_CLIENT_SECRET` | GCP OAuth Web Client | OAuth 플로우 |
-| Cloudflare 워커 서브도메인 | `wrangler whoami` | Step 6 Redirect URI 조립 |
+1. **Incremental Sync 이식** — 기존 `gas/sync.js` 로직(나중 확인)을 TypeScript Worker로 이식. `sync_state.next_sync_token` 사용, 멱등 보장. 새 라우트 예: `POST /sync/run` (인증 필요, `/me`와 같은 auth middleware 재사용).
+2. **Watch API 엔드포인트** — `POST /webhooks/calendar` 신설, `X-Goog-*` 헤더 검증, 즉각 2xx 응답 후 비동기 처리(Cloudflare Queues 또는 Durable Objects 시그널 큐). 이 단계 전에 `GOOGLE_WEBHOOK_TOKEN` 류 채널 검증용 시크릿 도입 검토.
+3. **Watch 채널 수명주기** — Cron Triggers(`wrangler.toml [triggers]`)로 만료 임박 채널 갱신. `sync_state.watch_expiration` 사용.
+4. **DLQ/재시도** — Cloudflare Queues의 DLQ 설정 + Exponential backoff. §6 관측성 범위와 겹침.
+5. **410 Gone 복구** — `next_sync_token`이 410 반환 시 `sync_state`의 `last_full_resync_at` 기준 Full Resync 트리거.
 
-전달 방법은 `.dev.vars` 로컬 파일 직접 작성 권장(리포에는 절대 커밋되지 않음 — `.gitignore`에 이미 등록). 비밀 값을 대화에 직접 붙이지 말 것.
+§4에서는 Watch API 수신을 위해 **verified custom domain이 필요**(`workers.dev`는 Watch API가 신뢰 안 함). 따라서 §4 시작 시 prod custom domain 확보 작업을 병행해야 함 → `TODO.md` §1의 "운영용 도메인 확보 및 Google Search Console 소유권 인증" 연결.
 
-## 다음 세션 실행 계획 (Step 3–6)
+## 중요 불변식 (다시 훑기)
 
-원본 계획(`docs/setup-backend-infrastructure-plan.md`)의 "구현 순서" 3·4·5·6번을 그대로 실행한다. 요약만 아래에 둔다.
+`src/CLAUDE.md`를 꼭 한 번 읽고 들어갈 것. 요약:
 
-### Step 3 — DB 연결 (§3.3)
-1. `drizzle.config.ts` 작성 (`DIRECT_DATABASE_URL` 사용, out: `./drizzle`)
-2. `src/db/client.ts`: per-request `postgres(DATABASE_URL, { prepare: false })` 팩토리
-3. `src/db/index.ts`: re-export
-4. 임시 스모크 라우트 `GET /db-ping` → `SELECT 1` 왕복 검증 후 제거(또는 `/healthz` 통합)
-5. 커밋: `feat(backend): wire Supabase (postgres.js pooler) + drizzle config`
+- Workers 경로는 BYPASSRLS. 모든 유저 데이터 쿼리에 `where(eq(table.user_id, ctx.userId))` 의무.
+- Hyperdrive origin 변경은 DB password 로테이션 경로 (Worker 시크릿 아님).
+- Pool 설정 (`prepare:false`, `max:1`, `idle_timeout:0`, `fetch_types:false`)은 변경 전에 `/me`·`/oauth/google/callback` 부하 재검증.
+- GAS 웹앱은 "기존 배포 Edit → New Version"으로만 재배포 — `/exec` URL 고정.
+- 로그 redaction은 query string 한정, body는 로그 기록 자체를 하지 않음.
+- 시크릿 로테이션 영향: `SESSION_PEPPER`→전 세션 무효, `TOKEN_ENCRYPTION_KEY`→전 `oauth_tokens` 재암호화 필요 (§6 전까지 교체 금지).
 
-### Step 4 — 스키마 + RLS (§3.4)
-원본 계획 §"DB 스키마"를 그대로 구현:
-- `src/db/schema.ts`: `users`, `oauth_tokens`, `sessions`, `categories`, `sync_state`
-- `pnpm db:generate` → `drizzle/0000_init.sql`
-- `drizzle/9999_rls.sql` 수기 작성 (5개 테이블 RLS enable + `auth.uid()` 정책)
-- `pnpm db:migrate` (Direct URL) 후 Supabase Studio에서 테이블·RLS 확인
-- 커밋: `feat(db): initial schema + manual RLS policies`
+## 다음 세션 시작 프롬프트 템플릿
 
-> ⚠️ **RLS는 Workers 경로에서 작동하지 않음** — Workers는 `postgres` DB role(BYPASSRLS)로 접속. 멀티 테넌트 격리는 전적으로 `where(eq(table.user_id, ctx.userId))` 애플리케이션 로직 책임.
-
-### Step 5 — OAuth 플로우 + 보호 라우트 (§3.5 + §3.5a)
-**선행**: `wrangler deploy --env dev` 1회 실행 → 고정 URL 확보 → GCP OAuth Redirect URI 등록 → GAS ScriptProperties `BACKEND_BASE_URL`/`OAUTH_AUTH_URL` 반영.
-
-파일 구현:
-- `src/lib/crypto.ts` — AES-256-GCM (IV 12B, AAD=`"user:"+user_id`), HMAC-SHA256, 상수시간 비교
-- `src/lib/random.ts` — base64url 32B 토큰
-- `src/lib/state.ts` — OAuth state HMAC 서명/검증 (TTL 10분)
-- `src/config/constants.ts` — scope, TTL(abs 60일 / roll 30일), 에러 코드
-- `src/services/googleOAuth.ts`, `sessionService.ts`, `userService.ts`, `oauthTokenService.ts`
-- `src/middleware/auth.ts`, `logger.ts` (JSON + redaction), `errorHandler.ts`
-- `src/routes/oauth.ts` (`/oauth/google`, `/oauth/google/callback`)
-- `src/routes/auth.ts` (`POST /auth/logout`)
-- `src/routes/me.ts` (보호된 `GET /me` → `{userId, email, needs_reauth}`)
-- Vitest: `src/__tests__/`에 crypto 왕복, state HMAC 상수시간, sessionHash HMAC-SHA256 테스트
-- 커밋: `feat(backend): Google OAuth flow + session mgmt + protected /me + structured logs`
-
-### Step 6 — 환경 분리 + 시크릿 부트스트랩 (§3.6 + §3.6a)
-- `scripts/gen-secrets.ts` (tsx) — dev/prod 각각 `TOKEN_ENCRYPTION_KEY`/`SESSION_HMAC_KEY`/`SESSION_PEPPER` 3종 base64(32B) 생성
-- 모든 시크릿 `wrangler secret put <NAME> --env {dev|prod}` 로 주입 (dev 먼저)
-- 팀 보관소에 즉시 백업 (**분실 시 복구 불가**)
-- `wrangler deploy --env prod` 빈 셸 배포로 prod 도메인·redirect URI 확보
-- 커밋: `chore(backend): dev/prod env split + secret rotation runbook`
-
-### Step 7 — 사후 작업
-- 루트 `CLAUDE.md`에 `- Backend Module: @src/CLAUDE.md` 추가
-- `src/CLAUDE.md` 신규 작성: RLS-not-in-Workers 경고, GAS `/exec` URL 고정 규칙, 마이그레이션 방식, 시크릿 로테이션 영향, 로그 redaction 필수 필드
-- `TODO.md` §3 체크박스(6 + 3 sub) 완료 표시
-- `docs/architecture-guidelines.md` "Halt on Failure"에 `invalid_grant` 예외 한 문장 보강
-- GAS UX 개선·`buildHomeCard` property 검증·세션 GC pg_cron은 **별도 TODO 이월**
-
-## 검증 체크리스트 (Step 6까지 완료 후)
-
-1. `pnpm dev` → `/healthz` 200 OK
-2. `pnpm db:migrate` 후 Supabase Studio에서 5테이블 + RLS 활성 확인
-3. GAS 로그인 → Google Consent → `doGet(?token=...)` → `UserProperties.ACFC_SESSION_TOKEN` 저장; DB에 `users`/`oauth_tokens`/`sessions` 각 1 row + `encrypted_refresh_token`이 평문이 아님을 확인
-4. `GET /me`: 유효 세션 200, 무토큰/잘못된 토큰 401
-5. `POST /auth/logout` 후 동일 토큰 `GET /me` → 401 (+ `sessions.revoked_at` 세팅)
-6. OAuth 실패 경로: state 위조 → `?error=state_invalid`; consent 취소 → `?error=consent_denied`
-7. `pnpm test` green (crypto/state/sessionHash)
-8. `pnpm lint` 에러 0
-9. `wrangler deploy --env dev` 성공 + 실배포 URL에서 1–6 반복
-10. `wrangler deploy --env prod` 빈 셸 성공
-
-## 다음 세션 시작 시 안내 프롬프트 템플릿
-
-다음 세션에서 이 작업을 재개할 때, 아래 내용을 Claude에게 전달하면 바로 Step 3부터 진입할 수 있다:
-
-> `setup/backend-infrastructure` 브랜치에서 백엔드 인프라 §3 작업을 이어서 한다.
-> `docs/backend-infrastructure-handoff.md`와 `docs/setup-backend-infrastructure-plan.md` 를 먼저 읽어라.
-> 외부 리소스 셋업은 완료됐고, `.dev.vars`에 `DATABASE_URL`, `DIRECT_DATABASE_URL`, `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` 값을 직접 넣어 두었다.
-> Cloudflare 워커 서브도메인은 `<여기에_입력>.workers.dev` 이다.
-> Step 3(DB 연결)부터 Step 6(환경 분리·시크릿) 순서로 진행해라.
-
-## 참고 문서
-
-- 전체 아키텍처·설계 결정·리스크: `docs/setup-backend-infrastructure-plan.md`
-- GAS 클라이언트 계약(변경 금지): `gas/api.js`, `gas/auth.js`, `gas/addon.js`
-- 아키텍처 가이드라인: `docs/architecture-guidelines.md`
+> `setup/backend-infrastructure` 브랜치에서 §3 백엔드 인프라가 완료됐고 PR #5가 오픈 상태다. §4(핵심 동기화 로직) 진입을 준비한다.
+> `docs/backend-infrastructure-handoff.md`(이 문서)와 `src/CLAUDE.md`를 먼저 읽어라.
+> 사전 체크리스트를 실행하여 `/healthz`가 응답하는지 확인한 뒤, §4의 첫 작업 — 기존 `gas/sync.js` 로직의 TypeScript Worker 이식 — 부터 착수한다. 이 작업 전에 prod custom domain 확보(§1) 진행 가능 여부도 함께 결정한다.
