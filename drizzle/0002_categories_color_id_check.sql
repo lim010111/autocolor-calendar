@@ -1,0 +1,1 @@
+ALTER TABLE "categories" ADD CONSTRAINT "categories_color_id_check" CHECK ("categories"."color_id" IN ('1','2','3','4','5','6','7','8','9','10','11'));

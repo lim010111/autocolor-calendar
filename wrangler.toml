@@ -1,0 +1,25 @@
+name = "autocolor"
+main = "src/index.ts"
+compatibility_date = "2026-04-01"
+compatibility_flags = ["nodejs_compat"]
+
+# Env blocks (dev/prod) are finalized in Step 6 (secrets + custom domain).
+# For now, local `wrangler dev --env dev` uses only the minimal dev shell below.
+
+[env.dev]
+name = "autocolor-dev"
+
+[env.dev.vars]
+ENV = "dev"
+GOOGLE_OAUTH_REDIRECT_URI = "https://autocolor-dev.autocolor-lim.workers.dev/oauth/google/callback"
+
+[[env.dev.hyperdrive]]
+binding = "HYPERDRIVE"
+id = "0adfbd41c67e4225a63894c3768bb837"
+
+[env.prod]
+name = "autocolor-prod"
+
+[env.prod.vars]
+ENV = "prod"
+GOOGLE_OAUTH_REDIRECT_URI = "https://autocolor-prod.autocolor-lim.workers.dev/oauth/google/callback"

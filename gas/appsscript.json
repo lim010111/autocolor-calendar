@@ -17,8 +17,9 @@
       "logoUrl": "https://www.gstatic.com/images/icons/material/system/1x/palette_black_48dp.png",
       "useLocaleFromApp": true,
       "openLinkUrlPrefixes": [
-        "https://example.com",
-        "https://api.example.com"
+        "https://autocolor-dev.autocolor-lim.workers.dev",
+        "https://autocolor-prod.autocolor-lim.workers.dev",
+        "https://accounts.google.com/o/oauth2/"
       ],
       "homepageTrigger": {
         "runFunction": "buildAddOn",

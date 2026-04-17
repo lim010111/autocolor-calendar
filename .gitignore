@@ -1,17 +1,31 @@
-# Python-generated files
-__pycache__/
-*.py[oc]
-build/
+# Node / pnpm
+node_modules/
 dist/
-wheels/
-*.egg-info
+build/
+.pnpm-store/
+*.tsbuildinfo
 
-# Virtual environments
-.venv
+# Cloudflare Workers
+.wrangler/
+.dev.vars
+.dev.vars.*
+.prod.vars
+.prod.vars.*
+!.dev.vars.example
+
+# Env
+.env
+.env.*
+!.env.example
 
 # Google Apps Script / clasp local config
 .clasp.json
 gas/.clasp.json
 
-# private
+# Editor / OS
+.DS_Store
+.idea/
+.vscode/
+
+# Private
 /private
