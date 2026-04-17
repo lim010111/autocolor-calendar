@@ -75,6 +75,15 @@ a body-scoped redactor that covers the same field set and keep the response
 body out of the log. Request headers are also excluded because `Authorization:
 Bearer …` tokens would otherwise be captured.
 
+**Calendar event payloads (§4+) must never be logged.** The sync consumer
+(`src/queues/syncConsumer.ts`) and `src/services/calendarSync.ts` receive
+raw `events.list` responses whose `summary`, `description`, `location`,
+`attendees`, `creator`, and `organizer` fields are PII. Log only aggregate
+counters (`SyncSummary`) and event IDs/status. Error messages from
+`CalendarApiError` are built to include only `status`/`reason`/op name, never
+the response body. `sync_failures.error_body` stores Google's API error
+envelope only — never the event payload that triggered the failure.
+
 ## Environments
 
 - `dev`: `autocolor-dev` Worker, `autocolor-dev-db` Hyperdrive, full secrets.

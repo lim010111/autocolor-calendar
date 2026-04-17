@@ -2,7 +2,7 @@ import { randomBytes } from "node:crypto";
 
 import { beforeAll, describe, expect, it } from "vitest";
 
-import app from "../index";
+import { app } from "../index";
 import { signState } from "../lib/state";
 
 type MinimalEnv = {

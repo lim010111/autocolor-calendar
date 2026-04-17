@@ -1,3 +1,5 @@
+import type { SyncJob } from "./queues/types";
+
 export type Bindings = {
   ENV: "dev" | "prod";
   GOOGLE_OAUTH_REDIRECT_URI: string;
@@ -6,6 +8,10 @@ export type Bindings = {
   // yet have a Hyperdrive binding. `getDb` throws a clear error if a caller
   // tries to use the DB in an environment where it is not configured.
   HYPERDRIVE?: Hyperdrive;
+
+  // Queue producer. Absent in the prod shell until Queue bindings are added;
+  // producer code must check for presence.
+  SYNC_QUEUE?: Queue<SyncJob>;
 
   GOOGLE_CLIENT_ID: string;
   GOOGLE_CLIENT_SECRET: string;

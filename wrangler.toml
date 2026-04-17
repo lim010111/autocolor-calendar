@@ -17,9 +17,29 @@ GOOGLE_OAUTH_REDIRECT_URI = "https://autocolor-dev.autocolor-lim.workers.dev/oau
 binding = "HYPERDRIVE"
 id = "0adfbd41c67e4225a63894c3768bb837"
 
+[[env.dev.queues.producers]]
+binding = "SYNC_QUEUE"
+queue = "autocolor-sync-dev"
+
+[[env.dev.queues.consumers]]
+queue = "autocolor-sync-dev"
+max_batch_size = 10
+max_batch_timeout = 5
+max_concurrency = 5
+max_retries = 5
+dead_letter_queue = "autocolor-sync-dlq-dev"
+
+[[env.dev.queues.consumers]]
+queue = "autocolor-sync-dlq-dev"
+max_batch_size = 10
+max_retries = 0
+
 [env.prod]
 name = "autocolor-prod"
 
 [env.prod.vars]
 ENV = "prod"
 GOOGLE_OAUTH_REDIRECT_URI = "https://autocolor-prod.autocolor-lim.workers.dev/oauth/google/callback"
+
+# prod Queue bindings intentionally deferred until prod Hyperdrive/Supabase
+# are wired up (§3 후속 "Prod 환경 활성화").

@@ -43,6 +43,10 @@ export default [
         Hyperdrive: "readonly",
         ExecutionContext: "readonly",
         RequestInit: "readonly",
+        RequestInfo: "readonly",
+        Queue: "readonly",
+        Message: "readonly",
+        MessageBatch: "readonly",
       },
     },
     plugins: {
