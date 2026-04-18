@@ -40,7 +40,9 @@ export type RunResult =
   | {
       ok: true;
       summary: SyncSummary;
-      continuation?: { pageToken: string } | undefined;
+      continuation?:
+        | { pageToken: string; timeMin: string; timeMax: string }
+        | undefined;
     }
   | {
       ok: false;
@@ -143,15 +145,20 @@ export async function runIncrementalSync(ctx: SyncContext): Promise<RunResult> {
 
 export async function runFullResync(
   ctx: SyncContext,
-  opts?: { pageToken?: string },
+  opts?: { pageToken?: string; timeMin?: string; timeMax?: string },
 ): Promise<RunResult> {
   await ctx.db
     .insert(syncState)
     .values({ userId: ctx.userId, calendarId: ctx.calendarId })
     .onConflictDoNothing();
 
-  const timeMin = new Date(Date.now() - FULL_RESYNC_PAST_MS).toISOString();
-  const timeMax = new Date(Date.now() + FULL_RESYNC_FUTURE_MS).toISOString();
+  // Window is computed once per full_resync run and must be reused across every
+  // chunked continuation — Google couples `pageToken` to the original timeMin/
+  // timeMax and rejects / silently returns inconsistent results otherwise.
+  const timeMin =
+    opts?.timeMin ?? new Date(Date.now() - FULL_RESYNC_PAST_MS).toISOString();
+  const timeMax =
+    opts?.timeMax ?? new Date(Date.now() + FULL_RESYNC_FUTURE_MS).toISOString();
   return runPagedList(
     ctx,
     { timeMin, timeMax, pageToken: opts?.pageToken },
@@ -191,7 +198,9 @@ async function runPagedList(
 
   let pageToken: string | undefined = start.pageToken;
   let finalSyncToken: string | undefined;
-  let continuation: { pageToken: string } | undefined;
+  let continuation:
+    | { pageToken: string; timeMin: string; timeMax: string }
+    | undefined;
 
   do {
     try {
@@ -207,8 +216,20 @@ async function runPagedList(
           await processEvent(ctx, accessToken, ev, classifyCtx, classify, summary);
         } catch (err) {
           if (err instanceof CalendarApiError) {
-            if (err.kind === "auth" || err.kind === "full_sync_required") throw err;
-            // Non-fatal per-event error — count as no-match and move on.
+            // Session-wide / transient signals must abort the page loop so
+            // Queue retry/backoff kicks in — otherwise a transient 429 or 5xx
+            // on PATCH leaves the event mis-colored until it mutates again.
+            // Per-event kinds (e.g. 404/410 for a deleted event; 410 from
+            // PATCH is classified `full_sync_required` by status alone) are
+            // absorbed as no_match so one stale event doesn't wipe the
+            // calendar's nextSyncToken.
+            if (
+              err.kind === "auth" ||
+              err.kind === "rate_limited" ||
+              err.kind === "server"
+            ) {
+              throw err;
+            }
             summary.no_match += 1;
           } else {
             throw err;
@@ -219,7 +240,12 @@ async function runPagedList(
       if (res.nextSyncToken) finalSyncToken = res.nextSyncToken;
 
       if (chunked && pageToken && summary.pages >= MAX_PAGES_PER_FULL_RESYNC_RUN) {
-        continuation = { pageToken };
+        // chunked runs are always full_resync, so timeMin/timeMax are set.
+        continuation = {
+          pageToken,
+          timeMin: start.timeMin!,
+          timeMax: start.timeMax!,
+        };
         break;
       }
     } catch (err) {
@@ -229,11 +255,12 @@ async function runPagedList(
           return { ok: false, reason: "reauth_required", error: err, summary };
         }
         if (err.kind === "full_sync_required") {
+          // Clear the stale token here; lastFullResyncAt is stamped only when
+          // the subsequent full_resync actually completes (success path below).
           await ctx.db
             .update(syncState)
             .set({
               nextSyncToken: null,
-              lastFullResyncAt: sql`now()`,
               updatedAt: sql`now()`,
             })
             .where(

@@ -4,7 +4,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { Bindings } from "../env";
 import type { SyncContext } from "../services/calendarSync";
-import { runIncrementalSync } from "../services/calendarSync";
+import { runFullResync, runIncrementalSync } from "../services/calendarSync";
 import type { ClassifyEventFn } from "../services/classifier";
 
 const USER_ID = "11111111-1111-1111-1111-111111111111";
@@ -160,6 +160,160 @@ describe("calendarSync.runIncrementalSync", () => {
     // The cleanup update clears nextSyncToken.
     const cleared = updates.find((u) => u.nextSyncToken === null);
     expect(cleared).toBeTruthy();
+    // lastFullResyncAt must NOT be stamped here — the field records the last
+    // *completed* full resync, not the moment a 410 was detected.
+    expect(cleared && "lastFullResyncAt" in cleared).toBe(false);
+  });
+
+  it("PATCH returning 410 is absorbed as no_match (does not wipe nextSyncToken)", async () => {
+    const env = makeEnv();
+    const tokenRow = await seedTokenRow(env);
+    const { db, updates } = makeDb({ nextSyncToken: "old", tokenRow });
+
+    globalThis.fetch = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = typeof input === "string" ? input : input.toString();
+      if (url.includes("oauth2.googleapis.com/token")) {
+        return new Response(
+          JSON.stringify({ access_token: "at", expires_in: 3600, scope: "openid", token_type: "Bearer" }),
+          { status: 200 },
+        );
+      }
+      if (init?.method === "PATCH") {
+        // Individual event is gone → Google returns 410.
+        return new Response(
+          JSON.stringify({ error: { code: 410, message: "Resource has been deleted" } }),
+          { status: 410 },
+        );
+      }
+      // events.list
+      return new Response(
+        JSON.stringify({
+          items: [{ id: "gone", status: "confirmed", summary: "standup", colorId: "" }],
+          nextSyncToken: "fresh",
+        }),
+        { status: 200 },
+      );
+    }) as typeof fetch;
+
+    const classify: ClassifyEventFn = async () => ({
+      colorId: "3",
+      categoryId: "cat-1",
+      reason: "rule",
+    });
+    const result = await runIncrementalSync({
+      db,
+      env,
+      userId: USER_ID,
+      calendarId: CAL,
+      classifyEvent: classify,
+    });
+
+    // The sync must complete successfully; the 410 on PATCH is a per-event
+    // issue, not a token-stale signal. Escalating it would needlessly clear
+    // nextSyncToken and trigger a full resync.
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.summary.updated).toBe(0);
+    expect(result.summary.no_match).toBe(1);
+    // nextSyncToken rolls forward to `fresh` — not cleared.
+    const finalUpdate = updates[updates.length - 1]!;
+    expect(finalUpdate.nextSyncToken).toBe("fresh");
+    expect(updates.some((u) => u.nextSyncToken === null)).toBe(false);
+  });
+
+  it("PATCH returning 429 propagates as retryable (not silently absorbed)", async () => {
+    const env = makeEnv();
+    const tokenRow = await seedTokenRow(env);
+    const { db, updates } = makeDb({ nextSyncToken: "old", tokenRow });
+
+    globalThis.fetch = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = typeof input === "string" ? input : input.toString();
+      if (url.includes("oauth2.googleapis.com/token")) {
+        return new Response(
+          JSON.stringify({ access_token: "at", expires_in: 3600, scope: "openid", token_type: "Bearer" }),
+          { status: 200 },
+        );
+      }
+      if (init?.method === "PATCH") {
+        // Transient rate limit — Queue must retry the whole sync, not ack-ok.
+        return new Response(JSON.stringify({ error: { code: 429 } }), {
+          status: 429,
+          headers: { "retry-after": "17" },
+        });
+      }
+      return new Response(
+        JSON.stringify({
+          items: [{ id: "evt", status: "confirmed", summary: "standup", colorId: "" }],
+          nextSyncToken: "fresh",
+        }),
+        { status: 200 },
+      );
+    }) as typeof fetch;
+
+    const classify: ClassifyEventFn = async () => ({
+      colorId: "3",
+      categoryId: "cat-1",
+      reason: "rule",
+    });
+    const result = await runIncrementalSync({
+      db,
+      env,
+      userId: USER_ID,
+      calendarId: CAL,
+      classifyEvent: classify,
+    });
+
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.reason).toBe("retryable");
+    expect(result.retryAfterSec).toBe(17);
+    // Critically, nextSyncToken must NOT advance — otherwise the mis-colored
+    // event never comes back on subsequent incremental syncs.
+    expect(updates.some((u) => u.nextSyncToken === "fresh")).toBe(false);
+  });
+
+  it("PATCH returning 500 propagates as retryable (not silently absorbed)", async () => {
+    const env = makeEnv();
+    const tokenRow = await seedTokenRow(env);
+    const { db, updates } = makeDb({ nextSyncToken: "old", tokenRow });
+
+    globalThis.fetch = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = typeof input === "string" ? input : input.toString();
+      if (url.includes("oauth2.googleapis.com/token")) {
+        return new Response(
+          JSON.stringify({ access_token: "at", expires_in: 3600, scope: "openid", token_type: "Bearer" }),
+          { status: 200 },
+        );
+      }
+      if (init?.method === "PATCH") {
+        return new Response("oops", { status: 502 });
+      }
+      return new Response(
+        JSON.stringify({
+          items: [{ id: "evt", status: "confirmed", summary: "standup", colorId: "" }],
+          nextSyncToken: "fresh",
+        }),
+        { status: 200 },
+      );
+    }) as typeof fetch;
+
+    const classify: ClassifyEventFn = async () => ({
+      colorId: "3",
+      categoryId: "cat-1",
+      reason: "rule",
+    });
+    const result = await runIncrementalSync({
+      db,
+      env,
+      userId: USER_ID,
+      calendarId: CAL,
+      classifyEvent: classify,
+    });
+
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.reason).toBe("retryable");
+    expect(updates.some((u) => u.nextSyncToken === "fresh")).toBe(false);
   });
 
   it("classifier match + colorId empty → patches event and counts updated", async () => {
@@ -230,5 +384,108 @@ describe("calendarSync.runIncrementalSync", () => {
     expect(result.reason).toBe("reauth_required");
     // No nextSyncToken write should have happened.
     expect(updates.some((u) => "nextSyncToken" in u)).toBe(false);
+  });
+});
+
+describe("calendarSync.runFullResync chunking", () => {
+  const original = globalThis.fetch;
+  afterEach(() => {
+    globalThis.fetch = original;
+    vi.restoreAllMocks();
+  });
+
+  it("continuation carries timeMin/timeMax forward unchanged", async () => {
+    const env = makeEnv();
+    const tokenRow = await seedTokenRow(env);
+    const { db } = makeDb({ nextSyncToken: null, tokenRow });
+
+    const listUrls: string[] = [];
+    globalThis.fetch = vi.fn(async (input: RequestInfo | URL) => {
+      const url = typeof input === "string" ? input : input.toString();
+      if (url.includes("oauth2.googleapis.com/token")) {
+        return new Response(
+          JSON.stringify({ access_token: "at", expires_in: 3600, scope: "openid", token_type: "Bearer" }),
+          { status: 200 },
+        );
+      }
+      listUrls.push(url);
+      // Every page hands back a pageToken so we exceed the 5-page chunk cap.
+      const page = listUrls.length;
+      return new Response(
+        JSON.stringify({
+          items: [{ id: `e-${page}`, status: "confirmed", colorId: "" }],
+          nextPageToken: `pt-${page + 1}`,
+        }),
+        { status: 200 },
+      );
+    }) as typeof fetch;
+
+    const FIXED_MIN = "2024-01-01T00:00:00.000Z";
+    const FIXED_MAX = "2030-01-01T00:00:00.000Z";
+    const first = await runFullResync(
+      { db, env, userId: USER_ID, calendarId: CAL },
+      { timeMin: FIXED_MIN, timeMax: FIXED_MAX },
+    );
+    expect(first.ok).toBe(true);
+    if (!first.ok) return;
+    expect(first.continuation).toBeTruthy();
+    expect(first.continuation!.timeMin).toBe(FIXED_MIN);
+    expect(first.continuation!.timeMax).toBe(FIXED_MAX);
+    // Every list call within the first chunk must have used the passed window.
+    for (const u of listUrls) {
+      expect(u).toContain(`timeMin=${encodeURIComponent(FIXED_MIN)}`);
+      expect(u).toContain(`timeMax=${encodeURIComponent(FIXED_MAX)}`);
+    }
+
+    // Simulate the consumer re-enqueuing the continuation: timeMin/timeMax
+    // from the previous run must be threaded back in, not recomputed.
+    listUrls.length = 0;
+    const second = await runFullResync(
+      { db, env, userId: USER_ID, calendarId: CAL },
+      {
+        pageToken: first.continuation!.pageToken,
+        timeMin: first.continuation!.timeMin,
+        timeMax: first.continuation!.timeMax,
+      },
+    );
+    expect(second.ok).toBe(true);
+    if (!second.ok) return;
+    for (const u of listUrls) {
+      expect(u).toContain(`timeMin=${encodeURIComponent(FIXED_MIN)}`);
+      expect(u).toContain(`timeMax=${encodeURIComponent(FIXED_MAX)}`);
+    }
+    // pageToken on the very first request of this run should be the one we
+    // passed in (continuation resume), not a fresh start.
+    expect(listUrls[0]).toContain(
+      `pageToken=${encodeURIComponent(first.continuation!.pageToken)}`,
+    );
+  });
+
+  it("computes a fresh window when no timeMin/timeMax is provided", async () => {
+    const env = makeEnv();
+    const tokenRow = await seedTokenRow(env);
+    const { db } = makeDb({ nextSyncToken: null, tokenRow });
+
+    const listUrls: string[] = [];
+    globalThis.fetch = vi.fn(async (input: RequestInfo | URL) => {
+      const url = typeof input === "string" ? input : input.toString();
+      if (url.includes("oauth2.googleapis.com/token")) {
+        return new Response(
+          JSON.stringify({ access_token: "at", expires_in: 3600, scope: "openid", token_type: "Bearer" }),
+          { status: 200 },
+        );
+      }
+      listUrls.push(url);
+      return new Response(
+        JSON.stringify({ items: [], nextSyncToken: "done" }),
+        { status: 200 },
+      );
+    }) as typeof fetch;
+
+    const result = await runFullResync({ db, env, userId: USER_ID, calendarId: CAL });
+    expect(result.ok).toBe(true);
+    // A timeMin and timeMax were attached, even though the caller didn't pass any.
+    expect(listUrls[0]).toMatch(/timeMin=[^&]+/);
+    expect(listUrls[0]).toMatch(/timeMax=[^&]+/);
   });
 });

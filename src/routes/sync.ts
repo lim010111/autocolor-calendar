@@ -41,6 +41,7 @@ syncRoutes.post("/run", async (c) => {
       .select({
         nextSyncToken: syncState.nextSyncToken,
         inProgressAt: syncState.inProgressAt,
+        updatedAt: syncState.updatedAt,
         active: syncState.active,
       })
       .from(syncState)
@@ -62,6 +63,20 @@ syncRoutes.post("/run", async (c) => {
       now - new Date(row.inProgressAt).getTime() < COALESCE_WINDOW_SECONDS * 1000;
     if (inProgFresh) {
       return c.json({ ok: true, enqueued: false, coalesced: true }, 200);
+    }
+    // Plan §H — per-user rate limit. Once a sync has completed within the
+    // coalesce window, deny a fresh trigger to absorb manual button-spam.
+    // `updated_at` is the row's last-touched timestamp (claim, release,
+    // summary write) and is a reasonable proxy for "last activity".
+    const updatedAgeMs = now - new Date(row.updatedAt).getTime();
+    if (updatedAgeMs < COALESCE_WINDOW_SECONDS * 1000) {
+      const retryAfterSec = Math.ceil(
+        (COALESCE_WINDOW_SECONDS * 1000 - updatedAgeMs) / 1000,
+      );
+      return c.json(
+        { error: "rate_limited", retry_after_sec: retryAfterSec },
+        429,
+      );
     }
 
     const jobType: "incremental" | "full_resync" = row.nextSyncToken

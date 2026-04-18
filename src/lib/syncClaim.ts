@@ -26,7 +26,7 @@ import { syncState } from "../db/schema";
 const STALE_WINDOW_MS = 5 * 60 * 1000;
 
 export type ClaimResult =
-  | { acquired: true; rowId: string }
+  | { acquired: true; rowId: string; claimedAt: Date }
   | { acquired: false };
 
 export async function claimSyncRun(
@@ -34,9 +34,21 @@ export async function claimSyncRun(
   userId: string,
   calendarId: string,
 ): Promise<ClaimResult> {
+  // CRITICAL: truncate `now()` to millisecond precision so `claimedAt` survives
+  // the Postgres → postgres.js → JS Date round-trip without drift.
+  // Postgres timestamptz stores µs precision; JS `Date` only has ms. Without
+  // the truncation, `RETURNING in_progress_at` gives us a ms-precision Date,
+  // but the DB column still holds the original µs timestamp — `releaseSyncRun`
+  // then compares ms-ISO string against the µs value and misses every time,
+  // silently no-op'ing the release. That loses the claim invariant and drops
+  // chunked full_resync continuations (next consumer sees fresh in_progress_at
+  // and acks-coalesced). See §4A review round 4.
   const rows = await db
     .update(syncState)
-    .set({ inProgressAt: sql`now()`, updatedAt: sql`now()` })
+    .set({
+      inProgressAt: sql`date_trunc('milliseconds', now())`,
+      updatedAt: sql`now()`,
+    })
     .where(
       and(
         eq(syncState.userId, userId),
@@ -47,21 +59,30 @@ export async function claimSyncRun(
         ),
       ),
     )
-    .returning({ id: syncState.id });
+    .returning({ id: syncState.id, inProgressAt: syncState.inProgressAt });
   const row = rows[0];
-  if (!row) return { acquired: false };
-  return { acquired: true, rowId: row.id };
+  if (!row || !row.inProgressAt) return { acquired: false };
+  return { acquired: true, rowId: row.id, claimedAt: row.inProgressAt };
 }
 
+// Ownership-aware release: only clears `in_progress_at` if it still matches the
+// timestamp we set in `claimSyncRun`. Protects the invariant "whoever holds the
+// claim releases it" — if another consumer re-claimed after STALE_WINDOW_MS
+// expired, our late release becomes a no-op rather than clobbering its claim.
 export async function releaseSyncRun(
   db: PostgresJsDatabase,
   userId: string,
   calendarId: string,
+  claimedAt: Date,
 ): Promise<void> {
   await db
     .update(syncState)
     .set({ inProgressAt: null, updatedAt: sql`now()` })
     .where(
-      and(eq(syncState.userId, userId), eq(syncState.calendarId, calendarId)),
+      and(
+        eq(syncState.userId, userId),
+        eq(syncState.calendarId, calendarId),
+        eq(syncState.inProgressAt, claimedAt),
+      ),
     );
 }

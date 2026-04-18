@@ -34,12 +34,33 @@ async function handleOne(
   const job = msg.body;
   const { db, close } = getDb(env);
   try {
+    // Bootstrap sync_state before claiming. `/sync/run` and `/sync/bootstrap`
+    // already upsert this row, but a DLQ replay, orphaned queue message, or
+    // manual injection could deliver a job whose row is missing — without
+    // this, the claim UPDATE would silently match 0 rows and we'd ack as
+    // "coalesced", dropping the message. If the row was genuinely created
+    // here, log at warn level so the anomaly is observable.
+    const bootstrapped = await db
+      .insert(syncState)
+      .values({ userId: job.userId, calendarId: job.calendarId })
+      .onConflictDoNothing()
+      .returning({ id: syncState.id });
+    if (bootstrapped.length > 0) {
+      console.warn(
+        JSON.stringify({
+          level: "warn",
+          msg: "sync_state row bootstrapped by consumer (expected from /sync/run or /sync/bootstrap)",
+          job: safeJob(job),
+        }),
+      );
+    }
+
     const claim = await claimSyncRun(db, job.userId, job.calendarId);
     if (!claim.acquired) {
       console.log(
         JSON.stringify({
           level: "info",
-          msg: "sync coalesced (claim not acquired)",
+          msg: "sync coalesced (claim not acquired — another consumer is running)",
           job: safeJob(job),
         }),
       );
@@ -47,8 +68,9 @@ async function handleOne(
       return;
     }
 
+    let result: RunResult;
     try {
-      const result =
+      result =
         job.type === "incremental"
           ? await runIncrementalSync({
               db,
@@ -63,13 +85,27 @@ async function handleOne(
                 userId: job.userId,
                 calendarId: job.calendarId,
               },
-              job.pageToken ? { pageToken: job.pageToken } : undefined,
+              {
+                ...(job.pageToken ? { pageToken: job.pageToken } : {}),
+                ...(job.timeMin ? { timeMin: job.timeMin } : {}),
+                ...(job.timeMax ? { timeMax: job.timeMax } : {}),
+              },
             );
-
-      await applyResult(db, env, msg, job, result);
     } finally {
-      await releaseSyncRun(db, job.userId, job.calendarId).catch(() => undefined);
+      // Release BEFORE applyResult — applyResult may enqueue a full_resync
+      // continuation, and the next consumer must be able to claim without
+      // hitting our still-fresh in_progress_at (which would coalesce and drop
+      // the message). Release is ownership-aware: if our run overran the
+      // STALE_WINDOW_MS and a newer consumer already re-claimed, this is a
+      // no-op.
+      await releaseSyncRun(
+        db,
+        job.userId,
+        job.calendarId,
+        claim.claimedAt,
+      ).catch(() => undefined);
     }
+    await applyResult(db, env, msg, job, result);
   } catch (err) {
     // Unknown error — record and let Queue retry counter decide DLQ fate.
     await recordUnknownError(db, job, err);
@@ -88,14 +124,22 @@ async function applyResult(
 ): Promise<void> {
   if (result.ok) {
     if (result.continuation) {
-      // Chunked full_resync: enqueue next page as a fresh job (attempt counter resets).
+      // Chunked full_resync: enqueue next page as a fresh job (attempt counter
+      // resets). timeMin/timeMax must survive the hop so the same pageToken
+      // keeps seeing the same query window — see types.ts comment.
+      // Incremental → full_resync fallthrough (empty token) is a first-time
+      // bootstrap, so label the continuation accordingly rather than "manual".
+      const continuationReason =
+        job.type === "full_resync" ? job.reason : "bootstrap";
       await enqueueSync(env, {
         type: "full_resync",
         userId: job.userId,
         calendarId: job.calendarId,
-        reason: job.type === "full_resync" ? job.reason : "manual",
+        reason: continuationReason,
         enqueuedAt: Date.now(),
         pageToken: result.continuation.pageToken,
+        timeMin: result.continuation.timeMin,
+        timeMax: result.continuation.timeMax,
       });
     }
     msg.ack();
