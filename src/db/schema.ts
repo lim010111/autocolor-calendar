@@ -1,9 +1,11 @@
 import { sql } from "drizzle-orm";
 import {
+  boolean,
   check,
   customType,
   index,
   integer,
+  jsonb,
   pgTable,
   text,
   timestamp,
@@ -50,6 +52,8 @@ export const oauthTokens = pgTable(
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
     rotatedAt: timestamp("rotated_at", { withTimezone: true }),
+    needsReauth: boolean("needs_reauth").notNull().default(false),
+    needsReauthReason: text("needs_reauth_reason"),
   },
   (t) => [unique("oauth_tokens_user_provider_uq").on(t.userId, t.provider)],
 );
@@ -115,7 +119,34 @@ export const syncState = pgTable(
     watchResourceId: text("watch_resource_id"),
     watchExpiration: timestamp("watch_expiration", { withTimezone: true }),
     lastFullResyncAt: timestamp("last_full_resync_at", { withTimezone: true }),
+    active: boolean("active").notNull().default(true),
+    inProgressAt: timestamp("in_progress_at", { withTimezone: true }),
+    lastError: text("last_error"),
+    lastErrorAt: timestamp("last_error_at", { withTimezone: true }),
+    lastRunSummary: jsonb("last_run_summary"),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [unique("sync_state_user_calendar_uq").on(t.userId, t.calendarId)],
+);
+
+export const syncFailures = pgTable(
+  "sync_failures",
+  {
+    id: uuid("id")
+      .primaryKey()
+      .default(sql`gen_random_uuid()`),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    calendarId: text("calendar_id").notNull(),
+    // `job` stores the SyncJob message that was dead-lettered. Never write
+    // raw Calendar event payloads here (PII); store only the job envelope.
+    job: jsonb("job").notNull(),
+    errorCode: text("error_code"),
+    // Google API error body only — never Calendar event payloads.
+    errorBody: text("error_body"),
+    attempt: integer("attempt").notNull(),
+    failedAt: timestamp("failed_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index("sync_failures_user_failed_at_idx").on(t.userId, t.failedAt)],
 );

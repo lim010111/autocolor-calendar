@@ -1,12 +1,16 @@
 import { Hono } from "hono";
 
-import type { HonoEnv } from "./env";
+import type { Bindings, HonoEnv } from "./env";
 import { errorHandler } from "./middleware/errorHandler";
 import { loggerMiddleware } from "./middleware/logger";
+import { handleDlqBatch } from "./queues/dlqConsumer";
+import { handleSyncBatch } from "./queues/syncConsumer";
+import type { SyncJob } from "./queues/types";
 import { authRoutes } from "./routes/auth";
 import { healthRoutes } from "./routes/health";
 import { meRoutes } from "./routes/me";
 import { oauthRoutes } from "./routes/oauth";
+import { syncRoutes } from "./routes/sync";
 
 const app = new Hono<HonoEnv>();
 
@@ -17,5 +21,22 @@ app.route("/", healthRoutes);
 app.route("/oauth", oauthRoutes);
 app.route("/auth", authRoutes);
 app.route("/me", meRoutes);
+app.route("/sync", syncRoutes);
 
-export default app;
+export default {
+  fetch: app.fetch,
+  async queue(
+    batch: MessageBatch<SyncJob>,
+    env: Bindings,
+    ctx: ExecutionContext,
+  ): Promise<void> {
+    // Route by queue name — Workers dispatches the same `queue` handler for
+    // every consumer binding defined in wrangler.toml.
+    if (batch.queue.includes("dlq")) {
+      await handleDlqBatch(batch, env, ctx);
+    } else {
+      await handleSyncBatch(batch, env, ctx);
+    }
+  },
+};
+export { app };

@@ -22,6 +22,20 @@
       "when": 1776406371871,
       "tag": "0002_categories_color_id_check",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1776413111649,
+      "tag": "0003_sync_core",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1776413111650,
+      "tag": "0004_sync_failures_rls",
+      "breakpoints": true
     }
   ]
 }
