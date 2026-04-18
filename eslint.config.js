@@ -47,6 +47,7 @@ export default [
         Queue: "readonly",
         Message: "readonly",
         MessageBatch: "readonly",
+        ScheduledEvent: "readonly",
       },
     },
     plugins: {

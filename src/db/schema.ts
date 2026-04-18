@@ -117,6 +117,7 @@ export const syncState = pgTable(
     nextSyncToken: text("next_sync_token"),
     watchChannelId: text("watch_channel_id"),
     watchResourceId: text("watch_resource_id"),
+    watchChannelToken: text("watch_channel_token"),
     watchExpiration: timestamp("watch_expiration", { withTimezone: true }),
     lastFullResyncAt: timestamp("last_full_resync_at", { withTimezone: true }),
     active: boolean("active").notNull().default(true),
@@ -126,7 +127,14 @@ export const syncState = pgTable(
     lastRunSummary: jsonb("last_run_summary"),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
-  (t) => [unique("sync_state_user_calendar_uq").on(t.userId, t.calendarId)],
+  (t) => [
+    unique("sync_state_user_calendar_uq").on(t.userId, t.calendarId),
+    // Partial unique index on (watch_channel_id, watch_resource_id) — see
+    // drizzle/0005_watch_channel_token.sql. Drizzle can't express partial
+    // indexes declaratively, so this entry is informational only; the SQL
+    // migration is authoritative. Left here so reviewers see the intent
+    // alongside the column definition.
+  ],
 );
 
 export const syncFailures = pgTable(

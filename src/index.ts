@@ -1,5 +1,6 @@
 import { Hono } from "hono";
 
+import { getDb } from "./db";
 import type { Bindings, HonoEnv } from "./env";
 import { errorHandler } from "./middleware/errorHandler";
 import { loggerMiddleware } from "./middleware/logger";
@@ -11,6 +12,8 @@ import { healthRoutes } from "./routes/health";
 import { meRoutes } from "./routes/me";
 import { oauthRoutes } from "./routes/oauth";
 import { syncRoutes } from "./routes/sync";
+import { webhookRoutes } from "./routes/webhooks";
+import { renewExpiringWatches } from "./services/watchRenewal";
 
 const app = new Hono<HonoEnv>();
 
@@ -22,6 +25,7 @@ app.route("/oauth", oauthRoutes);
 app.route("/auth", authRoutes);
 app.route("/me", meRoutes);
 app.route("/sync", syncRoutes);
+app.route("/webhooks", webhookRoutes);
 
 export default {
   fetch: app.fetch,
@@ -37,6 +41,18 @@ export default {
     } else {
       await handleSyncBatch(batch, env, ctx);
     }
+  },
+  async scheduled(
+    _event: ScheduledEvent,
+    env: Bindings,
+    ctx: ExecutionContext,
+  ): Promise<void> {
+    // Single cron trigger today (`watch-renewal` via [triggers].crons in
+    // wrangler.toml). If more crons are added, branch on _event.cron.
+    const { db, close } = getDb(env);
+    ctx.waitUntil(
+      renewExpiringWatches(db, env).finally(() => close()),
+    );
   },
 };
 export { app };

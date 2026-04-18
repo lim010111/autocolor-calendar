@@ -6,6 +6,9 @@ import { oauthTokens, syncState } from "../db/schema";
 import type { HonoEnv } from "../env";
 import { authMiddleware } from "../middleware/auth";
 import { enqueueSync, SyncQueueUnavailableError } from "../queues/syncProducer";
+import { CalendarApiError } from "../services/googleCalendar";
+import { getValidAccessToken, ReauthRequiredError } from "../services/tokenRefresh";
+import { registerWatchChannel } from "../services/watchChannel";
 
 export const syncRoutes = new Hono<HonoEnv>();
 
@@ -146,7 +149,44 @@ syncRoutes.post("/bootstrap", async (c) => {
       }
       throw err;
     }
-    return c.json({ ok: true, calendarId: PRIMARY }, 202);
+
+    // Register Watch channel if a verified webhook base URL is configured.
+    // Dev environments typically leave WEBHOOK_BASE_URL unset (workers.dev is
+    // rejected by Google), so this branch no-ops there. Registration failure
+    // does not fail the bootstrap — the full_resync queue job already let
+    // the user sync; they just don't get real-time push until next attempt.
+    let watchRegistered = false;
+    if (c.env.WEBHOOK_BASE_URL) {
+      try {
+        const { accessToken } = await getValidAccessToken(db, c.env, userId);
+        await registerWatchChannel(
+          db,
+          accessToken,
+          userId,
+          PRIMARY,
+          c.env.WEBHOOK_BASE_URL,
+        );
+        watchRegistered = true;
+      } catch (err) {
+        const code =
+          err instanceof ReauthRequiredError
+            ? "reauth_required"
+            : err instanceof CalendarApiError
+              ? err.kind
+              : "unknown";
+        console.warn(
+          JSON.stringify({
+            level: "warn",
+            msg: "watch channel registration failed (bootstrap proceeds)",
+            userId,
+            calendarId: PRIMARY,
+            code,
+          }),
+        );
+      }
+    }
+
+    return c.json({ ok: true, calendarId: PRIMARY, watchRegistered }, 202);
   } finally {
     c.executionCtx.waitUntil(close());
   }
