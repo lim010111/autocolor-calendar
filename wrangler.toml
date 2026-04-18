@@ -9,16 +9,23 @@ compatibility_flags = ["nodejs_compat"]
 [env.dev]
 name = "autocolor-dev"
 
-# Watch channel renewal cron. Runs every 6 hours, which gives 4 retry windows
-# inside the 24h pre-expiry renewal window — a single transient 429/5xx won't
-# let a channel expire. scheduled() no-ops when WEBHOOK_BASE_URL is unset, so
-# dev (workers.dev, rejected by Google) still fires the trigger harmlessly.
-[triggers]
-crons = ["0 */6 * * *"]
-
 [env.dev.vars]
 ENV = "dev"
 GOOGLE_OAUTH_REDIRECT_URI = "https://autocolor-dev.autocolor-lim.workers.dev/oauth/google/callback"
+
+# Watch channel renewal cron — scoped to `[env.dev.triggers]` deliberately.
+# TOML doesn't nest tables by indentation: `[triggers]` at any offset is a
+# top-level table and would apply to `env.prod` too, which has no Hyperdrive
+# binding — `scheduled()` → `getDb(env)` would crash every 6h on prod once
+# deployed. Prod cron will be added as `[env.prod.triggers]` alongside prod
+# Hyperdrive/Supabase (§3 후속 "Prod 환경 활성화").
+#
+# Runs every 6 hours — 4 retry windows inside the 24h pre-expiry renewal
+# window, so a single transient 429/5xx won't let a channel expire.
+# `scheduled()` no-ops when WEBHOOK_BASE_URL is unset, so dev (workers.dev,
+# rejected by Google) still fires the trigger harmlessly.
+[env.dev.triggers]
+crons = ["0 */6 * * *"]
 
 [[env.dev.hyperdrive]]
 binding = "HYPERDRIVE"
