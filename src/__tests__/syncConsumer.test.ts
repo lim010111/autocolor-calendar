@@ -13,6 +13,8 @@ const mocks = vi.hoisted(() => ({
     | { acquired: false },
   fullResyncResult: null as unknown,
   incrementalResult: null as unknown,
+  runIncrementalThrows: null as Error | null,
+  dbUpdateRejects: null as Error | null,
 }));
 
 vi.mock("../db", () => ({
@@ -27,7 +29,10 @@ vi.mock("../db", () => ({
       }),
       update: () => ({
         set: () => ({
-          where: async () => undefined,
+          where: async () => {
+            if (mocks.dbUpdateRejects) throw mocks.dbUpdateRejects;
+            return undefined;
+          },
         }),
       }),
     };
@@ -64,6 +69,7 @@ vi.mock("../services/calendarSync", () => ({
   }),
   runIncrementalSync: vi.fn(async () => {
     mocks.callLog.push("runIncrementalSync");
+    if (mocks.runIncrementalThrows) throw mocks.runIncrementalThrows;
     return mocks.incrementalResult;
   }),
 }));
@@ -122,6 +128,8 @@ describe("syncConsumer.handleSyncBatch", () => {
   beforeEach(() => {
     mocks.callLog.length = 0;
     mocks.bootstrapReturning = [];
+    mocks.runIncrementalThrows = null;
+    mocks.dbUpdateRejects = null;
     mocks.claimResult = {
       acquired: true,
       rowId: "rid",
@@ -239,6 +247,36 @@ describe("syncConsumer.handleSyncBatch", () => {
     expect(calls.length).toBeGreaterThan(0);
     const lastCall = calls[calls.length - 1]!;
     expect(lastCall[3]).toBe(claimTime);
+  });
+
+  it("recordUnknownError surfaces DB persist failures via console.error and still retries", async () => {
+    // Double-failure scenario: the sync itself throws an unknown error AND the
+    // attempt to persist that error to `sync_state.last_error` also fails
+    // (e.g. Hyperdrive outage). The consumer must:
+    //   1. Still call msg.retry() so the Queue retry counter / DLQ can act.
+    //   2. Surface the DB failure via console.error so §6 observability sees
+    //      "we couldn't even log the error" instead of silently leaving `/me`
+    //      showing a stale last_error. Regression guard for §4A review #3.
+    mocks.runIncrementalThrows = new Error("Calendar API transient boom");
+    mocks.dbUpdateRejects = new Error("Hyperdrive connection refused");
+    const errSpy = vi
+      .spyOn(console, "error")
+      .mockImplementation(() => undefined);
+
+    const job: SyncJob = {
+      type: "incremental",
+      userId: "u1",
+      calendarId: "primary",
+      reason: "manual",
+      enqueuedAt: Date.now(),
+    };
+    const msg = makeMessage(job);
+    await handleSyncBatch(makeBatch(msg), {} as never, makeCtx());
+
+    expect(msg.retry).toHaveBeenCalled();
+    const logged = errSpy.mock.calls.map((c) => String(c[0])).join("\n");
+    expect(logged).toContain("recordUnknownError persist failed");
+    errSpy.mockRestore();
   });
 });
 
