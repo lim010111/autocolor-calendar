@@ -95,6 +95,7 @@ export const categories = pgTable(
   },
   (t) => [
     index("categories_user_priority_idx").on(t.userId, t.priority),
+    unique("categories_user_id_name_unique").on(t.userId, t.name),
     // Google Calendar event color IDs are the string keys "1".."11" per
     // https://developers.google.com/calendar/api/v3/reference/colors.
     check(
