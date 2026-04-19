@@ -36,6 +36,13 @@
       "when": 1776413111650,
       "tag": "0004_sync_failures_rls",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1776472146704,
+      "tag": "0005_watch_channel_token",
+      "breakpoints": true
     }
   ]
 }
