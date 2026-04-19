@@ -201,9 +201,30 @@ function actionToggleAutoColor(e) {
 }
 
 function actionSyncNow(e) {
-  return CardService.newActionResponseBuilder()
-    .setNotification(CardService.newNotification().setText("동기화가 완료되었습니다."))
-    .build();
+  try {
+    AutoColorAPI.fetchBackend('/sync/run', {
+      method: 'post',
+      contentType: 'application/json',
+      payload: '{}'
+    });
+    return CardService.newActionResponseBuilder()
+      .setNotification(CardService.newNotification().setText("동기화를 시작했습니다. 잠시 후 반영됩니다."))
+      .build();
+  } catch (err) {
+    if (err.message === 'AUTH_EXPIRED' || err.message.indexOf('reauth') !== -1) {
+      return CardService.newActionResponseBuilder()
+        .setNavigation(CardService.newNavigation().popToRoot().updateCard(buildReconnectCard()))
+        .build();
+    }
+    if (err.message.indexOf('429') !== -1) {
+      return CardService.newActionResponseBuilder()
+        .setNotification(CardService.newNotification().setText("조금 전 동기화했습니다. 잠시 후 다시 시도해주세요."))
+        .build();
+    }
+    return CardService.newActionResponseBuilder()
+      .setNotification(CardService.newNotification().setText("동기화 실패: " + err.message))
+      .build();
+  }
 }
 
 function actionGoBack(e) {
@@ -224,11 +245,27 @@ function actionGoToSettings(e) {
     .build();
 }
 
-function getMockRules() {
-  return [
-    { keyword: "주간회의", colorId: "9" },
-    { keyword: "개인 일정", colorId: "2" }
-  ];
+/**
+ * Fetches the user's categories from the backend.
+ * Halt-on-Failure contract: no local fallback / no cache. On error, return
+ * { error } and let the caller render an inline error state instead of a
+ * silently-stale list.
+ */
+function fetchCategoriesOrError() {
+  try {
+    var res = AutoColorAPI.fetchBackend('/api/categories', { method: 'get' });
+    var body = JSON.parse(res.getContentText() || '{}');
+    var rules = (body.categories || []).map(function (c) {
+      return {
+        id: c.id,
+        keyword: (c.keywords && c.keywords[0]) ? c.keywords[0] : c.name,
+        colorId: c.colorId,
+      };
+    });
+    return { rules: rules };
+  } catch (err) {
+    return { error: err.message };
+  }
 }
 
 /**
@@ -365,8 +402,16 @@ function actionSaveEventOverride(e) {
  * Screen 4: Rule Management Card (규칙 관리)
  */
 function buildRuleManagementCard(e) {
+  // Session check up front — AUTH_EXPIRED short-circuits to the reconnect
+  // card so the user gets an OAuth re-login button instead of being stranded
+  // on an inline error. Mirrors actionSyncNow / actionAddRule / actionDeleteRule.
+  var fetched = fetchCategoriesOrError();
+  if (fetched.error === 'AUTH_EXPIRED') {
+    return buildReconnectCard();
+  }
+
   var builder = CardService.newCardBuilder();
-  
+
   var navSection = CardService.newCardSection();
   navSection.addWidget(CardService.newButtonSet().addButton(CardService.newTextButton()
     .setText("⬅ 뒤로 가기")
@@ -412,21 +457,33 @@ function buildRuleManagementCard(e) {
     .setText("규칙 추가")
     .setTextButtonStyle(CardService.TextButtonStyle.FILLED)
     .setOnClickAction(CardService.newAction().setFunctionName("actionAddRule")));
-    
+
+  addSection.addWidget(CardService.newDecoratedText()
+    .setText("💡 키워드가 제목·설명에 포함되면 색상이 적용됩니다(부분 일치). 너무 짧은 키워드는 의도치 않은 매칭을 유발할 수 있어요.")
+    .setWrapText(true));
+
   builder.addSection(addSection);
-  
+
   var listSection = CardService.newCardSection()
     .setHeader("내 규칙 목록");
-    
-  var rules = getMockRules();
-  
-  if (rules.length === 0) {
+
+  listSection.addWidget(CardService.newDecoratedText()
+    .setText("ℹ️ 이미 색이 지정된 일정은 자동 변경되지 않습니다. 규칙 추가 후 홈의 '지금 즉시 동기화'를 눌러 적용하세요.")
+    .setWrapText(true));
+
+  // AUTH_EXPIRED already short-circuited above; only non-auth errors land here.
+  var rules = fetched.rules || [];
+  if (fetched.error) {
+    listSection.addWidget(CardService.newDecoratedText()
+      .setText('⚠️ 규칙 목록을 불러오지 못했습니다: ' + fetched.error)
+      .setWrapText(true));
+  } else if (rules.length === 0) {
     listSection.addWidget(CardService.newDecoratedText()
       .setText("아직 등록된 규칙이 없습니다. 위에서 첫 규칙을 만들어보세요.")
       .setWrapText(true));
   } else {
     var colors = getCalendarColors();
-    rules.forEach(function(rule, index) {
+    rules.forEach(function(rule) {
       var colorObj = null;
       for (var i = 0; i < colors.length; i++) {
         if (colors[i].id === rule.colorId) {
@@ -441,8 +498,8 @@ function buildRuleManagementCard(e) {
         .setText("삭제")
         .setOnClickAction(CardService.newAction()
           .setFunctionName("actionDeleteRule")
-          .setParameters({index: index.toString()}));
-          
+          .setParameters({id: rule.id}));
+
       listSection.addWidget(CardService.newDecoratedText()
         .setStartIcon(CardService.newIconImage().setIconUrl(colorUrl).setImageCropType(CardService.ImageCropType.CIRCLE))
         .setText(rule.keyword)
@@ -450,10 +507,6 @@ function buildRuleManagementCard(e) {
         .setButton(deleteButton));
     });
   }
-  
-  listSection.addWidget(CardService.newDecoratedText()
-    .setText("💡 더 복잡한 규칙 관리는 향후 웹 대시보드에서 제공될 예정입니다.")
-    .setWrapText(true));
     
   builder.addSection(listSection);
   
@@ -488,24 +541,78 @@ function actionSelectColorForRule(e) {
 }
 
 function actionAddRule(e) {
-  var keyword = e.formInput.rule_keyword;
+  var keyword = e.formInput && e.formInput.rule_keyword;
   if (!keyword) {
     return CardService.newActionResponseBuilder()
       .setNotification(CardService.newNotification().setText("키워드를 입력해주세요."))
       .build();
   }
-  
-  return CardService.newActionResponseBuilder()
-    .setNavigation(CardService.newNavigation().updateCard(buildRuleManagementCard()))
-    .setNotification(CardService.newNotification().setText("새 규칙이 저장되었습니다."))
-    .build();
+
+  var userProps = PropertiesService.getUserProperties();
+  var selectedColorId = userProps.getProperty("selectedColorIdForRule");
+  if (!selectedColorId) {
+    return CardService.newActionResponseBuilder()
+      .setNotification(CardService.newNotification().setText("색상을 먼저 선택해주세요."))
+      .build();
+  }
+
+  try {
+    AutoColorAPI.fetchBackend('/api/categories', {
+      method: 'post',
+      contentType: 'application/json',
+      payload: JSON.stringify({
+        name: keyword,
+        colorId: selectedColorId,
+        keywords: [keyword]
+      })
+    });
+    userProps.deleteProperty("selectedColorIdForRule");
+    return CardService.newActionResponseBuilder()
+      .setNavigation(CardService.newNavigation().updateCard(buildRuleManagementCard()))
+      .setNotification(CardService.newNotification().setText("새 규칙이 저장되었습니다."))
+      .build();
+  } catch (err) {
+    if (err.message === 'AUTH_EXPIRED') {
+      return CardService.newActionResponseBuilder()
+        .setNavigation(CardService.newNavigation().popToRoot().updateCard(buildReconnectCard()))
+        .build();
+    }
+    if (err.message.indexOf('duplicate_name') !== -1 || err.message.indexOf('409') !== -1) {
+      return CardService.newActionResponseBuilder()
+        .setNotification(CardService.newNotification().setText("이미 같은 이름의 규칙이 있습니다."))
+        .build();
+    }
+    return CardService.newActionResponseBuilder()
+      .setNotification(CardService.newNotification().setText("규칙 저장 실패: " + err.message))
+      .build();
+  }
 }
 
 function actionDeleteRule(e) {
-  return CardService.newActionResponseBuilder()
-    .setNavigation(CardService.newNavigation().updateCard(buildRuleManagementCard(e)))
-    .setNotification(CardService.newNotification().setText("규칙이 삭제되었습니다."))
-    .build();
+  var id = e.parameters && e.parameters.id;
+  if (!id) {
+    return CardService.newActionResponseBuilder()
+      .setNotification(CardService.newNotification().setText("삭제할 규칙을 찾을 수 없습니다."))
+      .build();
+  }
+  try {
+    AutoColorAPI.fetchBackend('/api/categories/' + encodeURIComponent(id), {
+      method: 'delete'
+    });
+    return CardService.newActionResponseBuilder()
+      .setNavigation(CardService.newNavigation().updateCard(buildRuleManagementCard(e)))
+      .setNotification(CardService.newNotification().setText("규칙이 삭제되었습니다."))
+      .build();
+  } catch (err) {
+    if (err.message === 'AUTH_EXPIRED') {
+      return CardService.newActionResponseBuilder()
+        .setNavigation(CardService.newNavigation().popToRoot().updateCard(buildReconnectCard()))
+        .build();
+    }
+    return CardService.newActionResponseBuilder()
+      .setNotification(CardService.newNotification().setText("규칙 삭제 실패: " + err.message))
+      .build();
+  }
 }
 
 /**
