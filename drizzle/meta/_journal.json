@@ -43,6 +43,13 @@
       "when": 1776472146704,
       "tag": "0005_watch_channel_token",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1776580955198,
+      "tag": "0006_categories_unique_user_name",
+      "breakpoints": true
     }
   ]
 }

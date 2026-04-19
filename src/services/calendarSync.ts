@@ -90,7 +90,7 @@ async function loadCategories(
     })
     .from(categories)
     .where(eq(categories.userId, userId))
-    .orderBy(asc(categories.priority));
+    .orderBy(asc(categories.priority), asc(categories.createdAt));
 }
 
 async function processEvent(

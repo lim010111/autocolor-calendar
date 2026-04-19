@@ -5,7 +5,7 @@
 - [x] PRD 및 시스템 아키텍처(SaaS 확장 모델) 최종 리뷰 (Cloudflare Workers + Supabase 하이브리드 모델로 확정)
 - [ ] UI/UX 와이어프레임 작성 (Add-on Card UI, 설정 페이지)
 - [ ] 데이터 저장 최소화, PII 마스킹, 권한(Scope) 최소화 등 보안/컴플라이언스 원칙 수립
-- [ ] 운영용 도메인 확보 및 Google Search Console 소유권 인증 (Webhook용)
+- [ ] 운영용 도메인 확보 및 Google Search Console 소유권 인증 (Webhook용) — §4 후속 "Prod Watch API 활성화"의 `WEBHOOK_BASE_URL` 설정을 gate함
 - [ ] Google Workspace Marketplace 퍼블리싱 정책 및 제약사항, 심사 대비 시나리오 검토
 
 ## 2. Google Apps Script (Add-on 클라이언트) 개발
@@ -50,15 +50,56 @@
 ### 4 후속 작업 (§4 범위 밖 이월)
 
 - [ ] **Prod Watch API 활성화** — verified custom domain 확보(§1) 후 `WEBHOOK_BASE_URL`을 prod `env.prod.vars`에 설정. 그 전까지 prod `/sync/bootstrap`은 Watch 채널 등록을 skip함.
-- [ ] **DLQ 감사 필드 확장** — 현재 `sync_failures`는 job envelope + error_code만 저장. SyncSummary·google error_body 상세 기록은 §6(관측성)에서 처리.
+- [ ] **DLQ 감사 필드 확장** — 현재 `sync_failures`는 job envelope + error_code만 저장. SyncSummary·google error_body 상세 기록은 §6(관측성)에서 처리. (주요 작업: `sync_failures`에 `summary_snapshot jsonb` 컬럼 추가 — consumer는 이미 SyncSummary를 보유하므로 스키마/라이터 확장만 필요)
 
 ## 5. 3단계 하이브리드 분류(Classification) 엔진 구현
 
-- [ ] **Step 1 (Rule-based):** Supabase DB에서 사용자 규칙 조회 후 즉시 매칭하는 로직 구현
-- [ ] **Step 2 (Embedding):** Rule 실패 시, Supabase Vector를 활용한 임베딩 유사도 기반 매칭 구현
-- [ ] 캘린더 이벤트 설명(Description) 내 민감정보(PII: 이메일, URL 등) 마스킹(Redaction) 구현
-- [ ] **Step 3 (LLM Fallback):** 마스킹된 데이터를 기반으로 소형 LLM(Openai API, gpt 5.4 nano) Fallback 추론 클라이언트 연동
-- [ ] 색상 적용 정책 구현 (수동 설정 덮어쓰기 방지 여부, 적용 필드 제한 등)
+> 현재 `src/services/classifier.ts`의 `classifyEvent`는 §5.1에서 rule-based first-match 구현으로 교체 완료. sync 파이프라인(`src/services/calendarSync.ts:181`, `:195-196`)은 `loadCategories` + `classifyCtx`로 훅 배선이 끝나 있다. `categories` 테이블은 `keywords text[]`, `embedding vector(1536)`, `priority`, 및 `UNIQUE (user_id, name)` 제약(§5.1 `drizzle/0006`)을 보유.
+
+### 5.1 Rule-based 매칭 (Step 1) ✅
+
+- [x] `POST/GET/PATCH/DELETE /api/categories` CRUD 라우트 (`src/routes/categories.ts`). 테넌트 스코프 compound WHERE + Zod 검증 + 23505 → 409 duplicate_name 맵핑.
+- [x] `src/services/classifier.ts` stub을 `priority ASC, created_at ASC` first-match 대소문자 무시 substring 매칭(summary + description)으로 구현.
+- [x] GAS `gas/addon.js`의 mock `getMockRules()`를 `/api/categories` 백엔드 호출로 교체 + `actionSyncNow`를 실제 `/sync/run` POST로 연결. 규칙 관리 카드에 부분 일치·수동 색상 보존 안내 위젯 추가.
+- [x] Vitest `classifier.test.ts` (11 케이스) + `categoriesRoute.test.ts` (22 케이스 — 인증 게이트, 테넌트 격리, Zod 거절, 409 duplicate, 라운드트립).
+- [x] **Acceptance 충족:** 규칙 추가 → 동기화 트리거 → `SyncSummary.updated` 증가 + 이벤트 색 적용; 재실행 시 `skipped_equal`로 멱등성.
+
+### 5.2 Embedding 유사도 매칭 (Step 2)
+
+- [ ] 임베딩 제공자 결정 (OpenAI `text-embedding-3-small` vs Supabase 내장). 비용/latency/Worker egress trade-off 문서화
+- [ ] 규칙 생성·수정 시 `categories.embedding` 채우는 서비스 (`src/services/categoryEmbedder.ts` 신규). 동기 API 응답 시점 vs Queue 비동기 중 선택
+- [ ] `CREATE INDEX categories_embedding_idx ON categories USING ivfflat (embedding vector_cosine_ops)` 마이그레이션 + threshold 상수 정의
+- [ ] `classifyEvent` 체인에 Step 2 삽입: Step 1 miss → 이벤트 텍스트 임베딩 → cosine top-1 ≥ threshold 시 해당 category 반환
+- [ ] **Acceptance:** 키워드에 없는 "스탠드업 미팅"이 "주간회의" 임베딩과 유사도 매칭되어 동일 색상 적용
+
+### 5.3 PII 마스킹 (Step 3 전제)
+
+- [ ] `src/services/piiRedactor.ts` — email / URL / 전화번호 / `attendees.email` 제거. `src/CLAUDE.md`의 "calendar event payload 로깅 금지" 계약과 충돌 없는지 검증 (redactor 출력이 로그 경로로 새지 않아야 함)
+- [ ] Vitest — ko/en 샘플셋으로 false negative / over-redaction 회귀 테스트
+- [ ] **Acceptance:** LLM 입력에 `@`, `http`, 전화번호 패턴이 100% 제거됨
+
+### 5.4 LLM Fallback (Step 3)
+
+- [ ] `OPENAI_API_KEY` secret 주입 (`scripts/sync-secrets.ts` 키 목록 추가, `.dev.vars.example` 업데이트)
+- [ ] `src/services/llmClassifier.ts` — 마스킹된 event + 사용자 categories를 프롬프트로 전달, `colorId | null` 반환. timeout / 1회 재시도 / 일일 호출 상한 cost guard 포함
+- [ ] `docs/architecture-guidelines.md`의 "Halt on Failure" 규칙 준수: LLM 실패 시 local rule 폴백 금지, `no_match` 카운터 증가로 조용히 종료
+- [ ] **Acceptance:** rule/embedding 모두 miss인 이벤트가 LLM으로 적절한 category 배정되거나, LLM 실패 시 no_match로 silent skip
+
+### 5.5 색상 적용 정책 및 멱등성
+
+- [ ] 수동 override 보존 정책 정의 — `event.colorId`가 규칙과 다르게 수동 설정된 경우 덮어쓸지 판단 (metadata flag / `extendedProperties.private` 활용 검토)
+- [ ] `calendarSync.ts`의 기존 color-equality 단락(`:118-127` 영역)을 확장해 "auto-applied 색상만 덮어쓰기" 정책 반영. 기존 멱등성 보장 회귀 없는지 검증
+- [ ] **Acceptance:** 사용자가 수동 변경한 이벤트는 재분류되지 않음. 앱이 칠한 이벤트만 규칙 변경 시 재적용됨
+
+### 5 후속 작업 (§5 범위 밖 이월)
+
+- [ ] LLM 호출 로그·비용 대시보드 (§6 관측성)
+- [ ] 사용자별 rate limit / 일 단위 분류 상한 (§6)
+- [ ] **`onEventOpen` 실제 매칭 규칙 표시** — `gas/addon.js:260`의 "매칭된 규칙: '주간회의'"는 현재 하드코딩. 단일 이벤트 classify preview 엔드포인트(예: `POST /api/classify/preview`) 추가 후 실제 매칭 결과 렌더링. §5.2 전후에 분리 처리.
+- [ ] **규칙 삭제 후 기존 이벤트 색상 롤백** — 사용자가 규칙을 지우면 이미 칠해진 이벤트는 원상복구 기대. §5.5의 "앱이 칠한 색상만 덮어쓰기" 메타데이터(`extendedProperties.private`)가 선행돼야 안전한 롤백 가능.
+- [ ] **짧은 키워드 false-positive 완화** — 2자 이하 한국어 키워드의 과매칭은 §5.2 embedding 단계가 부분적으로 해결. §5.1은 UX 안내 문구로 경고만 처리.
+- [ ] **규칙 적용 카운터 노출** — `gas/addon.js:159`의 "이번 주 분류된 일정: 15건"이 mock. 실제 카운터는 §6 관측성에서 `SyncSummary` 집계 소스로 연동.
+- [ ] **팀/공유 캘린더 ownership 충돌 정책** — 여러 사용자가 같은 캘린더의 색을 서로 덮어쓰는 문제. §5.5 메타데이터 + 사용자별 ownership 정책 별도 설계 필요.
 
 ## 6. 테스트 및 관측성(Observability) 확보
 

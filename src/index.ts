@@ -8,6 +8,7 @@ import { handleDlqBatch } from "./queues/dlqConsumer";
 import { handleSyncBatch } from "./queues/syncConsumer";
 import type { SyncJob } from "./queues/types";
 import { authRoutes } from "./routes/auth";
+import { categoriesRoutes } from "./routes/categories";
 import { healthRoutes } from "./routes/health";
 import { meRoutes } from "./routes/me";
 import { oauthRoutes } from "./routes/oauth";
@@ -26,6 +27,7 @@ app.route("/auth", authRoutes);
 app.route("/me", meRoutes);
 app.route("/sync", syncRoutes);
 app.route("/webhooks", webhookRoutes);
+app.route("/api/categories", categoriesRoutes);
 
 export default {
   fetch: app.fetch,
