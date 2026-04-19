@@ -25,7 +25,6 @@ export type SyncSummary = {
   stored_next_sync_token: boolean;
   started_at: string;
   finished_at: string;
-  error?: string;
 };
 
 export type SyncContext = {

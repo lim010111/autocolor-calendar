@@ -193,6 +193,11 @@ async function recordUnknownError(
   err: unknown,
 ): Promise<void> {
   const msg = err instanceof Error ? err.message : String(err);
+  // Best-effort persist: if Hyperdrive/Postgres is itself down, we must not
+  // block the caller's msg.retry path. Swallow the DB error but surface it to
+  // Worker logs so that §6 observability picks up "DB write failed" instead of
+  // silently leaving `/me` showing a stale last_error. Only the error *message*
+  // is logged — never the job envelope beyond IDs (event payload PII contract).
   await db
     .update(syncState)
     .set({
@@ -206,7 +211,13 @@ async function recordUnknownError(
         eq(syncState.calendarId, job.calendarId),
       ),
     )
-    .catch(() => undefined);
+    .catch((cause: unknown) => {
+      console.error("[syncConsumer] recordUnknownError persist failed", {
+        userId: job.userId,
+        calendarId: job.calendarId,
+        cause: cause instanceof Error ? cause.message : String(cause),
+      });
+    });
 }
 
 // Logs only the job envelope shape — never Calendar event payloads.

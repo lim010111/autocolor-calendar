@@ -62,6 +62,8 @@
 - [ ] 실패 재시도 및 DLQ 적재 동작 검증 테스트
 - [ ] Rule -> Embedding -> LLM 각 단계별 정확도 추적 및 PII 마스킹 단위 테스트
 - [ ] Add-on <-> Worker <-> Supabase 전체 흐름 E2E 테스트
+- [ ] **claim/release Postgres round-trip 통합테스트** (§4A 리뷰 Finding #2) — 현재 `syncConsumer.test.ts`의 `syncClaim — precision invariant` 블록은 소스 파일 regex 가드일 뿐 실제 `date_trunc('milliseconds', now())` → JS `Date` → `eq(inProgressAt, claimedAt)` round-trip을 검증하지 않는다. postgres-in-container 또는 Hyperdrive 에뮬레이터 도입 시 실제 round-trip 테스트 추가.
+- [ ] **`/sync/run` 레이트리밋 컬럼 분리 검토** (§4A 리뷰 Finding #7) — 현재 `sync_state.updated_at` 기반 30초 coalesce window는 consumer의 claim/release/요약 쓰기까지 전부 밀어 "방금 끝난 직후 변경사항 추가" 재트리거 UX가 429로 막힌다. `last_manual_trigger_at` 컬럼 분리로 consumer 쓰기와 수동 트리거 레이트리밋을 분리 고려.
 
 ## 7. 배포 및 출시
 
