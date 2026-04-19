@@ -6,9 +6,14 @@
 // fresh one, and continue even if individual users fail (logged per-user;
 // the batch keeps going).
 //
-// Called from `scheduled` handler (wrangler.toml [triggers] crons). Safe to
-// invoke repeatedly — channels that are not within the renewal window are
-// skipped. Per-user failures do not cascade.
+// Called from `scheduled` handler (wrangler.toml [env.dev.triggers] crons).
+// Safe to invoke *sequentially* — channels outside the renewal window are
+// skipped on each tick. Concurrent invocations against the same row set
+// (e.g., cron overlap with a manual admin trigger) would race at the
+// stop→register boundary and orphan fresh channels; Cloudflare cron does
+// not overlap itself on a single schedule, so we rely on that guarantee
+// rather than an in-row claim. Adding a claim is a §6 follow-up once
+// manual re-trigger paths exist.
 
 import { and, eq, lt, sql, isNotNull } from "drizzle-orm";
 import type { PostgresJsDatabase } from "drizzle-orm/postgres-js";
@@ -69,7 +74,7 @@ export async function renewExpiringWatches(
       and(
         eq(syncState.active, true),
         isNotNull(syncState.watchExpiration),
-        lt(syncState.watchExpiration, threshold as unknown as Date),
+        lt(syncState.watchExpiration, threshold),
       ),
     )
     .limit(MAX_PER_RUN);

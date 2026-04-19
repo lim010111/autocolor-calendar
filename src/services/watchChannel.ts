@@ -12,7 +12,6 @@ import { and, eq, sql } from "drizzle-orm";
 import type { PostgresJsDatabase } from "drizzle-orm/postgres-js";
 
 import { syncState } from "../db/schema";
-import type { Bindings } from "../env";
 import { CalendarApiError } from "./googleCalendar";
 
 const CALENDAR_BASE = "https://www.googleapis.com/calendar/v3";
@@ -255,4 +254,3 @@ export async function lookupChannelOwner(
 
 // Re-export for call sites that need to narrow on watch-specific failures.
 export { CalendarApiError };
-export type { Bindings };

@@ -47,8 +47,22 @@ export default {
     env: Bindings,
     ctx: ExecutionContext,
   ): Promise<void> {
-    // Single cron trigger today (`watch-renewal` via [triggers].crons in
+    // Single cron trigger today (`watch-renewal` via [env.dev.triggers] in
     // wrangler.toml). If more crons are added, branch on _event.cron.
+    //
+    // Skip before getDb when WEBHOOK_BASE_URL is unset — dev shells without
+    // a verified custom domain would otherwise pay a Hyperdrive handshake
+    // every 6h for a guaranteed no-op. renewExpiringWatches keeps the same
+    // check as defense-in-depth for direct callers (tests, future scripts).
+    if (!env.WEBHOOK_BASE_URL) {
+      console.log(
+        JSON.stringify({
+          level: "info",
+          msg: "watch renewal skipped — WEBHOOK_BASE_URL not configured",
+        }),
+      );
+      return;
+    }
     const { db, close } = getDb(env);
     ctx.waitUntil(
       renewExpiringWatches(db, env).finally(() => close()),

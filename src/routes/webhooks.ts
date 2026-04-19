@@ -17,6 +17,13 @@
 // - 401 is returned for every failure mode (missing headers, no matching
 //   row, token mismatch) so an attacker can't distinguish "channel exists
 //   but wrong token" from "channel doesn't exist" via response codes.
+//   Response *timing* does differ between "missing headers" (pre-DB) and
+//   "row not found / token mismatch" (post-DB lookup), but channel IDs
+//   are random UUIDs minted server-side — an attacker cannot probe a
+//   specific channel without first obtaining its ID via another leak, so
+//   the pre/post-DB timing split does not weaken the anti-enumeration
+//   posture we care about (which is: can't distinguish known-channel
+//   from known-channel-wrong-token).
 
 import { Hono } from "hono";
 

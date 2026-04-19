@@ -8,7 +8,7 @@ import { authMiddleware } from "../middleware/auth";
 import { enqueueSync, SyncQueueUnavailableError } from "../queues/syncProducer";
 import { CalendarApiError } from "../services/googleCalendar";
 import { getValidAccessToken, ReauthRequiredError } from "../services/tokenRefresh";
-import { registerWatchChannel } from "../services/watchChannel";
+import { registerWatchChannel, stopWatchChannel } from "../services/watchChannel";
 
 export const syncRoutes = new Hono<HonoEnv>();
 
@@ -152,13 +152,18 @@ syncRoutes.post("/bootstrap", async (c) => {
 
     // Register Watch channel if a verified webhook base URL is configured.
     // Dev environments typically leave WEBHOOK_BASE_URL unset (workers.dev is
-    // rejected by Google), so this branch no-ops there. Registration failure
-    // does not fail the bootstrap — the full_resync queue job already let
-    // the user sync; they just don't get real-time push until next attempt.
+    // rejected by Google), so this branch no-ops there. We stop any pre-
+    // existing channel first — re-bootstrap (re-onboarding, consent replay,
+    // client retry) would otherwise leak duplicate live channels on Google's
+    // side; every orphan double-delivers webhooks for up to 7 days until its
+    // own TTL lapses. Non-reauth failures do not fail the bootstrap — the
+    // full_resync queue job already let the user sync; they just don't get
+    // real-time push until the next attempt.
     let watchRegistered = false;
     if (c.env.WEBHOOK_BASE_URL) {
       try {
         const { accessToken } = await getValidAccessToken(db, c.env, userId);
+        await stopWatchChannel(db, accessToken, userId, PRIMARY);
         await registerWatchChannel(
           db,
           accessToken,
@@ -168,12 +173,14 @@ syncRoutes.post("/bootstrap", async (c) => {
         );
         watchRegistered = true;
       } catch (err) {
+        if (err instanceof ReauthRequiredError) {
+          // Refresh token is revoked — bootstrap is meaningless until the
+          // user re-consents. Surface it to GAS so the re-login card shows
+          // now rather than on the next /sync/run or consumer tick.
+          return c.json({ error: "reauth_required" }, 503);
+        }
         const code =
-          err instanceof ReauthRequiredError
-            ? "reauth_required"
-            : err instanceof CalendarApiError
-              ? err.kind
-              : "unknown";
+          err instanceof CalendarApiError ? err.kind : "unknown";
         console.warn(
           JSON.stringify({
             level: "warn",
