@@ -64,11 +64,11 @@
 - [x] Vitest `classifier.test.ts` (11 케이스) + `categoriesRoute.test.ts` (22 케이스 — 인증 게이트, 테넌트 격리, Zod 거절, 409 duplicate, 라운드트립).
 - [x] **Acceptance 충족:** 규칙 추가 → 동기화 트리거 → `SyncSummary.updated` 증가 + 이벤트 색 적용; 재실행 시 `skipped_equal`로 멱등성.
 
-### 5.2 PII 마스킹 (Step 2 전제)
+### 5.2 PII 마스킹 (Step 2 전제) ✅
 
-- [ ] `src/services/piiRedactor.ts` — email / URL / 전화번호 / `attendees.email` 제거. `src/CLAUDE.md`의 "calendar event payload 로깅 금지" 계약과 충돌 없는지 검증 (redactor 출력이 로그 경로로 새지 않아야 함)
-- [ ] Vitest — ko/en 샘플셋으로 false negative / over-redaction 회귀 테스트
-- [ ] **Acceptance:** LLM 입력에 `@`, `http`, 전화번호 패턴이 100% 제거됨
+- [x] `src/services/piiRedactor.ts` — `summary`/`description`/`location`의 email·URL·전화번호(KR mobile/landline/1588 대표번호/국제번호 `+`·괄호 표기 포함)를 `[email]`/`[url]`/`[phone]` 토큰으로 치환 + `creator.email`/`organizer.email`/`attendees[].email`을 destructure-and-omit으로 제거. 파일 상단 SECURITY 주석으로 "DO NOT LOG OUTPUT" + regex-clone footgun 경고 명시. `redactEventForLlm(event)` 순수 함수 + `PII_TOKENS`·`PII_REGEXES` export. `src/CLAUDE.md`의 "calendar event payload 로깅 금지" 계약과 충돌 없음 (redactor는 §5.3 LLM 경로에서만 호출, 로깅 경로 미사용).
+- [x] Vitest — `src/__tests__/piiRedactor.test.ts` (38 케이스, 5 그룹): NL redaction false-negative (18: ko+en email, https/www URL, KR mobile/landline 괄호 표기 `(02)`/`(031)` 포함, 국제번호 +82/+1/+81 및 `+1 (415) 555-2671` 괄호 표기, 1588 대표번호, multi-PII, 한국어 조사 보존 `에서`, 닫는 괄호 보존) + over-redaction 가드 (9) + structured email 필드 (6) + 순수성·idempotency (3) + 골든 acceptance (2: fixture 제약 pre-condition + acceptance 단언).
+- [x] **Acceptance:** 골든 테스트가 `JSON.stringify(redacted)`에 `/@/`, `/http/i`, phone regex 매치 0건을 단언 — §5.2 수용 기준을 코드로 인코딩. `pnpm vitest run` 162/162 통과 + `pnpm tsc --noEmit` 에러 0.
 
 ### 5.3 LLM Fallback (Step 2)
 
