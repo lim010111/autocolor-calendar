@@ -19,12 +19,6 @@ const bytea = customType<{ data: Uint8Array; driverData: Uint8Array }>({
   toDriver: (value) => value,
 });
 
-const vector1536 = customType<{ data: number[]; driverData: string }>({
-  dataType: () => "vector(1536)",
-  fromDriver: (value) => JSON.parse(value as string) as number[],
-  toDriver: (value) => JSON.stringify(value),
-});
-
 export const users = pgTable("users", {
   id: uuid("id")
     .primaryKey()
@@ -88,7 +82,6 @@ export const categories = pgTable(
     name: text("name").notNull(),
     colorId: text("color_id").notNull(),
     keywords: text("keywords").array().notNull().default(sql`'{}'::text[]`),
-    embedding: vector1536("embedding"),
     priority: integer("priority").notNull().default(100),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),

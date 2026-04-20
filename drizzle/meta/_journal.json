@@ -50,6 +50,13 @@
       "when": 1776580955198,
       "tag": "0006_categories_unique_user_name",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1776659891955,
+      "tag": "0007_remove_embedding",
+      "breakpoints": true
     }
   ]
 }
