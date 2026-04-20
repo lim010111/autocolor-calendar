@@ -78,7 +78,7 @@ Branch: `setup/backend-infrastructure`
 - **`users`**: `id uuid pk`, `google_sub text unique`, `email text`, `created_at`, `updated_at`.
 - **`oauth_tokens`**: `id uuid pk`, `user_id fk cascade`, `provider text default 'google'`, `encrypted_refresh_token bytea`, `iv bytea`, `scope text`, `token_version int default 1`, `created_at`, `updated_at`, `rotated_at timestamptz`. `UNIQUE(user_id, provider)`.
 - **`sessions`**: `id uuid pk`, `user_id fk`, `token_hash bytea unique`, `expires_at`, `created_at`, `revoked_at`, `user_agent text`.
-- **`categories`**: `id uuid pk`, `user_id fk`, `name`, `color_id text`(Google Calendar 1–11), `keywords text[]`, `embedding vector(1536)` nullable, `priority int default 100`, `created_at`, `updated_at`. Index `(user_id, priority)`. (벡터 인덱스는 섹션 5로 연기.)
+- **`categories`**: `id uuid pk`, `user_id fk`, `name`, `color_id text`(Google Calendar 1–11), `keywords text[]`, `priority int default 100`, `created_at`, `updated_at`. Index `(user_id, priority)`.
 - **`sync_state`**: `id uuid pk`, `user_id fk`, `calendar_id text`, `next_sync_token text`, `watch_channel_id`, `watch_resource_id`, `watch_expiration timestamptz`, `last_full_resync_at`, `updated_at`. `UNIQUE(user_id, calendar_id)`.
 
 **수기 RLS (`drizzle/9999_rls.sql`)**: 5개 테이블 전부 `ENABLE ROW LEVEL SECURITY` + `auth.uid() = user_id` (users는 `auth.uid() = id`) 정책.
@@ -89,7 +89,7 @@ Branch: `setup/backend-infrastructure`
 >
 > (대안 — 필요 시) Workers 접속용으로 RLS가 적용되는 별도 role(`app_user`)을 만들어 `SET ROLE`·`set_config('request.jwt.claims', ...)`를 매 트랜잭션마다 세팅하는 패턴이 가능하지만, Pooler Transaction 모드 호환성과 성능 비용이 있어 섹션 3에서는 채택하지 않는다. 섹션 6(관측성) 이후 재평가.
 
-**Extensions**: `create extension if not exists vector;` `create extension if not exists pgcrypto;` (uuid용).
+**Extensions**: `create extension if not exists pgcrypto;` (uuid용).
 
 ## OAuth 플로우 (`src/routes/oauth.ts`)
 
@@ -162,7 +162,7 @@ package.json scripts:
 1. **정리 (3.1)** — `git rm main.py pyproject.toml uv.lock .python-version`; `rm -rf .venv`; `.gitignore`에서 Python 섹션 제거, Node/Workers 섹션 추가(`node_modules/`, `.wrangler/`, `.dev.vars`, `dist/`, `.env*`, `!.env.example`).
 2. **Workers 스캐폴드 (3.2)** — `pnpm init`; deps 설치; `wrangler.toml` 수기 작성; `tsconfig.json` 설정; `src/index.ts`로 Hono 앱 + `/healthz` 라우트; `wrangler dev`로 200 OK 확인.
    - **3.2a** — 린트/포맷/테스트 하네스 스캐폴드(ESLint, Prettier, Vitest + `vitest.config.ts`). 이후 `src/lib/crypto.ts`·`src/lib/state.ts` 작성 시 유닛 테스트(HMAC 상수시간 비교, AES-GCM 왕복, 세션 해시 HMAC-SHA256 검증)를 함께 커밋.
-3. **DB 연결 (3.3)** — Supabase dev 프로젝트 수동 생성, pgvector 활성화, pooler/direct URL 획득; `drizzle.config.ts` 작성. **`drizzle.config.ts`는 `DIRECT_DATABASE_URL`(포트 5432)을 사용**하고, 런타임(`DATABASE_URL`, Pooler 6543, `prepare: false`)과 분리한다(Pooler Transaction 모드에서 DDL/prepared statement 이슈 회피). `src/db/client.ts`는 `postgres(DATABASE_URL, { prepare: false })`; `SELECT 1` 스모크 테스트 라우트로 연결 검증. 마이그레이션 실행은 **개발자 로컬에서 `pnpm db:migrate` 수동 실행**(dev/prod 모두).
+3. **DB 연결 (3.3)** — Supabase dev 프로젝트 수동 생성, pooler/direct URL 획득; `drizzle.config.ts` 작성. **`drizzle.config.ts`는 `DIRECT_DATABASE_URL`(포트 5432)을 사용**하고, 런타임(`DATABASE_URL`, Pooler 6543, `prepare: false`)과 분리한다(Pooler Transaction 모드에서 DDL/prepared statement 이슈 회피). `src/db/client.ts`는 `postgres(DATABASE_URL, { prepare: false })`; `SELECT 1` 스모크 테스트 라우트로 연결 검증. 마이그레이션 실행은 **개발자 로컬에서 `pnpm db:migrate` 수동 실행**(dev/prod 모두).
 4. **스키마 + RLS (3.4)** — `src/db/schema.ts` 작성 → `pnpm db:generate` → `drizzle/9999_rls.sql` 수기 작성 → `pnpm db:migrate` → Supabase Studio에서 테이블/RLS 확인.
 5. **OAuth 플로우 (3.5)** — `lib/crypto.ts`, `lib/state.ts`, `services/googleOAuth.ts`, `services/sessionService.ts`, `routes/oauth.ts` 구현; `middleware/auth.ts`로 Bearer 검증. Dev 검증은 **`wrangler deploy --env dev`로 `autocolor-dev.<acct>.workers.dev` 고정 URL** 확보 후 Google Redirect URI·GAS ScriptProperties에 반영하여 end-to-end 로그인 수행(`wrangler dev`는 단위/부분 테스트용).
    - **3.5a** — 보호된 `src/routes/me.ts`(응답에 `{ userId, email, needs_reauth: boolean }` 예약) + `src/routes/auth.ts`(`POST /auth/logout` — 현재 세션 `revoked_at` 기록) + `src/middleware/logger.ts`(JSON + `Authorization`/`token`/`code`/`state`/`refresh_token`/`access_token`/`email`/`sub` redaction) + `src/middleware/errorHandler.ts`에 OAuth 에러 → `GAS_REDIRECT_URL?error=<code>` 302 리다이렉트 규약 반영.
@@ -171,7 +171,7 @@ package.json scripts:
 
 ## 수동 작업 (코드 외)
 
-- **Supabase**: `autocolor-dev`, `autocolor-prod` 두 프로젝트 생성. 각각 `vector`, `pgcrypto` extension 활성화. Pooler(6543) + Direct(5432) URL 모두 확보.
+- **Supabase**: `autocolor-dev`, `autocolor-prod` 두 프로젝트 생성. 각각 `pgcrypto` extension 활성화. Pooler(6543) + Direct(5432) URL 모두 확보.
 - **Google Cloud Console**: OAuth 2.0 Web Client 생성(또는 기존 업데이트), Redirect URIs에 dev/prod 콜백 등록, Calendar API + People API(userinfo) 활성화, Consent Screen scopes 등록.
 - **Cloudflare**: `wrangler login`, dev/prod 워커 이름 확보.
 - **Dev Worker 배포 URL 확보**: 3.6 이전이라도 `wrangler deploy --env dev`를 1회 실행하여 `autocolor-dev.<acct>.workers.dev` URL을 확보 → Google Redirect URI 등록 → GAS ScriptProperties `BACKEND_BASE_URL`·`OAUTH_AUTH_URL`에 반영. (로컬 `wrangler dev`는 공개 HTTPS가 아니므로 Google OAuth 콜백을 end-to-end 검증할 수 없다.)
@@ -183,7 +183,6 @@ package.json scripts:
 ## 리스크
 
 - **`postgres.js` + Pooler**: SCRAM 인증·Buffer 이슈 간헐. 스모크 테스트 우선 검증; 실패 시 Hyperdrive 또는 `@neondatabase/serverless`로 전환.
-- **pgvector in Drizzle**: `vector()` helper 버전 호환성 확인. 미지원 시 `customType<{ data: number[] }>` fallback.
 - **GAS `/exec` URL 변동**: "새 배포"가 아닌 "기존 배포 버전 업데이트"로 배포하면 URL 고정(수동 작업 섹션 참조). 이 규칙 미준수 시 시크릿·OAuth redirect URI 갱신 필요.
 - **도메인 인증**: 섹션 3 비블로킹이나 섹션 4 Watch API 위해 prod custom domain 조기 확보 권장.
 - **세션 GC**: §3에서는 TTL(abs 60일/roll 30일) 설정 + `token_hash` 인덱스까지만. `pg_cron` 주간 정리는 섹션 6(관측성) 이관.

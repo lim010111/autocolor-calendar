@@ -1,7 +1,7 @@
 # Backend Module — Operational Rules (autocolor backend)
 
 This module runs as the Cloudflare Worker `autocolor-{dev,prod}`, backed by
-Supabase (PostgreSQL + pgvector). The rules below are non-obvious invariants
+Supabase (PostgreSQL). The rules below are non-obvious invariants
 that you must not break when extending this directory. They supersede general
 style advice; see `@docs/architecture-guidelines.md` for cross-cutting rules.
 

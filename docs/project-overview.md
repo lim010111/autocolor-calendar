@@ -5,12 +5,12 @@
 ## Architecture
 
 - **Google Workspace Add-on (UI):** A Google Apps Script (GAS) deployment using `CardService` to provide the onboarding and configuration UI within Google Calendar. It delegates all syncing and AI processing to the backend. Source code is located in the `gas/` directory.
-- **Serverless Backend:** Cloudflare Workers handle external OAuth, centralized sync logic via Webhooks (Push Notification), Supabase for DB/Auth, and a 3-stage hybrid classification engine (Rule -> Embedding -> LLM) for advanced contextual category matching.
+- **Serverless Backend:** Cloudflare Workers handle external OAuth, centralized sync logic via Webhooks (Push Notification), Supabase for DB/Auth, and a 2-stage classification engine (Rule → LLM) with mandatory PII redaction before any LLM call.
 
 ## Core Technologies
 
 - **Frontend (Add-on UI):** Google Apps Script (JavaScript), `CardService`.
-- **Backend:** TypeScript, Cloudflare Workers, Supabase (PostgreSQL, Auth, Vector), Drizzle ORM, small LLMs (e.g., Gemini API).
+- **Backend:** TypeScript, Cloudflare Workers, Supabase (PostgreSQL, Auth), Drizzle ORM, small LLMs (e.g., Gemini API).
 
 ## Directory Structure
 
