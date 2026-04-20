@@ -11,6 +11,10 @@ export type CalendarEvent = {
   end?: { dateTime?: string; date?: string; timeZone?: string };
   creator?: { email?: string; self?: boolean };
   organizer?: { email?: string; self?: boolean };
+  // §5.2에서 추가 — 현재 유일한 소비자는 `piiRedactor.ts`이며, Google API
+  // 실제 응답에 존재하는 필드를 타입 정합성만 맞춘 것이다. 다른 경로
+  // (classifier / calendarSync)는 여전히 이 필드를 읽지 않는다.
+  attendees?: Array<{ email?: string; displayName?: string; self?: boolean }>;
   updated?: string;
 };
 

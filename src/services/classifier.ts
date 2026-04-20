@@ -32,9 +32,10 @@ export type ClassifyEventFn = (
 //   that ordering; callers must not shuffle the array after loading.
 // - Case-insensitive substring match against summary + "\n" + (description ?? "").
 //   Korean morphology makes word-boundary matching unreliable, so substring
-//   is the deliberate default. `attendees` and `location` are excluded in
-//   §5.1 — PII redaction for those fields lands with §5.3 before they can
-//   enter the classifier's haystack.
+//   is the deliberate default. `attendees` and `location` are excluded here —
+//   PII redaction (§5.2 `piiRedactor.ts`) is only required on the LLM
+//   fallback path (§5.3), not on this rule-based path which matches raw
+//   user-authored keywords.
 // - First keyword hit in the first matching category wins. Remaining
 //   categories are not consulted.
 // - Returns null on no match. Never throws.
