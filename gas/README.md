@@ -25,5 +25,5 @@ The Add-on acts as the frontend interface within Google Calendar. Its responsibi
 5. Connect the Add-on to your Cloudflare Workers backend via the OAuth flow.
 
 ## Architecture Enforcement
-- **E2E Backend Mandatory:** All heavy lifting, including webhook processing, rule evaluation, vector search, and LLM fallback, is performed by the Cloudflare Workers backend.
+- **E2E Backend Mandatory:** All heavy lifting, including webhook processing, rule evaluation, and LLM fallback, is performed by the Cloudflare Workers backend.
 - **No Local Fallback:** If the backend connection fails or authentication expires, the Add-on must halt and prompt the user to re-authenticate. It must never silently fallback to legacy local rules or triggers.

@@ -35,7 +35,7 @@
 | dev Worker | `https://autocolor-dev.autocolor-lim.workers.dev` | live; Hyperdrive + 6 secrets 주입 |
 | prod Worker | `https://autocolor-prod.autocolor-lim.workers.dev` | 빈 셸; `/healthz`만 응답, 시크릿/Hyperdrive 없음 |
 | Hyperdrive config (dev) | `0adfbd41c67e4225a63894c3768bb837` — `autocolor-dev-db` | origin: Supabase Session Pooler `aws-1-ap-southeast-1.pooler.supabase.com:5432` |
-| Supabase project | `tdbyaaedrvkjxidchvpa` (Northeast Asia) | extensions: `vector`, `pgcrypto` enabled |
+| Supabase project | `tdbyaaedrvkjxidchvpa` (Northeast Asia) | extensions: `pgcrypto` enabled |
 | GCP OAuth client (dev) | `500584277254-8l6atjhcvdil3r434qbe7dcf62o92603` | redirect URI 등록됨 |
 | GAS web app `/exec` | `https://script.google.com/macros/s/AKfycbzmpZKgeaXn4QDsUdYpXsKl8IiJSvUWpAzk8j2wiHMSNNAghyZ-8BfNw73HMr5GxUsYlA/exec` | HEAD test 배포 + versioned @2 |
 | GAS script ID | `13puaHq87p_yvDhDoVk9JDW6RHUxvHyXwIiuSKkY8wbdCkXjTIlkKBrbc` | `gas/.clasp.json` |

@@ -1,6 +1,6 @@
 # AutoColor for Calendar
 
-**AutoColor for Calendar** automatically assigns colors to Google Calendar events based on user-defined semantic rules or contextual analysis. It is a multi-tenant SaaS application for the Google Workspace Marketplace that leverages a Serverless backend (Cloudflare Workers) and a 3-stage hybrid classification engine (Rule -> Embedding -> LLM) for advanced contextual category matching.
+**AutoColor for Calendar** automatically assigns colors to Google Calendar events based on user-defined semantic rules or contextual analysis. It is a multi-tenant SaaS application for the Google Workspace Marketplace that leverages a Serverless backend (Cloudflare Workers) and a 2-stage classification engine (Rule → LLM) with mandatory PII redaction before any LLM call.
 
 ## Repository layout
 
