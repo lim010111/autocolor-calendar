@@ -91,12 +91,10 @@
 
 ### 5 후속 작업 (§5 범위 밖 이월)
 
-- [ ] LLM 호출 로그·비용 대시보드 (§6 관측성)
-- [ ] 사용자별 rate limit / 일 단위 분류 상한 (§6)
-- [ ] **`onEventOpen` 실제 매칭 규칙 표시** — `gas/addon.js:260`의 "매칭된 규칙: '주간회의'"는 현재 하드코딩. 단일 이벤트 classify preview 엔드포인트(예: `POST /api/classify/preview`) 추가 후 실제 매칭 결과 렌더링. §5.3 LLM 단계 배선 직후에 처리 (현재 2-tier 모델에서는 Rule / LLM 두 출처만 표기).
-- [ ] **규칙 삭제 후 기존 이벤트 색상 롤백** — 사용자가 규칙을 지우면 이미 칠해진 이벤트는 원상복구 기대. §5.4의 "앱이 칠한 색상만 덮어쓰기" 메타데이터(`extendedProperties.private`)가 선행돼야 안전한 롤백 가능.
-- [ ] **짧은 키워드 false-positive 완화** — 2자 이하 한국어 키워드의 과매칭은 Rule 관리 카드의 UX 안내 문구(예: "2자 이하 키워드는 의도치 않은 이벤트까지 매칭될 수 있습니다")로 경고만 처리한다. §5.3 LLM 단계는 Rule-miss(=no-match) 케이스에서만 작동하므로 이 false-positive는 구조적으로 해결하지 않으며, 추후 사용자 피드백 기반으로 별도 완화책을 검토한다.
-- [ ] **규칙 적용 카운터 노출** — `gas/addon.js:159`의 "이번 주 분류된 일정: 15건"이 mock. 실제 카운터는 §6 관측성에서 `SyncSummary` 집계 소스로 연동.
+- [x] **`onEventOpen` 실제 매칭 규칙 표시** — `POST /api/classify/preview` (`src/routes/classify.ts`) + `gas/addon.js` `onEventOpen` 리라이팅. rule-only(저지연 · LLM 쿼터 비소진). rule hit이면 카테고리명·매칭 키워드, no_match + OPENAI_API_KEY 설정 시 "다음 동기화 시 AI 분류 시도" 안내. 인증 실패 시 reconnect 카드로 이동.
+- [x] **규칙 삭제 후 기존 이벤트 색상 롤백** — `DELETE /api/categories/:id`가 per-calendar `color_rollback` 큐 잡을 팬아웃. `src/services/colorRollback.ts`가 `privateExtendedProperty=autocolor_category=<id>` 필터로 이벤트를 페이징하며 §5.4 ownership 검증(`current colorId === autocolor_color`) 통과한 이벤트만 `clearEventColor`로 colorId·마커 3키 전부 null로 복귀. 수동 재색칠 이벤트는 건드리지 않음. 시간 윈도우는 runFullResync와 동일(30d/365d).
+- [x] **짧은 키워드 false-positive 완화** — 규칙 관리 카드 키워드 입력 직후 `TextParagraph`로 "⚠️ 2자 이하 키워드는 의도치 않은 이벤트까지 매칭될 수 있습니다" 경고 렌더. §5.3 LLM 단계는 Rule-miss(=no-match) 케이스에서만 작동하므로 이 false-positive는 구조적으로 해결하지 않으며, 추후 사용자 피드백 기반으로 별도 완화책을 검토한다.
+- [ ] **LLM preview (on-demand)** — 사이드바 rule-miss 케이스에서 사용자가 명시적으로 "AI 분류 확인" 버튼을 눌러 LLM 결과를 즉시 보는 경로. 현재 preview는 비용·지연 이유로 rule-only. 버튼 추가 + `/api/classify/preview?llm=1` flag 또는 별도 엔드포인트 설계 필요.
 - [ ] **팀/공유 캘린더 ownership 충돌 정책** — 여러 사용자가 같은 캘린더의 색을 서로 덮어쓰는 문제. §5.4 메타데이터 + 사용자별 ownership 정책 별도 설계 필요.
 
 ## 6. 테스트 및 관측성(Observability) 확보
@@ -106,6 +104,10 @@
 - [ ] 실패 재시도 및 DLQ 적재 동작 검증 테스트
 - [ ] Rule → LLM 각 단계별 정확도/비용/지연 추적 및 PII 마스킹 단위 테스트.
 - [ ] Add-on <-> Worker <-> Supabase 전체 흐름 E2E 테스트
+- [ ] **LLM 호출 로그·비용 대시보드** (§5 후속에서 이월) — `SyncSummary.llm_*` 카운터를 `llm_calls` 로그 테이블로 승격, 사용자별·일별 성공률·지연·cost 노출.
+- [ ] **사용자별 rate limit 확장** (§5 후속에서 이월) — §5.3에서 `LLM_DAILY_LIMIT`(per-user daily)만 구현. 분당/시간당 rate limit, preview endpoint throttle, `/sync/run` manual trigger rate limit을 통합 관리.
+- [ ] **규칙 적용 카운터 노출** (§5 후속에서 이월) — `gas/addon.js`의 홈카드 "이번 주 분류된 일정" mock을 실제 `SyncSummary` 집계 소스로 연결. `/me`에 주간 롤업 필드 추가 또는 별도 `/api/stats` 엔드포인트.
+- [ ] **`color_rollback` 텔레메트리** — 현재 rollback 결과는 console.log 한 줄. DLQ 적재 모니터링 + `rollback_runs` 테이블(`llm_usage_daily` 대칭)로 per-user 실행 이력 저장 검토.
 - [ ] **claim/release Postgres round-trip 통합테스트** (§4A 리뷰 Finding #2) — 현재 `syncConsumer.test.ts`의 `syncClaim — precision invariant` 블록은 소스 파일 regex 가드일 뿐 실제 `date_trunc('milliseconds', now())` → JS `Date` → `eq(inProgressAt, claimedAt)` round-trip을 검증하지 않는다. postgres-in-container 또는 Hyperdrive 에뮬레이터 도입 시 실제 round-trip 테스트 추가.
 - [ ] **`/sync/run` 레이트리밋 컬럼 분리 검토** (§4A 리뷰 Finding #7) — 현재 `sync_state.updated_at` 기반 30초 coalesce window는 consumer의 claim/release/요약 쓰기까지 전부 밀어 "방금 끝난 직후 변경사항 추가" 재트리거 UX가 429로 막힌다. `last_manual_trigger_at` 컬럼 분리로 consumer 쓰기와 수동 트리거 레이트리밋을 분리 고려.
 - [ ] **Watch 채널 DB round-trip 통합테스트** (§4B 리뷰 m4) — `lookupChannelOwner`, `registerWatchChannel`의 UPDATE 테넌트 스코프, `drizzle/0005`의 partial `UNIQUE (watch_channel_id, watch_resource_id)` 충돌 거동을 실제 Postgres에 대해 검증. 현재 mock-only 테스트로는 인덱스/컬럼 레벨 실수를 잡지 못한다. §4A Finding #2 해법과 같은 harness 재사용.

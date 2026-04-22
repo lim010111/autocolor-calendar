@@ -79,6 +79,7 @@ describe("buildDefaultClassifier — rule → LLM chain", () => {
       colorId: "9",
       categoryId: "c-1",
       reason: "rule_match:회의",
+      matchedKeyword: "회의",
     });
     expect(fetchSpy).not.toHaveBeenCalled();
     expect(counters.onLlmAttempted).not.toHaveBeenCalled();

@@ -246,6 +246,51 @@ function actionGoToSettings(e) {
 }
 
 /**
+ * Calls the backend classify preview endpoint. Rule-only classifier — LLM
+ * fallback runs during sync, not here, to keep sidebar latency predictable.
+ * Returns { source, category?, matchedKeyword?, llmAvailable? } on 200 or
+ * { error } for auth/network failure so the caller can render an inline
+ * fallback message instead of hanging.
+ */
+function fetchPreviewOrError(payload) {
+  try {
+    var res = AutoColorAPI.fetchBackend('/api/classify/preview', {
+      method: 'post',
+      contentType: 'application/json',
+      payload: JSON.stringify(payload),
+    });
+    return JSON.parse(res.getContentText() || '{}');
+  } catch (err) {
+    if (err && err.message === 'AUTH_EXPIRED') return { error: 'AUTH_EXPIRED' };
+    return { error: err && err.message ? err.message : 'unknown_error' };
+  }
+}
+
+/**
+ * Builds the "매칭된 규칙" status line. Mirrors the three preview-endpoint
+ * outcomes plus the network-error fallback. Kept as a pure formatter so
+ * UI copy tweaks don't require reaching into onEventOpen's control flow.
+ */
+function formatMatchLine(preview) {
+  if (!preview) return "매칭된 규칙 없음";
+  if (preview.error) {
+    if (preview.error === 'AUTH_EXPIRED') return "재로그인이 필요합니다";
+    return "분류 정보를 가져오지 못했습니다";
+  }
+  if (preview.source === 'rule' && preview.category) {
+    var name = preview.category.name || "규칙";
+    if (preview.matchedKeyword) {
+      return "매칭된 규칙: '" + name + "' (키워드: '" + preview.matchedKeyword + "')";
+    }
+    return "매칭된 규칙: '" + name + "'";
+  }
+  if (preview.llmAvailable) {
+    return "매칭된 규칙 없음 — 다음 동기화 시 AI 분류 시도";
+  }
+  return "매칭된 규칙 없음";
+}
+
+/**
  * Fetches the user's categories from the backend.
  * Halt-on-Failure contract: no local fallback / no cache. On error, return
  * { error } and let the caller render an inline error state instead of a
@@ -270,15 +315,59 @@ function fetchCategoriesOrError() {
 
 /**
  * Screen 3: Event Insight Card (일정 상세 - eventOpenTrigger)
+ *
+ * Status section renders three live facts: event title (from CalendarApp),
+ * applied colorId (from event.getColor()), and the current classification
+ * (via POST /api/classify/preview). Preview is rule-only — if it misses,
+ * we surface "다음 동기화 시 AI 분류 시도" when the backend has
+ * OPENAI_API_KEY, otherwise "매칭된 규칙 없음".
  */
 function onEventOpen(e) {
   var title = "선택된 일정 없음";
+  var appliedColorLabel = "기본";
+  var previewResult = null; // { source, category?, matchedKeyword?, llmAvailable?, error? }
+
   if (e && e.calendar && e.calendar.id) {
+    var event = null;
     try {
-      var event = CalendarApp.getCalendarById(e.calendar.calendarId).getEventById(e.calendar.id);
+      event = CalendarApp.getCalendarById(e.calendar.calendarId).getEventById(e.calendar.id);
       title = event.getTitle() || "제목 없음";
-    } catch(err) {
-      // Cannot access event or event doesn't exist
+    } catch (err) {
+      // Calendar event inaccessible — title stays "선택된 일정 없음",
+      // preview won't be fetched.
+    }
+
+    if (event) {
+      // getColor() returns the CalendarApp.EventColor enum VALUE, which is
+      // the raw colorId string ("1"-"11") or "" for the calendar default.
+      try {
+        var rawColorId = event.getColor();
+        if (rawColorId) {
+          var colors = getCalendarColors();
+          for (var ci = 0; ci < colors.length; ci++) {
+            if (colors[ci].id === rawColorId) {
+              appliedColorLabel = colors[ci].label;
+              break;
+            }
+          }
+        }
+      } catch (err) {
+        // Leave default label on any EventColor access failure.
+      }
+
+      previewResult = fetchPreviewOrError({
+        summary: title,
+        description: (function () {
+          try { return event.getDescription() || ""; } catch (_) { return ""; }
+        })(),
+        location: (function () {
+          try { return event.getLocation() || ""; } catch (_) { return ""; }
+        })(),
+      });
+
+      if (previewResult && previewResult.error === 'AUTH_EXPIRED') {
+        return buildReconnectCard();
+      }
     }
   }
 
@@ -286,16 +375,17 @@ function onEventOpen(e) {
   builder.setHeader(CardService.newCardHeader()
     .setTitle("일정 색상 분석")
     .setSubtitle(title));
-  
+
   var statusSection = CardService.newCardSection()
     .setHeader("현재 상태");
-    
+
   statusSection.addWidget(CardService.newDecoratedText()
-    .setText("적용된 색상: 🔵 파란색"));
-    
+    .setText("적용된 색상: " + appliedColorLabel));
+
   statusSection.addWidget(CardService.newDecoratedText()
-    .setText("매칭된 규칙: '주간회의' (규칙 기반)"));
-    
+    .setText(formatMatchLine(previewResult))
+    .setWrapText(true));
+
   builder.addSection(statusSection);
   
   var overrideSection = CardService.newCardSection()
@@ -424,7 +514,10 @@ function buildRuleManagementCard(e) {
   addSection.addWidget(CardService.newTextInput()
     .setFieldName("rule_keyword")
     .setTitle("키워드 (예: 주간회의)"));
-    
+
+  addSection.addWidget(CardService.newTextParagraph()
+    .setText("<font color=\"#B06000\">⚠️ 2자 이하 키워드는 의도치 않은 이벤트까지 매칭될 수 있습니다.</font>"));
+
   var colorGrid = CardService.newGrid()
     .setTitle("캘린더 색상 선택")
     .setNumColumns(6)
@@ -459,7 +552,7 @@ function buildRuleManagementCard(e) {
     .setOnClickAction(CardService.newAction().setFunctionName("actionAddRule")));
 
   addSection.addWidget(CardService.newDecoratedText()
-    .setText("💡 키워드가 제목·설명에 포함되면 색상이 적용됩니다(부분 일치). 너무 짧은 키워드는 의도치 않은 매칭을 유발할 수 있어요.")
+    .setText("💡 키워드가 제목·설명에 부분 일치하면 색상이 적용됩니다. 수동으로 바꾼 색상은 보존됩니다.")
     .setWrapText(true));
 
   builder.addSection(addSection);
@@ -601,7 +694,7 @@ function actionDeleteRule(e) {
     });
     return CardService.newActionResponseBuilder()
       .setNavigation(CardService.newNavigation().updateCard(buildRuleManagementCard(e)))
-      .setNotification(CardService.newNotification().setText("규칙이 삭제되었습니다."))
+      .setNotification(CardService.newNotification().setText("규칙이 삭제되었습니다. 적용된 색상은 곧 원상복구됩니다."))
       .build();
   } catch (err) {
     if (err.message === 'AUTH_EXPIRED') {

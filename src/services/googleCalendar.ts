@@ -48,6 +48,14 @@ export type ListParams = {
   timeMin?: string | undefined;
   timeMax?: string | undefined;
   maxResults?: number | undefined;
+  // Filter on events.list by `extendedProperties.private` entries. Google
+  // accepts the query parameter `privateExtendedProperty=key=value` (repeated
+  // for multiple filters). §5 후속 B uses this to find events written by a
+  // specific rule's autocolor_category marker without iterating the full
+  // calendar. Server-side semantics: all supplied filters must match (AND),
+  // and the parameter is incompatible with `syncToken` — callers should use
+  // a time window instead.
+  privateExtendedProperty?: string | string[] | undefined;
 };
 
 type GoogleErrorBody = {
@@ -142,6 +150,12 @@ export async function listEvents(
   if (params.pageToken) qs.set("pageToken", params.pageToken);
   if (params.timeMin) qs.set("timeMin", params.timeMin);
   if (params.timeMax) qs.set("timeMax", params.timeMax);
+  if (params.privateExtendedProperty) {
+    const filters = Array.isArray(params.privateExtendedProperty)
+      ? params.privateExtendedProperty
+      : [params.privateExtendedProperty];
+    for (const f of filters) qs.append("privateExtendedProperty", f);
+  }
 
   const url = `${CALENDAR_BASE}/calendars/${encodeURIComponent(calendarId)}/events?${qs}`;
   const res = await fetch(url, {
@@ -179,4 +193,45 @@ export async function patchEventColor(
     body: JSON.stringify(body),
   });
   if (!res.ok) await throwApiError(res, "events.patch");
+}
+
+// §5 후속 B — rule-deletion rollback. PATCH an event to clear both the
+// color override AND the three autocolor ownership markers. `null` on a
+// top-level field (`colorId`) resets it to the calendar default; `null`
+// under `extendedProperties.private.<key>` deletes that specific key while
+// preserving other apps' private properties (Google merges this map
+// per-key). Separate from `patchEventColor` to keep its `colorId: string`
+// contract tight — a union-typed `colorId: string | null` would force every
+// existing caller to re-narrow.
+//
+// **Contingency:** if Google rejects `colorId: null` (observed historically
+// for some resource types), swap to an empty string or a two-step PATCH
+// (clear marker → clear color) — callers don't need to change.
+export async function clearEventColor(
+  accessToken: string,
+  calendarId: string,
+  eventId: string,
+): Promise<void> {
+  const url = `${CALENDAR_BASE}/calendars/${encodeURIComponent(
+    calendarId,
+  )}/events/${encodeURIComponent(eventId)}`;
+  const body = {
+    colorId: null,
+    extendedProperties: {
+      private: {
+        [AUTOCOLOR_KEYS.version]: null,
+        [AUTOCOLOR_KEYS.color]: null,
+        [AUTOCOLOR_KEYS.category]: null,
+      },
+    },
+  };
+  const res = await fetch(url, {
+    method: "PATCH",
+    headers: {
+      authorization: `Bearer ${accessToken}`,
+      "content-type": "application/json",
+    },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) await throwApiError(res, "events.patch.clear");
 }

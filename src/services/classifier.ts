@@ -17,6 +17,11 @@ export type Classification = {
   colorId: string;
   categoryId: string;
   reason: string;
+  // Populated only on rule-based hits. The specific user-authored keyword
+  // whose substring matched — surfaced through the preview endpoint so the
+  // sidebar can show "키워드: <kw>". LLM hits leave this undefined (the LLM
+  // reasons about category, not per-keyword evidence).
+  matchedKeyword?: string;
 };
 
 export type ClassifyEventFn = (
@@ -57,6 +62,7 @@ export const classifyEvent: ClassifyEventFn = async (event, ctx) => {
           colorId: cat.colorId,
           categoryId: cat.id,
           reason: `rule_match:${kw}`,
+          matchedKeyword: kw,
         };
       }
     }

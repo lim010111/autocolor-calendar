@@ -8,9 +8,15 @@ vi.mock("../db", () => ({ getDb: vi.fn() }));
 vi.mock("../services/sessionService", () => ({
   verifySession: vi.fn(),
 }));
+vi.mock("../queues/syncProducer", () => ({
+  enqueueSync: vi.fn(async () => undefined),
+  SyncQueueUnavailableError: class extends Error {},
+}));
 
 import { app } from "../index";
 import { getDb } from "../db";
+import { syncState } from "../db/schema";
+import { enqueueSync } from "../queues/syncProducer";
 import { verifySession } from "../services/sessionService";
 
 const USER_A = "00000000-0000-0000-0000-00000000000a";
@@ -139,19 +145,35 @@ class DuplicateNameError extends Error {
   }
 }
 
+type SyncStateRow = { userId: string; calendarId: string };
+
 type FakeDbHandle = {
   db: unknown;
   close: () => Promise<void>;
-  state: { rows: Row[] };
+  state: { rows: Row[]; syncStateRows: SyncStateRow[] };
 };
 
 function makeFakeDb(initial: Row[] = []): FakeDbHandle {
-  const state = { rows: [...initial] };
+  const state = { rows: [...initial], syncStateRows: [] as SyncStateRow[] };
 
   const db = {
     select(_cols: unknown) {
       return {
-        from(_table: unknown) {
+        from(table: unknown) {
+          if (table === syncState) {
+            return {
+              where(whereSql: unknown) {
+                const constraints = extractEq(whereSql);
+                const uid = constraints["user_id"];
+                const filtered = state.syncStateRows.filter(
+                  (r) => r.userId === uid,
+                );
+                return Promise.resolve(filtered);
+              },
+            };
+          }
+          // default: categories table
+          void table;
           return {
             where(whereSql: unknown) {
               const filtered = state.rows.filter((r) => matches(r, whereSql));
@@ -528,6 +550,54 @@ describe("/api/categories — delete (DELETE)", () => {
     });
     expect(res.status).toBe(204);
     expect(currentDb.state.rows).toHaveLength(0);
+  });
+
+  it("enqueues one color_rollback job per calendar in sync_state", async () => {
+    currentDb.state.rows.push(row({ id: CAT_A_ID, userId: USER_A }));
+    currentDb.state.syncStateRows.push(
+      { userId: USER_A, calendarId: "primary" },
+      { userId: USER_A, calendarId: "secondary@group.calendar.google.com" },
+      { userId: USER_B, calendarId: "other-user-cal" },
+    );
+    const res = await invoke(`/api/categories/${CAT_A_ID}`, {
+      method: "DELETE",
+      userToken: "token-a",
+    });
+    expect(res.status).toBe(204);
+    const calls = vi.mocked(enqueueSync).mock.calls;
+    // Exactly two jobs — user A's two calendars. User B's row must not leak.
+    expect(calls).toHaveLength(2);
+    const jobs = calls.map((c) => c[1]);
+    expect(jobs.every((j) => j.type === "color_rollback")).toBe(true);
+    expect(jobs.map((j) => (j as { calendarId: string }).calendarId).sort()).toEqual([
+      "primary",
+      "secondary@group.calendar.google.com",
+    ]);
+    expect(
+      jobs.every((j) => (j as { categoryId: string }).categoryId === CAT_A_ID),
+    ).toBe(true);
+  });
+
+  it("enqueues nothing when user has no sync_state rows", async () => {
+    currentDb.state.rows.push(row({ id: CAT_A_ID, userId: USER_A }));
+    const res = await invoke(`/api/categories/${CAT_A_ID}`, {
+      method: "DELETE",
+      userToken: "token-a",
+    });
+    expect(res.status).toBe(204);
+    expect(vi.mocked(enqueueSync)).not.toHaveBeenCalled();
+  });
+
+  it("does NOT enqueue when DELETE target row is missing (404 short-circuit)", async () => {
+    // No row exists for this id + user — the DELETE returns 404 and the
+    // enqueue fan-out must not run (otherwise we'd spam rollback jobs for
+    // categories that were already cleaned up).
+    const res = await invoke(`/api/categories/${CAT_A_ID}`, {
+      method: "DELETE",
+      userToken: "token-a",
+    });
+    expect(res.status).toBe(404);
+    expect(vi.mocked(enqueueSync)).not.toHaveBeenCalled();
   });
 
   it("404 when id belongs to another user (tenant isolation)", async () => {

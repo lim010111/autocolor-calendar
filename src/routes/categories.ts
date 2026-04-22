@@ -3,9 +3,10 @@ import { Hono } from "hono";
 import { z } from "zod";
 
 import { getDb } from "../db";
-import { categories } from "../db/schema";
+import { categories, syncState } from "../db/schema";
 import type { HonoEnv } from "../env";
 import { authMiddleware } from "../middleware/auth";
+import { enqueueSync } from "../queues/syncProducer";
 
 export const categoriesRoutes = new Hono<HonoEnv>();
 
@@ -168,6 +169,54 @@ categoriesRoutes.delete("/:id", async (c) => {
       .where(and(eq(categories.userId, userId), eq(categories.id, idParse.data)))
       .returning({ id: categories.id });
     if (deleted.length === 0) return c.json({ error: "not_found" }, 404);
+
+    // §5 후속 B — fan out per-calendar rollback jobs so events painted by
+    // this category revert to the calendar's default color. sync_state
+    // holds every calendar we have ever synced for this user, including
+    // deactivated rows — include them all because events painted before
+    // deactivation still wear our marker.
+    //
+    // Failure model: enqueue writes the job into SYNC_QUEUE outside any
+    // Postgres transaction, so a partial failure (e.g. queue binding
+    // transient error on the 2nd of 3 calendars) leaves orphan markers.
+    // We log explicitly so §6 observability can surface the rate, and
+    // still return 204 — re-deleting the same category won't help (row is
+    // gone), the recovery path is a future manual "resync cleanup" tool.
+    const calendars = await db
+      .select({ calendarId: syncState.calendarId })
+      .from(syncState)
+      .where(eq(syncState.userId, userId));
+
+    const enqueuePromise = Promise.allSettled(
+      calendars.map((row) =>
+        enqueueSync(c.env, {
+          type: "color_rollback",
+          userId,
+          calendarId: row.calendarId,
+          categoryId: idParse.data,
+          enqueuedAt: Date.now(),
+        }),
+      ),
+    ).then((results) => {
+      for (let i = 0; i < results.length; i++) {
+        const r = results[i]!;
+        if (r.status === "rejected") {
+          console.error(
+            JSON.stringify({
+              level: "error",
+              msg: "color_rollback enqueue failed",
+              userId,
+              calendarId: calendars[i]!.calendarId,
+              categoryId: idParse.data,
+              error:
+                r.reason instanceof Error ? r.reason.message : String(r.reason),
+            }),
+          );
+        }
+      }
+    });
+    c.executionCtx.waitUntil(enqueuePromise);
+
     return c.body(null, 204);
   } finally {
     c.executionCtx.waitUntil(close());
