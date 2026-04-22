@@ -1,6 +1,8 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
+  AUTOCOLOR_KEYS,
+  AUTOCOLOR_MARKER_VERSION,
   CalendarApiError,
   listEvents,
   patchEventColor,
@@ -166,6 +168,41 @@ describe("googleCalendar.patchEventColor", () => {
     expect(seen[0]!.method).toBe("PATCH");
     expect(seen[0]!.body).toBe(JSON.stringify({ colorId: "5" }));
     expect(seen[0]!.url).toContain("/events/evt-1");
+  });
+
+  it("omits extendedProperties when 5th arg not passed", async () => {
+    const seen: string[] = [];
+    mockFetch(async (_url, init) => {
+      seen.push(String(init?.body));
+      return new Response("{}", { status: 200 });
+    });
+    await patchEventColor(AT, CAL, "evt-1", "5");
+    const parsed = JSON.parse(seen[0]!);
+    expect(parsed).toEqual({ colorId: "5" });
+    expect("extendedProperties" in parsed).toBe(false);
+  });
+
+  it("includes extendedProperties.private when marker passed", async () => {
+    const seen: string[] = [];
+    mockFetch(async (_url, init) => {
+      seen.push(String(init?.body));
+      return new Response("{}", { status: 200 });
+    });
+    await patchEventColor(AT, CAL, "evt-1", "5", {
+      [AUTOCOLOR_KEYS.version]: AUTOCOLOR_MARKER_VERSION,
+      [AUTOCOLOR_KEYS.color]: "5",
+      [AUTOCOLOR_KEYS.category]: "cat-abc",
+    });
+    expect(JSON.parse(seen[0]!)).toEqual({
+      colorId: "5",
+      extendedProperties: {
+        private: {
+          [AUTOCOLOR_KEYS.version]: "1",
+          [AUTOCOLOR_KEYS.color]: "5",
+          [AUTOCOLOR_KEYS.category]: "cat-abc",
+        },
+      },
+    });
   });
 
   it("maps 404 to kind=not_found", async () => {

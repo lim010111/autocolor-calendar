@@ -1,5 +1,19 @@
 const CALENDAR_BASE = "https://www.googleapis.com/calendar/v3";
 
+// §5.4 ownership marker. Three keys written under `extendedProperties.private`
+// when this app PATCHes a color. `version` lets us evolve the schema without a
+// retroactive backfill; `color` records the value we wrote so the next sync
+// can detect post-write user edits (current colorId !== stored color → user
+// touched it after us → treat as manual); `category` is forward-compat for the
+// deferred rule-deletion rollback (TODO §5 line 95). See src/CLAUDE.md "Color
+// ownership marker" for the full contract.
+export const AUTOCOLOR_MARKER_VERSION = "1";
+export const AUTOCOLOR_KEYS = {
+  version: "autocolor_v",
+  color: "autocolor_color",
+  category: "autocolor_category",
+} as const;
+
 export type CalendarEvent = {
   id: string;
   status?: "confirmed" | "tentative" | "cancelled";
@@ -15,6 +29,10 @@ export type CalendarEvent = {
   // 실제 응답에 존재하는 필드를 타입 정합성만 맞춘 것이다. 다른 경로
   // (classifier / calendarSync)는 여전히 이 필드를 읽지 않는다.
   attendees?: Array<{ email?: string; displayName?: string; self?: boolean }>;
+  // §5.4 ownership marker source. Only `private` is modeled — we never read
+  // or write `shared`. Google omits this field entirely on events with no
+  // extended properties, so all reads must be optional-chained.
+  extendedProperties?: { private?: Record<string, string> };
   updated?: string;
 };
 
@@ -103,6 +121,13 @@ async function throwApiError(res: Response, op: string): Promise<never> {
   );
 }
 
+// IMPORTANT (§5.4): we currently rely on Google's default response shape,
+// which includes `extendedProperties` on every event that has it. If a
+// future change adds a `fields=` mask here for bandwidth optimization, the
+// mask MUST include `items(extendedProperties/private)` (or at minimum
+// `items(extendedProperties/private/autocolor_v,autocolor_color,autocolor_category)`).
+// Dropping that field silently breaks ownership detection — re-applies stop
+// happening on rule changes, with no error surfaced.
 export async function listEvents(
   accessToken: string,
   calendarId: string,
@@ -131,17 +156,27 @@ export async function patchEventColor(
   calendarId: string,
   eventId: string,
   colorId: string,
+  // Optional ownership marker keys, written under
+  // `extendedProperties.private`. Google merges this map per-key with any
+  // existing private properties on the event, so other apps' keys are
+  // preserved. Omit to send `{ colorId }` only (regression-safe for callers
+  // that don't care about ownership tracking).
+  extendedPrivate?: Record<string, string>,
 ): Promise<void> {
   const url = `${CALENDAR_BASE}/calendars/${encodeURIComponent(
     calendarId,
   )}/events/${encodeURIComponent(eventId)}`;
+  const body: Record<string, unknown> = { colorId };
+  if (extendedPrivate) {
+    body.extendedProperties = { private: extendedPrivate };
+  }
   const res = await fetch(url, {
     method: "PATCH",
     headers: {
       authorization: `Bearer ${accessToken}`,
       "content-type": "application/json",
     },
-    body: JSON.stringify({ colorId }),
+    body: JSON.stringify(body),
   });
   if (!res.ok) await throwApiError(res, "events.patch");
 }

@@ -6,6 +6,8 @@ import type { Bindings } from "../env";
 import type { ClassifyContext, ClassifyEventFn } from "./classifier";
 import { buildDefaultClassifier } from "./classifierChain";
 import {
+  AUTOCOLOR_KEYS,
+  AUTOCOLOR_MARKER_VERSION,
   CalendarApiError,
   listEvents,
   patchEventColor,
@@ -129,17 +131,39 @@ async function processEvent(
   }
 
   const current = event.colorId ?? "";
-  // Idempotency: already our target color → skip PATCH.
-  if (current === classification.colorId) {
+  const target = classification.colorId;
+  // Invariant: the marker is stamped only on colors *this code actually
+  // wrote*. We never retro-claim ownership of a color that happens to match
+  // our target, even if the colorId equality lets us short-circuit the
+  // PATCH below.
+  if (current === target) {
     summary.skipped_equal += 1;
     return;
   }
-  // Manual override protection: user picked a different color → don't touch.
-  if (current) {
+  // §5.4 ownership-aware skip. Treat the event as user-manual unless our
+  // marker color matches the current colorId — i.e., the event still wears
+  // the exact color we last wrote. If the user changed the color after our
+  // PATCH (or never let us touch it), the marker color won't match `current`
+  // and we leave the event alone. Version gating: if `autocolor_v` does not
+  // match the version this code understands, treat the marker as opaque
+  // (skip rather than misinterpret), so a v1-aware deploy that briefly sees
+  // a v2 marker during a rollback window won't re-color v2-owned events.
+  const priv = event.extendedProperties?.private;
+  const markerVersion = priv?.[AUTOCOLOR_KEYS.version];
+  const ownedColor =
+    markerVersion === AUTOCOLOR_MARKER_VERSION
+      ? priv?.[AUTOCOLOR_KEYS.color]
+      : undefined;
+  const appOwned = ownedColor !== undefined && ownedColor === current;
+  if (current !== "" && !appOwned) {
     summary.skipped_manual += 1;
     return;
   }
-  await patchEventColor(accessToken, ctx.calendarId, event.id, classification.colorId);
+  await patchEventColor(accessToken, ctx.calendarId, event.id, target, {
+    [AUTOCOLOR_KEYS.version]: AUTOCOLOR_MARKER_VERSION,
+    [AUTOCOLOR_KEYS.color]: target,
+    [AUTOCOLOR_KEYS.category]: classification.categoryId,
+  });
   summary.updated += 1;
 }
 
