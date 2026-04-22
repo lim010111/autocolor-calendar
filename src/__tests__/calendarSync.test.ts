@@ -33,6 +33,17 @@ function makeDb(opts: {
     scope: string;
     needsReauth: boolean;
   } | null;
+  // §5.3: rows returned by loadCategories (orderBy tail of categories select).
+  categories?: Array<{
+    id: string;
+    name: string;
+    colorId: string;
+    keywords: string[];
+    priority: number;
+  }>;
+  // §5.3: row returned by reserveLlmCall's UPSERT … RETURNING. Present =
+  // quota available, omit = over-quota (empty RETURNING → ok: false).
+  reserveRow?: { callCount: number };
 }) {
   const updates: Array<Record<string, unknown>> = [];
   const inserts: Array<Record<string, unknown>> = [];
@@ -47,7 +58,7 @@ function makeDb(opts: {
             // oauth_tokens select for getGoogleRefreshToken
             return opts.tokenRow ? [opts.tokenRow] : [];
           },
-          orderBy: async () => [], // for categories: no rules configured
+          orderBy: async () => opts.categories ?? [],
         }),
       }),
     }),
@@ -60,7 +71,12 @@ function makeDb(opts: {
     insert: (_table: unknown) => ({
       values: (v: Record<string, unknown>) => {
         inserts.push(v);
-        return { onConflictDoNothing: async () => undefined };
+        return {
+          onConflictDoNothing: async () => undefined,
+          onConflictDoUpdate: (_args: unknown) => ({
+            returning: async () => (opts.reserveRow ? [opts.reserveRow] : []),
+          }),
+        };
       },
     }),
   };
@@ -384,6 +400,136 @@ describe("calendarSync.runIncrementalSync", () => {
     expect(result.reason).toBe("reauth_required");
     // No nextSyncToken write should have happened.
     expect(updates.some((u) => "nextSyncToken" in u)).toBe(false);
+  });
+});
+
+describe("calendarSync — §5.3 LLM fallback counter wiring", () => {
+  const original = globalThis.fetch;
+  afterEach(() => {
+    globalThis.fetch = original;
+    vi.restoreAllMocks();
+  });
+
+  it("injected classifyEvent returning null → no_match bumps, LLM counters stay 0", async () => {
+    const env = makeEnv();
+    const tokenRow = await seedTokenRow(env);
+    const { db } = makeDb({ nextSyncToken: "t", tokenRow });
+
+    mockFetchQueue([
+      new Response(
+        JSON.stringify({ access_token: "at", expires_in: 3600, scope: "openid", token_type: "Bearer" }),
+        { status: 200 },
+      ),
+      new Response(
+        JSON.stringify({
+          items: [{ id: "e", status: "confirmed", summary: "x", colorId: "" }],
+          nextSyncToken: "fresh",
+        }),
+        { status: 200 },
+      ),
+    ]);
+
+    const nullClassify: ClassifyEventFn = async () => null;
+    const result = await runIncrementalSync({
+      db,
+      env,
+      userId: USER_ID,
+      calendarId: CAL,
+      classifyEvent: nullClassify,
+    });
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.summary.no_match).toBe(1);
+    // Injection seam bypasses the chain entirely → LLM counters stay at 0.
+    expect(result.summary.llm_attempted).toBe(0);
+    expect(result.summary.llm_succeeded).toBe(0);
+    expect(result.summary.llm_timeout).toBe(0);
+    expect(result.summary.llm_quota_exceeded).toBe(0);
+  });
+
+  it("default chain + OPENAI_API_KEY + stubbed OpenAI hit → llm_attempted=1, llm_succeeded=1, updated=1", async () => {
+    // §5.3 positive wiring test (review I1). Goes through the real
+    // buildDefaultClassifier + classifyWithLlm + reserveLlmCall path with
+    // fetch stubbed so no network is touched.
+    const env: Bindings = { ...makeEnv(), OPENAI_API_KEY: "sk-test" };
+    const tokenRow = await seedTokenRow(env);
+    const { db } = makeDb({
+      nextSyncToken: "t",
+      tokenRow,
+      categories: [
+        { id: "c-1", name: "회의", colorId: "9", keywords: ["회의"], priority: 100 },
+      ],
+      reserveRow: { callCount: 1 },
+    });
+
+    // Rule leg misses (summary "totally unrelated" has no keyword match),
+    // so the chain delegates to LLM, which returns "회의" → colorId "9".
+    mockFetchQueue([
+      // 1. token refresh
+      new Response(
+        JSON.stringify({ access_token: "at", expires_in: 3600, scope: "openid", token_type: "Bearer" }),
+        { status: 200 },
+      ),
+      // 2. events.list
+      new Response(
+        JSON.stringify({
+          items: [
+            { id: "e1", status: "confirmed", summary: "totally unrelated", colorId: "" },
+          ],
+          nextSyncToken: "fresh",
+        }),
+        { status: 200 },
+      ),
+      // 3. OpenAI chat completions
+      new Response(
+        JSON.stringify({
+          choices: [{ message: { content: JSON.stringify({ category_name: "회의" }) } }],
+        }),
+        { status: 200 },
+      ),
+      // 4. events.patch
+      new Response("", { status: 200 }),
+    ]);
+
+    const result = await runIncrementalSync({ db, env, userId: USER_ID, calendarId: CAL });
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.summary.llm_attempted).toBe(1);
+    expect(result.summary.llm_succeeded).toBe(1);
+    expect(result.summary.llm_timeout).toBe(0);
+    expect(result.summary.llm_quota_exceeded).toBe(0);
+    expect(result.summary.updated).toBe(1);
+    expect(result.summary.no_match).toBe(0);
+  });
+
+  it("default chain + no OPENAI_API_KEY → rule-miss collapses to no_match, LLM counters stay 0", async () => {
+    // env without OPENAI_API_KEY: chain's LLM leg short-circuits to null
+    // without bumping any LLM counter, processEvent rolls up to no_match.
+    const env = makeEnv();
+    const tokenRow = await seedTokenRow(env);
+    const { db } = makeDb({ nextSyncToken: "t", tokenRow });
+
+    mockFetchQueue([
+      new Response(
+        JSON.stringify({ access_token: "at", expires_in: 3600, scope: "openid", token_type: "Bearer" }),
+        { status: 200 },
+      ),
+      new Response(
+        JSON.stringify({
+          items: [{ id: "e", status: "confirmed", summary: "no match", colorId: "" }],
+          nextSyncToken: "fresh",
+        }),
+        { status: 200 },
+      ),
+    ]);
+
+    const result = await runIncrementalSync({ db, env, userId: USER_ID, calendarId: CAL });
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.summary.no_match).toBe(1);
+    expect(result.summary.llm_attempted).toBe(0);
+    expect(result.summary.llm_succeeded).toBe(0);
   });
 });
 

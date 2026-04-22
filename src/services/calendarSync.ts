@@ -4,7 +4,7 @@ import type { PostgresJsDatabase } from "drizzle-orm/postgres-js";
 import { categories, syncState } from "../db/schema";
 import type { Bindings } from "../env";
 import type { ClassifyContext, ClassifyEventFn } from "./classifier";
-import { classifyEvent as defaultClassify } from "./classifier";
+import { buildDefaultClassifier } from "./classifierChain";
 import {
   CalendarApiError,
   listEvents,
@@ -22,6 +22,16 @@ export type SyncSummary = {
   skipped_equal: number;
   cancelled: number;
   no_match: number;
+  // §5.3 LLM fallback counters. `llm_attempted` fires whenever the chain
+  // delegates to the LLM leg (after rule-miss and pre-fetch). The three
+  // outcome counters are disjoint: a single attempt bumps at most one of
+  // {succeeded, timeout, quota_exceeded} (http_error / bad_response /
+  // disabled fold silently into no_match without a dedicated counter in
+  // this release — see §6 observability for the full breakdown table).
+  llm_attempted: number;
+  llm_succeeded: number;
+  llm_timeout: number;
+  llm_quota_exceeded: number;
   stored_next_sync_token: boolean;
   started_at: string;
   finished_at: string;
@@ -70,6 +80,10 @@ function makeSummary(): SyncSummary {
     skipped_equal: 0,
     cancelled: 0,
     no_match: 0,
+    llm_attempted: 0,
+    llm_succeeded: 0,
+    llm_timeout: 0,
+    llm_quota_exceeded: 0,
     stored_next_sync_token: false,
     started_at: new Date().toISOString(),
     finished_at: "",
@@ -178,7 +192,25 @@ async function runPagedList(
   chunked: boolean,
 ): Promise<RunResult> {
   const summary = makeSummary();
-  const classify = ctx.classifyEvent ?? defaultClassify;
+  const classify =
+    ctx.classifyEvent ??
+    buildDefaultClassifier({
+      db: ctx.db,
+      env: ctx.env,
+      userId: ctx.userId,
+      onLlmAttempted: () => {
+        summary.llm_attempted += 1;
+      },
+      onLlmSucceeded: () => {
+        summary.llm_succeeded += 1;
+      },
+      onLlmTimeout: () => {
+        summary.llm_timeout += 1;
+      },
+      onLlmQuotaExceeded: () => {
+        summary.llm_quota_exceeded += 1;
+      },
+    });
 
   let accessToken: string;
   try {

@@ -48,6 +48,8 @@ export default [
         Message: "readonly",
         MessageBatch: "readonly",
         ScheduledEvent: "readonly",
+        AbortSignal: "readonly",
+        structuredClone: "readonly",
       },
     },
     plugins: {
