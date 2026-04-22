@@ -57,6 +57,13 @@
       "when": 1776659891955,
       "tag": "0007_remove_embedding",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1776689164005,
+      "tag": "0008_llm_usage_daily",
+      "breakpoints": true
     }
   ]
 }

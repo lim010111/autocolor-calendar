@@ -3,10 +3,12 @@ import {
   boolean,
   check,
   customType,
+  date,
   index,
   integer,
   jsonb,
   pgTable,
+  primaryKey,
   text,
   timestamp,
   unique,
@@ -129,6 +131,24 @@ export const syncState = pgTable(
     // migration is authoritative. Left here so reviewers see the intent
     // alongside the column definition.
   ],
+);
+
+// §5.3 LLM fallback cost guard. Per-user daily call counter; `reserveLlmCall`
+// bumps this via atomic UPSERT before the outbound OpenAI request so a hung
+// call can't cause runaway cost. `day` is UTC — see 0008 migration note on
+// the ~9h KST offset tradeoff.
+export const llmUsageDaily = pgTable(
+  "llm_usage_daily",
+  {
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    day: date("day").notNull(),
+    callCount: integer("call_count").notNull().default(0),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [primaryKey({ columns: [t.userId, t.day] })],
 );
 
 export const syncFailures = pgTable(
