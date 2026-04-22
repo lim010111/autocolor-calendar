@@ -10,6 +10,10 @@ import {
   runIncrementalSync,
   type RunResult,
 } from "../services/calendarSync";
+import {
+  runColorRollback,
+  type RollbackResult,
+} from "../services/colorRollback";
 import { markReauthRequired } from "../services/oauthTokenService";
 import { enqueueSync } from "./syncProducer";
 import type { SyncJob } from "./types";
@@ -34,6 +38,20 @@ async function handleOne(
   const job = msg.body;
   const { db, close } = getDb(env);
   try {
+    if (job.type === "color_rollback") {
+      // §5 후속 B — rollback doesn't bootstrap sync_state (it's a per-event
+      // cleanup, not a sync) and deliberately does not take the sync claim.
+      // Holding the claim would coalesce concurrent sync runs and freeze
+      // /sync/run's user-visible rate limit for the duration of the
+      // rollback. Google's last-writer-wins PATCH makes overlap benign.
+      const rollback = await runColorRollback(
+        { db, env, userId: job.userId, calendarId: job.calendarId },
+        job.categoryId,
+      );
+      await applyRollbackResult(db, msg, job, rollback);
+      return;
+    }
+
     // Bootstrap sync_state before claiming. `/sync/run` and `/sync/bootstrap`
     // already upsert this row, but a DLQ replay, orphaned queue message, or
     // manual injection could deliver a job whose row is missing — without
@@ -113,6 +131,50 @@ async function handleOne(
   } finally {
     execCtx.waitUntil(close());
   }
+}
+
+// §5 후속 B — rollback result → Queue ack/retry map. Deliberately does NOT
+// write to sync_state.last_error (rollback failure shouldn't pollute the
+// user-visible sync health panel). Reauth flips the global needs_reauth
+// flag through markReauthRequired so the user's next /me call surfaces it.
+async function applyRollbackResult(
+  db: ReturnType<typeof getDb>["db"],
+  msg: Message<SyncJob>,
+  job: Extract<SyncJob, { type: "color_rollback" }>,
+  result: RollbackResult,
+): Promise<void> {
+  if (result.ok) {
+    console.log(
+      JSON.stringify({
+        level: "info",
+        msg: "color_rollback completed",
+        job: safeJob(job),
+        summary: result.summary,
+      }),
+    );
+    msg.ack();
+    return;
+  }
+  if (result.reason === "reauth_required") {
+    await markReauthRequired(db, job.userId, result.error.message).catch(
+      () => undefined,
+    );
+    msg.ack();
+    return;
+  }
+  if (result.reason === "forbidden" || result.reason === "not_found") {
+    console.log(
+      JSON.stringify({
+        level: "info",
+        msg: `color_rollback aborted (${result.reason})`,
+        job: safeJob(job),
+      }),
+    );
+    msg.ack();
+    return;
+  }
+  const delay = result.retryAfterSec ?? computeBackoffSeconds(msg.attempts);
+  msg.retry({ delaySeconds: delay });
 }
 
 async function applyResult(
@@ -227,5 +289,6 @@ function safeJob(job: SyncJob): Record<string, unknown> {
     userId: job.userId,
     calendarId: job.calendarId,
     reason: "reason" in job ? job.reason : undefined,
+    categoryId: "categoryId" in job ? job.categoryId : undefined,
   };
 }

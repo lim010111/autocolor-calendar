@@ -4,6 +4,7 @@ import {
   AUTOCOLOR_KEYS,
   AUTOCOLOR_MARKER_VERSION,
   CalendarApiError,
+  clearEventColor,
   listEvents,
   patchEventColor,
 } from "../services/googleCalendar";
@@ -212,6 +213,101 @@ describe("googleCalendar.patchEventColor", () => {
     await expect(patchEventColor(AT, CAL, "missing", "1")).rejects.toSatisfy(
       (err) => {
         expect((err as CalendarApiError).kind).toBe("not_found");
+        return true;
+      },
+    );
+  });
+});
+
+describe("googleCalendar — listEvents privateExtendedProperty", () => {
+  const original = globalThis.fetch;
+  afterEach(() => {
+    globalThis.fetch = original;
+  });
+
+  it("appends a single privateExtendedProperty filter verbatim", async () => {
+    const seen: string[] = [];
+    mockFetch(async (url) => {
+      seen.push(url);
+      return new Response(JSON.stringify({ items: [] }), { status: 200 });
+    });
+    await listEvents(AT, CAL, {
+      timeMin: "2026-01-01T00:00:00Z",
+      privateExtendedProperty: "autocolor_category=cat-abc",
+    });
+    expect(seen[0]).toContain(
+      "privateExtendedProperty=autocolor_category%3Dcat-abc",
+    );
+  });
+
+  it("appends multiple privateExtendedProperty filters when given an array", async () => {
+    const seen: string[] = [];
+    mockFetch(async (url) => {
+      seen.push(url);
+      return new Response(JSON.stringify({ items: [] }), { status: 200 });
+    });
+    await listEvents(AT, CAL, {
+      timeMin: "2026-01-01T00:00:00Z",
+      privateExtendedProperty: ["autocolor_v=1", "autocolor_category=cat-abc"],
+    });
+    // URLSearchParams.append with repeated keys produces two parameter
+    // occurrences, which is the spec Google requires for AND semantics.
+    const url = seen[0]!;
+    const matches = url.match(/privateExtendedProperty=/g) ?? [];
+    expect(matches.length).toBe(2);
+    expect(url).toContain("privateExtendedProperty=autocolor_v%3D1");
+    expect(url).toContain(
+      "privateExtendedProperty=autocolor_category%3Dcat-abc",
+    );
+  });
+});
+
+describe("googleCalendar.clearEventColor", () => {
+  const original = globalThis.fetch;
+  afterEach(() => {
+    globalThis.fetch = original;
+  });
+
+  it("PATCHes colorId:null + three null markers under extendedProperties.private", async () => {
+    const seen: { method: string | undefined; body: string | null; url: string }[] = [];
+    mockFetch(async (url, init) => {
+      seen.push({
+        url,
+        method: init?.method,
+        body: init?.body ? String(init.body) : null,
+      });
+      return new Response("{}", { status: 200 });
+    });
+    await clearEventColor(AT, CAL, "evt-99");
+    expect(seen[0]!.method).toBe("PATCH");
+    expect(seen[0]!.url).toContain("/events/evt-99");
+    expect(JSON.parse(seen[0]!.body!)).toEqual({
+      colorId: null,
+      extendedProperties: {
+        private: {
+          [AUTOCOLOR_KEYS.version]: null,
+          [AUTOCOLOR_KEYS.color]: null,
+          [AUTOCOLOR_KEYS.category]: null,
+        },
+      },
+    });
+    // Sanity — marker version constant still exports as "1" (guards against
+    // accidental schema-version bumps that would desync with the reader).
+    expect(AUTOCOLOR_MARKER_VERSION).toBe("1");
+  });
+
+  it("maps 410 to kind=full_sync_required", async () => {
+    mockFetch(async () =>
+      new Response(
+        JSON.stringify({
+          error: { code: 410, errors: [{ reason: "fullSyncRequired" }] },
+        }),
+        { status: 410 },
+      ),
+    );
+    await expect(clearEventColor(AT, CAL, "stale-evt")).rejects.toSatisfy(
+      (err) => {
+        expect((err as CalendarApiError).kind).toBe("full_sync_required");
         return true;
       },
     );

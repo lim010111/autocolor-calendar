@@ -13,6 +13,7 @@ const mocks = vi.hoisted(() => ({
     | { acquired: false },
   fullResyncResult: null as unknown,
   incrementalResult: null as unknown,
+  rollbackResult: null as unknown,
   runIncrementalThrows: null as Error | null,
   dbUpdateRejects: null as Error | null,
 }));
@@ -76,6 +77,13 @@ vi.mock("../services/calendarSync", () => ({
 
 vi.mock("../services/oauthTokenService", () => ({
   markReauthRequired: vi.fn(async () => undefined),
+}));
+
+vi.mock("../services/colorRollback", () => ({
+  runColorRollback: vi.fn(async () => {
+    mocks.callLog.push("runColorRollback");
+    return mocks.rollbackResult;
+  }),
 }));
 
 // Import after mocks are registered.
@@ -147,6 +155,21 @@ describe("syncConsumer.handleSyncBatch", () => {
     mocks.incrementalResult = {
       ok: true,
       summary: makeSummary(),
+    };
+    mocks.rollbackResult = {
+      ok: true,
+      summary: {
+        pages: 1,
+        seen: 3,
+        cleared: 2,
+        skipped_stale_marker: 0,
+        skipped_manual_override: 1,
+        skipped_version_mismatch: 0,
+        not_found: 0,
+        forbidden_events: 0,
+        started_at: new Date().toISOString(),
+        finished_at: new Date().toISOString(),
+      },
     };
   });
 
@@ -277,6 +300,83 @@ describe("syncConsumer.handleSyncBatch", () => {
     const logged = errSpy.mock.calls.map((c) => String(c[0])).join("\n");
     expect(logged).toContain("recordUnknownError persist failed");
     errSpy.mockRestore();
+  });
+
+  describe("color_rollback branch", () => {
+    const rollbackJob: Extract<SyncJob, { type: "color_rollback" }> = {
+      type: "color_rollback",
+      userId: "u1",
+      calendarId: "primary",
+      categoryId: "cat-removed",
+      enqueuedAt: Date.now(),
+    };
+
+    it("bypasses sync claim/release and runs rollback service", async () => {
+      const msg = makeMessage(rollbackJob);
+      await handleSyncBatch(makeBatch(msg), {} as never, makeCtx());
+
+      expect(mocks.callLog).toContain("runColorRollback");
+      // Claim/release belong to the sync path — rollback must skip both.
+      expect(mocks.callLog).not.toContain("claim");
+      expect(mocks.callLog).not.toContain("release");
+      expect(mocks.callLog).not.toContain("runIncrementalSync");
+      expect(msg.ack).toHaveBeenCalled();
+    });
+
+    it("marks reauth and acks when rollback returns reauth_required", async () => {
+      mocks.rollbackResult = {
+        ok: false,
+        reason: "reauth_required",
+        error: new Error("invalid_grant"),
+        summary: {
+          pages: 0,
+          seen: 0,
+          cleared: 0,
+          skipped_stale_marker: 0,
+          skipped_manual_override: 0,
+          skipped_version_mismatch: 0,
+          not_found: 0,
+          forbidden_events: 0,
+          started_at: new Date().toISOString(),
+          finished_at: new Date().toISOString(),
+        },
+      };
+      const { markReauthRequired } = await import(
+        "../services/oauthTokenService"
+      );
+      const msg = makeMessage(rollbackJob);
+      await handleSyncBatch(makeBatch(msg), {} as never, makeCtx());
+
+      expect(markReauthRequired).toHaveBeenCalled();
+      expect(msg.ack).toHaveBeenCalled();
+      expect(msg.retry).not.toHaveBeenCalled();
+    });
+
+    it("retries on retryable result with retryAfterSec", async () => {
+      mocks.rollbackResult = {
+        ok: false,
+        reason: "retryable",
+        error: new Error("rate_limited"),
+        retryAfterSec: 30,
+        summary: {
+          pages: 0,
+          seen: 0,
+          cleared: 0,
+          skipped_stale_marker: 0,
+          skipped_manual_override: 0,
+          skipped_version_mismatch: 0,
+          not_found: 0,
+          forbidden_events: 0,
+          started_at: new Date().toISOString(),
+          finished_at: new Date().toISOString(),
+        },
+      };
+      const msg = makeMessage(rollbackJob);
+      await handleSyncBatch(makeBatch(msg), {} as never, makeCtx());
+
+      expect(msg.retry).toHaveBeenCalledWith({ delaySeconds: 30 });
+      expect(msg.ack).not.toHaveBeenCalled();
+    });
   });
 });
 
