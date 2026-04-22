@@ -100,14 +100,18 @@ under `extendedProperties.private`. Constants live at the top of
   `colorId` no longer equals this value, the user changed it after us and
   we must treat the event as manual.
 - `autocolor_category` — the categoryId that drove the color choice.
-  Forward-compat hook for the deferred "rule deletion → uncolor" task
-  (TODO §5 line 95). Not used by §5.4 itself. **Rollback policy assumed
-  by §5.4:** the deferred task will restore deleted-rule events to
-  Google's default color (clear `colorId`), not to a user's pre-app
-  original. Restoring an arbitrary original color would require a fourth
-  key (e.g. `autocolor_prev_color`) that §5.4 deliberately does not
+  Read by the rule-deletion rollback (`src/services/colorRollback.ts`):
+  `DELETE /api/categories/:id` enqueues one `color_rollback` queue job
+  per calendar in `sync_state`, and the consumer filters
+  `events.list` with `privateExtendedProperty=autocolor_category=<id>`
+  before PATCHing `colorId: null` + three `null` markers on events that
+  pass the §5.4 ownership check (marker color still equals current
+  color). **Rollback policy:** deleted-rule events revert to Google's
+  default color, not to a user's pre-app original. Restoring an
+  arbitrary original color would require a fourth key
+  (e.g. `autocolor_prev_color`) that §5.4 deliberately does not
   capture. If product later wants true original-color restore, the
-  rollback task must add that key and accept that events colored before
+  rollback path must add that key and accept that events colored before
   the change cannot be perfectly restored.
 
 ### Concurrent PATCH race
