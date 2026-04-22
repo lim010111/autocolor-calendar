@@ -81,11 +81,13 @@
 - [x] Vitest — `llmClassifier.test.ts` (26 케이스: buildPrompt PII whitelist / mapCategoryName enum 방어 / reserve quota / 9 classifyWithLlm 시나리오 + 로깅 회귀 가드), `classifierChain.test.ts` (7 케이스: rule-hit short-circuit / LLM-hit / timeout / bad_response / quota / disabled / empty cats), `calendarSync.test.ts`에 §5.3 카운터 wiring 회귀 가드 2 케이스 추가.
 - [x] **Acceptance 충족:** rule miss 이벤트가 LLM 경로로 category 배정; LLM 실패(timeout/5xx/429/파싱/quota/키 부재) 시 `no_match`로 silent skip. `sync_state.last_run_summary`에 4개 `llm_*` 카운터 JSON 키 노출. `pnpm vitest run` 전체 통과 + `pnpm tsc --noEmit` 에러 0.
 
-### 5.4 색상 적용 정책 및 멱등성
+### 5.4 색상 적용 정책 및 멱등성 ✅
 
-- [ ] 수동 override 보존 정책 정의 — `event.colorId`가 규칙과 다르게 수동 설정된 경우 덮어쓸지 판단 (metadata flag / `extendedProperties.private` 활용 검토)
-- [ ] `calendarSync.ts`의 기존 color-equality 단락(`:118-127` 영역)을 확장해 "auto-applied 색상만 덮어쓰기" 정책 반영. 기존 멱등성 보장 회귀 없는지 검증
-- [ ] **Acceptance:** 사용자가 수동 변경한 이벤트는 재분류되지 않음. 앱이 칠한 이벤트만 규칙 변경 시 재적용됨
+- [x] 수동 override 보존 정책 정의 — `extendedProperties.private`에 `autocolor_v="1"` / `autocolor_color=<colorId>` / `autocolor_category=<categoryId>` 3-key 마커 (`src/services/googleCalendar.ts`의 `AUTOCOLOR_KEYS` / `AUTOCOLOR_MARKER_VERSION` 상수). `autocolor_color`가 현재 `event.colorId`와 일치할 때만 "앱 소유"로 인정 — 사용자가 PATCH 이후 색을 바꿨거나 마커가 없으면 사용자 수동 변경으로 간주하고 건드리지 않음.
+- [x] `calendarSync.ts:131-143` `processEvent` 분기를 truth table 기반으로 재작성 — `current === target` → `skipped_equal` (마커가 없으면 retro-claim하지 않음), `current === ""` 또는 `appOwned` → `patchEventColor`에 마커 payload 동봉, 이외 모두 `skipped_manual`. `patchEventColor`에 5번째 optional `extendedPrivate` 파라미터 추가, 기존 단일 호출자 외 호출 부위 시그니처 비-파괴적.
+- [x] Vitest — `googleCalendar.test.ts`에 PATCH body 회귀 가드 2 케이스(5번째 인자 미전달 시 `extendedProperties` 없음 / 전달 시 `private` 맵 정확) 추가. `calendarSync.test.ts`에 §5.4 ownership 신규 describe 4 케이스(empty-color PATCH 본문 마커 검증 / app-owned 재적용 / stale 마커 skip / no-marker retro-claim 금지). 기존 410·429·500 PATCH 회귀 테스트는 body shape를 단언하지 않아 회귀 없음. `pnpm vitest run` 208/208 통과 + `pnpm tsc --noEmit` 에러 0.
+- [x] `docs/architecture-guidelines.md`에 "Color Ownership (§5.4)" 불릿 추가 + `src/CLAUDE.md`에 "Color ownership marker" 섹션(키 의미 / per-key 머지 의미론 / `autocolor_*` prefix 외부 쓰기 금지 invariant) 신설.
+- [x] **Acceptance 충족:** 사용자가 수동 변경한 이벤트(마커 없음 또는 `autocolor_color !== current`)는 재분류 없이 `skipped_manual`. 앱이 마지막에 PATCH한 이벤트만(`autocolor_color === current`) 규칙 변경 시 새 색으로 재적용 + 마커 갱신.
 
 ### 5 후속 작업 (§5 범위 밖 이월)
 
