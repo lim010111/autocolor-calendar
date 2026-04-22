@@ -84,6 +84,57 @@ counters (`SyncSummary`) and event IDs/status. Error messages from
 the response body. `sync_failures.error_body` stores Google's API error
 envelope only — never the event payload that triggered the failure.
 
+## Color ownership marker (§5.4)
+
+When the sync pipeline PATCHes an event color (`src/services/calendarSync.ts`
+→ `patchEventColor` in `src/services/googleCalendar.ts`), it writes three keys
+under `extendedProperties.private`. Constants live at the top of
+`googleCalendar.ts` as `AUTOCOLOR_KEYS` / `AUTOCOLOR_MARKER_VERSION` —
+**reference the constants, never the literal strings**:
+
+- `autocolor_v` — schema version. Currently `"1"`. Bump only when the
+  meaning of the other keys changes; readers should treat unknown versions
+  as opaque (skip rather than misinterpret).
+- `autocolor_color` — the colorId this code wrote at the time of PATCH.
+  This is the **ownership probe**: on the next sync, if the event's
+  `colorId` no longer equals this value, the user changed it after us and
+  we must treat the event as manual.
+- `autocolor_category` — the categoryId that drove the color choice.
+  Forward-compat hook for the deferred "rule deletion → uncolor" task
+  (TODO §5 line 95). Not used by §5.4 itself. **Rollback policy assumed
+  by §5.4:** the deferred task will restore deleted-rule events to
+  Google's default color (clear `colorId`), not to a user's pre-app
+  original. Restoring an arbitrary original color would require a fourth
+  key (e.g. `autocolor_prev_color`) that §5.4 deliberately does not
+  capture. If product later wants true original-color restore, the
+  rollback task must add that key and accept that events colored before
+  the change cannot be perfectly restored.
+
+### Concurrent PATCH race
+
+If two devices / a webhook delivery race against an in-flight sync, the
+last writer wins. This is intentional: Google's `events.patch` exposes
+no `If-Match` ETag flow on `colorId`, and the next sync will re-evaluate
+either way (idempotent reconciliation). Do **not** add optimistic
+concurrency for this — observed-not-prevented is the correct policy.
+Brief flicker between writers is benign and self-heals on the next
+incremental sync.
+
+Google's `events.patch` merges `extendedProperties.private` per-key —
+other apps' keys on the same event are preserved. Conversely, **never write
+a key under the `autocolor_*` prefix from any other code path** without
+bumping `autocolor_v`; doing so would silently corrupt ownership decisions
+on the next sync. If a future migration needs to change marker semantics,
+add a new schema version (`"2"`), update the reader to switch on version,
+and write a one-shot job to upgrade existing events.
+
+`extendedProperties.private` is **app metadata, not user PII** — it is
+never logged anyway (calendar event payloads are excluded from logs by the
+contract above), but it would be safe to include in error messages if a
+future debug path needed it. The PII redactor for the LLM leg
+(`src/services/piiRedactor.ts`) does not touch this field because the LLM
+prompt builder whitelists only `summary`/`description`/`location` (§5.3).
+
 ## Environments
 
 - `dev`: `autocolor-dev` Worker, `autocolor-dev-db` Hyperdrive, full secrets.

@@ -56,7 +56,7 @@ export const PII_REGEXES = {
   // 않도록 제외 클래스에 명시:
   //   "(see https://x.com)" → "(see [url])" (닫는 `)` 보존)
   //   "https://zoom.us/j/123에서" → "[url]에서" (조사 보존)
-  url: /\b(?:https?:\/\/|www\.)[^\s<>"'\)\]\uAC00-\uD7A3]+/gi,
+  url: /\b(?:https?:\/\/|www\.)[^\s<>"')\]\uAC00-\uD7A3]+/gi,
   email: /\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b/g,
   // KR mobile / KR landline / 1588·15xx·16xx·18xx 대표번호 /
   // +국가코드 international. 제네릭 \d{10,11} fallback은 의도적으로 제외

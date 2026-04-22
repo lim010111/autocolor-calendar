@@ -18,3 +18,13 @@ GAS_REDIRECT_URL=
 TOKEN_ENCRYPTION_KEY=
 SESSION_HMAC_KEY=
 SESSION_PEPPER=
+
+# §5.3 LLM fallback (OpenAI). Leave blank to disable — rule-miss events will
+# count silently as `no_match` (same semantics as a LLM failure). Not a
+# required secret; `sync-secrets.ts` skips it when empty.
+OPENAI_API_KEY=
+
+# Per-user daily LLM call ceiling (default 200). Set in wrangler.toml
+# [env.*.vars] if you want a non-default value; leave out entirely to use the
+# default. Listed here only as documentation — the script does not inject it.
+# LLM_DAILY_LIMIT=200

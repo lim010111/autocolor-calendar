@@ -10,7 +10,7 @@
 ## Core Technologies
 
 - **Frontend (Add-on UI):** Google Apps Script (JavaScript), `CardService`.
-- **Backend:** TypeScript, Cloudflare Workers, Supabase (PostgreSQL, Auth), Drizzle ORM, small LLMs (e.g., Gemini API).
+- **Backend:** TypeScript, Cloudflare Workers, Supabase (PostgreSQL, Auth), Drizzle ORM, small LLMs (OpenAI `gpt-5.4-nano`).
 
 ## Directory Structure
 

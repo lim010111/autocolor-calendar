@@ -33,6 +33,17 @@ function makeDb(opts: {
     scope: string;
     needsReauth: boolean;
   } | null;
+  // §5.3: rows returned by loadCategories (orderBy tail of categories select).
+  categories?: Array<{
+    id: string;
+    name: string;
+    colorId: string;
+    keywords: string[];
+    priority: number;
+  }>;
+  // §5.3: row returned by reserveLlmCall's UPSERT … RETURNING. Present =
+  // quota available, omit = over-quota (empty RETURNING → ok: false).
+  reserveRow?: { callCount: number };
 }) {
   const updates: Array<Record<string, unknown>> = [];
   const inserts: Array<Record<string, unknown>> = [];
@@ -47,7 +58,7 @@ function makeDb(opts: {
             // oauth_tokens select for getGoogleRefreshToken
             return opts.tokenRow ? [opts.tokenRow] : [];
           },
-          orderBy: async () => [], // for categories: no rules configured
+          orderBy: async () => opts.categories ?? [],
         }),
       }),
     }),
@@ -60,7 +71,12 @@ function makeDb(opts: {
     insert: (_table: unknown) => ({
       values: (v: Record<string, unknown>) => {
         inserts.push(v);
-        return { onConflictDoNothing: async () => undefined };
+        return {
+          onConflictDoNothing: async () => undefined,
+          onConflictDoUpdate: (_args: unknown) => ({
+            returning: async () => (opts.reserveRow ? [opts.reserveRow] : []),
+          }),
+        };
       },
     }),
   };
@@ -384,6 +400,410 @@ describe("calendarSync.runIncrementalSync", () => {
     expect(result.reason).toBe("reauth_required");
     // No nextSyncToken write should have happened.
     expect(updates.some((u) => "nextSyncToken" in u)).toBe(false);
+  });
+});
+
+describe("calendarSync — §5.4 ownership-aware color application", () => {
+  // INTENT: this block asserts marker payloads using LITERAL strings
+  // ("autocolor_v", "autocolor_color", "autocolor_category", "1") rather
+  // than `AUTOCOLOR_KEYS` constants. That is deliberate — these keys are
+  // the on-the-wire format Google stores against the event, and any rename
+  // would silently invalidate every existing event's marker. Do NOT DRY
+  // these into the constants; the literals are a wire-format regression
+  // guard. The googleCalendar.test.ts patchEventColor cases use the
+  // constants because those test the in-process function contract, not the
+  // wire format.
+  const original = globalThis.fetch;
+  afterEach(() => {
+    globalThis.fetch = original;
+    vi.restoreAllMocks();
+  });
+
+  type PatchCall = { url: string; body: unknown };
+
+  function stubSyncWith(events: Array<Record<string, unknown>>): {
+    patches: PatchCall[];
+  } {
+    const patches: PatchCall[] = [];
+    globalThis.fetch = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = typeof input === "string" ? input : input.toString();
+      if (url.includes("oauth2.googleapis.com/token")) {
+        return new Response(
+          JSON.stringify({
+            access_token: "at",
+            expires_in: 3600,
+            scope: "openid",
+            token_type: "Bearer",
+          }),
+          { status: 200 },
+        );
+      }
+      if (init?.method === "PATCH") {
+        patches.push({
+          url,
+          body: init.body ? JSON.parse(String(init.body)) : null,
+        });
+        return new Response("{}", { status: 200 });
+      }
+      // events.list
+      return new Response(
+        JSON.stringify({ items: events, nextSyncToken: "fresh" }),
+        { status: 200 },
+      );
+    }) as typeof fetch;
+    return { patches };
+  }
+
+  const classifyToBlue: ClassifyEventFn = async () => ({
+    colorId: "3",
+    categoryId: "cat-1",
+    reason: "rule",
+  });
+
+  it("PATCHes empty-color event with marker payload", async () => {
+    const env = makeEnv();
+    const tokenRow = await seedTokenRow(env);
+    const { db } = makeDb({ nextSyncToken: "old", tokenRow });
+    const { patches } = stubSyncWith([
+      { id: "fresh", status: "confirmed", summary: "x", colorId: "" },
+    ]);
+
+    const result = await runIncrementalSync({
+      db,
+      env,
+      userId: USER_ID,
+      calendarId: CAL,
+      classifyEvent: classifyToBlue,
+    });
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.summary.updated).toBe(1);
+    expect(patches).toHaveLength(1);
+    expect(patches[0]!.body).toEqual({
+      colorId: "3",
+      extendedProperties: {
+        private: {
+          autocolor_v: "1",
+          autocolor_color: "3",
+          autocolor_category: "cat-1",
+        },
+      },
+    });
+  });
+
+  it("re-applies when app-owned color differs from new target", async () => {
+    // Marker says we last wrote "5" and the event still wears "5" → app-owned.
+    // Rule has since changed to "3" → we may overwrite, stamping a fresh marker.
+    const env = makeEnv();
+    const tokenRow = await seedTokenRow(env);
+    const { db } = makeDb({ nextSyncToken: "old", tokenRow });
+    const { patches } = stubSyncWith([
+      {
+        id: "owned",
+        status: "confirmed",
+        summary: "x",
+        colorId: "5",
+        extendedProperties: {
+          private: {
+            autocolor_v: "1",
+            autocolor_color: "5",
+            autocolor_category: "cat-old",
+          },
+        },
+      },
+    ]);
+
+    const result = await runIncrementalSync({
+      db,
+      env,
+      userId: USER_ID,
+      calendarId: CAL,
+      classifyEvent: classifyToBlue,
+    });
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.summary.updated).toBe(1);
+    expect(result.summary.skipped_manual).toBe(0);
+    expect(patches).toHaveLength(1);
+    expect(patches[0]!.body).toEqual({
+      colorId: "3",
+      extendedProperties: {
+        private: {
+          autocolor_v: "1",
+          autocolor_color: "3",
+          autocolor_category: "cat-1",
+        },
+      },
+    });
+  });
+
+  it("skips when user changed color after we owned it (stale marker)", async () => {
+    // Marker color "7" but event currently shows "5" → user changed it after
+    // our last PATCH. We must not overwrite even though the marker is present.
+    const env = makeEnv();
+    const tokenRow = await seedTokenRow(env);
+    const { db } = makeDb({ nextSyncToken: "old", tokenRow });
+    const { patches } = stubSyncWith([
+      {
+        id: "user-changed",
+        status: "confirmed",
+        summary: "x",
+        colorId: "5",
+        extendedProperties: {
+          private: {
+            autocolor_v: "1",
+            autocolor_color: "7",
+            autocolor_category: "cat-old",
+          },
+        },
+      },
+    ]);
+
+    const result = await runIncrementalSync({
+      db,
+      env,
+      userId: USER_ID,
+      calendarId: CAL,
+      classifyEvent: classifyToBlue,
+    });
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.summary.skipped_manual).toBe(1);
+    expect(result.summary.updated).toBe(0);
+    expect(patches).toHaveLength(0);
+  });
+
+  it("skipped_equal short-circuits even when valid marker matches current", async () => {
+    // current === target AND a valid app-owned marker is present. The
+    // `current === target` short-circuit must fire FIRST and bump
+    // `skipped_equal` — never PATCH (idempotent no-op). Regression guard
+    // against a future check-order rearrangement that could re-PATCH the
+    // same color and burn the API quota.
+    const env = makeEnv();
+    const tokenRow = await seedTokenRow(env);
+    const { db } = makeDb({ nextSyncToken: "old", tokenRow });
+    const { patches } = stubSyncWith([
+      {
+        id: "stable",
+        status: "confirmed",
+        summary: "x",
+        colorId: "3",
+        extendedProperties: {
+          private: {
+            autocolor_v: "1",
+            autocolor_color: "3",
+            autocolor_category: "cat-1",
+          },
+        },
+      },
+    ]);
+
+    const result = await runIncrementalSync({
+      db,
+      env,
+      userId: USER_ID,
+      calendarId: CAL,
+      classifyEvent: classifyToBlue,
+    });
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.summary.skipped_equal).toBe(1);
+    expect(result.summary.updated).toBe(0);
+    expect(result.summary.skipped_manual).toBe(0);
+    expect(patches).toHaveLength(0);
+  });
+
+  it("treats unknown autocolor_v as opaque (skips even on color match)", async () => {
+    // Forward-compat / rollback safety: a v1-aware deploy seeing a v2
+    // marker must NOT trust the v2 schema. The marker is opaque, so the
+    // event is treated as user-manual (no app-owned re-apply).
+    const env = makeEnv();
+    const tokenRow = await seedTokenRow(env);
+    const { db } = makeDb({ nextSyncToken: "old", tokenRow });
+    const { patches } = stubSyncWith([
+      {
+        id: "v2-marker",
+        status: "confirmed",
+        summary: "x",
+        colorId: "5",
+        extendedProperties: {
+          private: {
+            autocolor_v: "2",
+            autocolor_color: "5",
+            autocolor_category: "cat-future",
+          },
+        },
+      },
+    ]);
+
+    const result = await runIncrementalSync({
+      db,
+      env,
+      userId: USER_ID,
+      calendarId: CAL,
+      classifyEvent: classifyToBlue,
+    });
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.summary.skipped_manual).toBe(1);
+    expect(result.summary.updated).toBe(0);
+    expect(patches).toHaveLength(0);
+  });
+
+  it("does not retro-claim user-set color matching target (no marker)", async () => {
+    // current === target but no marker → skipped_equal (not updated). Critical
+    // invariant: we never PATCH, so we never stamp a marker on a color we
+    // didn't write. Otherwise we'd silently transfer ownership and the next
+    // rule change would re-color what is, semantically, a user-set event.
+    const env = makeEnv();
+    const tokenRow = await seedTokenRow(env);
+    const { db } = makeDb({ nextSyncToken: "old", tokenRow });
+    const { patches } = stubSyncWith([
+      { id: "coincidence", status: "confirmed", summary: "x", colorId: "3" },
+    ]);
+
+    const result = await runIncrementalSync({
+      db,
+      env,
+      userId: USER_ID,
+      calendarId: CAL,
+      classifyEvent: classifyToBlue,
+    });
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.summary.skipped_equal).toBe(1);
+    expect(result.summary.updated).toBe(0);
+    expect(patches).toHaveLength(0);
+  });
+});
+
+describe("calendarSync — §5.3 LLM fallback counter wiring", () => {
+  const original = globalThis.fetch;
+  afterEach(() => {
+    globalThis.fetch = original;
+    vi.restoreAllMocks();
+  });
+
+  it("injected classifyEvent returning null → no_match bumps, LLM counters stay 0", async () => {
+    const env = makeEnv();
+    const tokenRow = await seedTokenRow(env);
+    const { db } = makeDb({ nextSyncToken: "t", tokenRow });
+
+    mockFetchQueue([
+      new Response(
+        JSON.stringify({ access_token: "at", expires_in: 3600, scope: "openid", token_type: "Bearer" }),
+        { status: 200 },
+      ),
+      new Response(
+        JSON.stringify({
+          items: [{ id: "e", status: "confirmed", summary: "x", colorId: "" }],
+          nextSyncToken: "fresh",
+        }),
+        { status: 200 },
+      ),
+    ]);
+
+    const nullClassify: ClassifyEventFn = async () => null;
+    const result = await runIncrementalSync({
+      db,
+      env,
+      userId: USER_ID,
+      calendarId: CAL,
+      classifyEvent: nullClassify,
+    });
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.summary.no_match).toBe(1);
+    // Injection seam bypasses the chain entirely → LLM counters stay at 0.
+    expect(result.summary.llm_attempted).toBe(0);
+    expect(result.summary.llm_succeeded).toBe(0);
+    expect(result.summary.llm_timeout).toBe(0);
+    expect(result.summary.llm_quota_exceeded).toBe(0);
+  });
+
+  it("default chain + OPENAI_API_KEY + stubbed OpenAI hit → llm_attempted=1, llm_succeeded=1, updated=1", async () => {
+    // §5.3 positive wiring test (review I1). Goes through the real
+    // buildDefaultClassifier + classifyWithLlm + reserveLlmCall path with
+    // fetch stubbed so no network is touched.
+    const env: Bindings = { ...makeEnv(), OPENAI_API_KEY: "sk-test" };
+    const tokenRow = await seedTokenRow(env);
+    const { db } = makeDb({
+      nextSyncToken: "t",
+      tokenRow,
+      categories: [
+        { id: "c-1", name: "회의", colorId: "9", keywords: ["회의"], priority: 100 },
+      ],
+      reserveRow: { callCount: 1 },
+    });
+
+    // Rule leg misses (summary "totally unrelated" has no keyword match),
+    // so the chain delegates to LLM, which returns "회의" → colorId "9".
+    mockFetchQueue([
+      // 1. token refresh
+      new Response(
+        JSON.stringify({ access_token: "at", expires_in: 3600, scope: "openid", token_type: "Bearer" }),
+        { status: 200 },
+      ),
+      // 2. events.list
+      new Response(
+        JSON.stringify({
+          items: [
+            { id: "e1", status: "confirmed", summary: "totally unrelated", colorId: "" },
+          ],
+          nextSyncToken: "fresh",
+        }),
+        { status: 200 },
+      ),
+      // 3. OpenAI chat completions
+      new Response(
+        JSON.stringify({
+          choices: [{ message: { content: JSON.stringify({ category_name: "회의" }) } }],
+        }),
+        { status: 200 },
+      ),
+      // 4. events.patch
+      new Response("", { status: 200 }),
+    ]);
+
+    const result = await runIncrementalSync({ db, env, userId: USER_ID, calendarId: CAL });
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.summary.llm_attempted).toBe(1);
+    expect(result.summary.llm_succeeded).toBe(1);
+    expect(result.summary.llm_timeout).toBe(0);
+    expect(result.summary.llm_quota_exceeded).toBe(0);
+    expect(result.summary.updated).toBe(1);
+    expect(result.summary.no_match).toBe(0);
+  });
+
+  it("default chain + no OPENAI_API_KEY → rule-miss collapses to no_match, LLM counters stay 0", async () => {
+    // env without OPENAI_API_KEY: chain's LLM leg short-circuits to null
+    // without bumping any LLM counter, processEvent rolls up to no_match.
+    const env = makeEnv();
+    const tokenRow = await seedTokenRow(env);
+    const { db } = makeDb({ nextSyncToken: "t", tokenRow });
+
+    mockFetchQueue([
+      new Response(
+        JSON.stringify({ access_token: "at", expires_in: 3600, scope: "openid", token_type: "Bearer" }),
+        { status: 200 },
+      ),
+      new Response(
+        JSON.stringify({
+          items: [{ id: "e", status: "confirmed", summary: "no match", colorId: "" }],
+          nextSyncToken: "fresh",
+        }),
+        { status: 200 },
+      ),
+    ]);
+
+    const result = await runIncrementalSync({ db, env, userId: USER_ID, calendarId: CAL });
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.summary.no_match).toBe(1);
+    expect(result.summary.llm_attempted).toBe(0);
+    expect(result.summary.llm_succeeded).toBe(0);
   });
 });
 

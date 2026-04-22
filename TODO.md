@@ -70,18 +70,24 @@
 - [x] Vitest — `src/__tests__/piiRedactor.test.ts` (38 케이스, 5 그룹): NL redaction false-negative (18: ko+en email, https/www URL, KR mobile/landline 괄호 표기 `(02)`/`(031)` 포함, 국제번호 +82/+1/+81 및 `+1 (415) 555-2671` 괄호 표기, 1588 대표번호, multi-PII, 한국어 조사 보존 `에서`, 닫는 괄호 보존) + over-redaction 가드 (9) + structured email 필드 (6) + 순수성·idempotency (3) + 골든 acceptance (2: fixture 제약 pre-condition + acceptance 단언).
 - [x] **Acceptance:** 골든 테스트가 `JSON.stringify(redacted)`에 `/@/`, `/http/i`, phone regex 매치 0건을 단언 — §5.2 수용 기준을 코드로 인코딩. `pnpm vitest run` 162/162 통과 + `pnpm tsc --noEmit` 에러 0.
 
-### 5.3 LLM Fallback (Step 2)
+### 5.3 LLM Fallback (Step 2) ✅
 
-- [ ] `OPENAI_API_KEY` secret 주입 (`scripts/sync-secrets.ts` 키 목록 추가, `.dev.vars.example` 업데이트)
-- [ ] `src/services/llmClassifier.ts` — 마스킹된 event + 사용자 categories를 프롬프트로 전달, `colorId | null` 반환. timeout / 1회 재시도 / 일일 호출 상한 cost guard 포함
-- [ ] `docs/architecture-guidelines.md`의 "Halt on Failure" 규칙 준수: LLM 실패 시 local rule 폴백 금지, `no_match` 카운터 증가로 조용히 종료
-- [ ] **Acceptance:** rule이 miss인 이벤트가 LLM으로 적절한 category 배정되거나, LLM 실패 시 no_match로 silent skip
+- [x] `OPENAI_API_KEY` (및 optional `LLM_DAILY_LIMIT`) secret 주입 — `scripts/sync-secrets.ts`는 `REQUIRED_SECRETS` / `OPTIONAL_SECRETS` 분리로 키 부재 시 skip. `.dev.vars.example`에 placeholder + "비어 있으면 LLM disabled" 주석 추가. `src/env.ts` `Bindings`에 `OPENAI_API_KEY?` / `LLM_DAILY_LIMIT?` optional 필드 추가 (prod shell 호환).
+- [x] `src/services/llmClassifier.ts` — OpenAI `gpt-5.4-nano` Chat Completions + structured outputs JSON schema. `redactEventForLlm` → `buildPrompt`(whitelist: summary/description/location, attendees/creator/organizer는 PII 우려로 제외) → fetch(`AbortSignal.timeout(5s)`) → retry once on transient(TypeError/429/5xx/timeout). `mapCategoryNameToClassification` 서버 측 enum 검증으로 prompt-injection 방어. `reserveLlmCall` UPSERT+INCREMENT로 fetch 전 per-user 일일 상한(default 200, `LLM_DAILY_LIMIT` override) 체크.
+- [x] `src/services/classifierChain.ts` — `buildDefaultClassifier({db, env, userId, onLlm*})` 팩토리. rule hit → short-circuit, rule miss + `OPENAI_API_KEY` 존재 + categories ≥ 1 → LLM leg. narrow counter callback으로 `SyncSummary` 의존성 역전.
+- [x] `calendarSync.runPagedList` 배선 — `ctx.classifyEvent ?? buildDefaultClassifier({...})`로 체인 주입, `SyncSummary`에 `llm_attempted` / `llm_succeeded` / `llm_timeout` / `llm_quota_exceeded` 카운터 추가. `processEvent` 본문 무변경 (no_match 경로로 자연 귀속).
+- [x] `drizzle/0008_llm_usage_daily.sql` — PK `(user_id, day)` 테이블 + RLS policy. `src/db/schema.ts`에 `llmUsageDaily` drizzle 정의 추가.
+- [x] `docs/architecture-guidelines.md` Hybrid 불릿 — "timeouts / http errors / quota / missing key 모두 no_match 귀속" 명시. `docs/project-overview.md`는 Gemini 예시 → OpenAI `gpt-5.4-nano`로 명시.
+- [x] Vitest — `llmClassifier.test.ts` (26 케이스: buildPrompt PII whitelist / mapCategoryName enum 방어 / reserve quota / 9 classifyWithLlm 시나리오 + 로깅 회귀 가드), `classifierChain.test.ts` (7 케이스: rule-hit short-circuit / LLM-hit / timeout / bad_response / quota / disabled / empty cats), `calendarSync.test.ts`에 §5.3 카운터 wiring 회귀 가드 2 케이스 추가.
+- [x] **Acceptance 충족:** rule miss 이벤트가 LLM 경로로 category 배정; LLM 실패(timeout/5xx/429/파싱/quota/키 부재) 시 `no_match`로 silent skip. `sync_state.last_run_summary`에 4개 `llm_*` 카운터 JSON 키 노출. `pnpm vitest run` 전체 통과 + `pnpm tsc --noEmit` 에러 0.
 
-### 5.4 색상 적용 정책 및 멱등성
+### 5.4 색상 적용 정책 및 멱등성 ✅
 
-- [ ] 수동 override 보존 정책 정의 — `event.colorId`가 규칙과 다르게 수동 설정된 경우 덮어쓸지 판단 (metadata flag / `extendedProperties.private` 활용 검토)
-- [ ] `calendarSync.ts`의 기존 color-equality 단락(`:118-127` 영역)을 확장해 "auto-applied 색상만 덮어쓰기" 정책 반영. 기존 멱등성 보장 회귀 없는지 검증
-- [ ] **Acceptance:** 사용자가 수동 변경한 이벤트는 재분류되지 않음. 앱이 칠한 이벤트만 규칙 변경 시 재적용됨
+- [x] 수동 override 보존 정책 정의 — `extendedProperties.private`에 `autocolor_v="1"` / `autocolor_color=<colorId>` / `autocolor_category=<categoryId>` 3-key 마커 (`src/services/googleCalendar.ts`의 `AUTOCOLOR_KEYS` / `AUTOCOLOR_MARKER_VERSION` 상수). `autocolor_color`가 현재 `event.colorId`와 일치할 때만 "앱 소유"로 인정 — 사용자가 PATCH 이후 색을 바꿨거나 마커가 없으면 사용자 수동 변경으로 간주하고 건드리지 않음.
+- [x] `calendarSync.ts:131-143` `processEvent` 분기를 truth table 기반으로 재작성 — `current === target` → `skipped_equal` (마커가 없으면 retro-claim하지 않음), `current === ""` 또는 `appOwned` → `patchEventColor`에 마커 payload 동봉, 이외 모두 `skipped_manual`. `patchEventColor`에 5번째 optional `extendedPrivate` 파라미터 추가, 기존 단일 호출자 외 호출 부위 시그니처 비-파괴적.
+- [x] Vitest — `googleCalendar.test.ts`에 PATCH body 회귀 가드 2 케이스(5번째 인자 미전달 시 `extendedProperties` 없음 / 전달 시 `private` 맵 정확) 추가. `calendarSync.test.ts`에 §5.4 ownership 신규 describe 4 케이스(empty-color PATCH 본문 마커 검증 / app-owned 재적용 / stale 마커 skip / no-marker retro-claim 금지). 기존 410·429·500 PATCH 회귀 테스트는 body shape를 단언하지 않아 회귀 없음. `pnpm vitest run` 208/208 통과 + `pnpm tsc --noEmit` 에러 0.
+- [x] `docs/architecture-guidelines.md`에 "Color Ownership (§5.4)" 불릿 추가 + `src/CLAUDE.md`에 "Color ownership marker" 섹션(키 의미 / per-key 머지 의미론 / `autocolor_*` prefix 외부 쓰기 금지 invariant) 신설.
+- [x] **Acceptance 충족:** 사용자가 수동 변경한 이벤트(마커 없음 또는 `autocolor_color !== current`)는 재분류 없이 `skipped_manual`. 앱이 마지막에 PATCH한 이벤트만(`autocolor_color === current`) 규칙 변경 시 새 색으로 재적용 + 마커 갱신.
 
 ### 5 후속 작업 (§5 범위 밖 이월)
 
