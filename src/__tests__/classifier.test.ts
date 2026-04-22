@@ -34,6 +34,7 @@ describe("classifyEvent — rule-based (Step 1)", () => {
       colorId: "9",
       categoryId: "c-1",
       reason: "rule_match:주간회의",
+      matchedKeyword: "주간회의",
     });
   });
 
@@ -114,5 +115,29 @@ describe("classifyEvent — rule-based (Step 1)", () => {
       ctxOf([cat({ keywords: ["Standup"] })]),
     );
     expect(result?.reason).toBe("rule_match:Standup");
+  });
+
+  it("populates matchedKeyword with the exact keyword that hit", async () => {
+    const result = await classifyEvent(
+      ev({ summary: "오늘 회의 끝나고" }),
+      ctxOf([cat({ keywords: ["잡담", "회의", "점심"] })]),
+    );
+    expect(result?.matchedKeyword).toBe("회의");
+  });
+
+  it("matchedKeyword preserves the author's casing even on case-insensitive match", async () => {
+    const result = await classifyEvent(
+      ev({ summary: "Daily Standup" }),
+      ctxOf([cat({ keywords: ["StandUp"] })]),
+    );
+    expect(result?.matchedKeyword).toBe("StandUp");
+  });
+
+  it("matchedKeyword is absent when no category matches", async () => {
+    const result = await classifyEvent(
+      ev({ summary: "Lunch with friends" }),
+      ctxOf([cat({ keywords: ["meeting"] })]),
+    );
+    expect(result).toBeNull();
   });
 });

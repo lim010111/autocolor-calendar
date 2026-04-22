@@ -9,6 +9,7 @@ import { handleSyncBatch } from "./queues/syncConsumer";
 import type { SyncJob } from "./queues/types";
 import { authRoutes } from "./routes/auth";
 import { categoriesRoutes } from "./routes/categories";
+import { classifyRoutes } from "./routes/classify";
 import { healthRoutes } from "./routes/health";
 import { meRoutes } from "./routes/me";
 import { oauthRoutes } from "./routes/oauth";
@@ -28,6 +29,7 @@ app.route("/me", meRoutes);
 app.route("/sync", syncRoutes);
 app.route("/webhooks", webhookRoutes);
 app.route("/api/categories", categoriesRoutes);
+app.route("/api/classify", classifyRoutes);
 
 export default {
   fetch: app.fetch,
