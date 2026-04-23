@@ -71,6 +71,13 @@
       "when": 1776851197641,
       "tag": "0009_premium_paladin",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1776923015593,
+      "tag": "0010_slimy_gauntlet",
+      "breakpoints": true
     }
   ]
 }
