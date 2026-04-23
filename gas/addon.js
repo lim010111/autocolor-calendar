@@ -342,9 +342,10 @@ function fetchPreviewOrError(payload) {
 }
 
 /**
- * Builds the "매칭된 규칙" status line. Mirrors the three preview-endpoint
- * outcomes plus the network-error fallback. Kept as a pure formatter so
- * UI copy tweaks don't require reaching into onEventOpen's control flow.
+ * Builds the "매칭된 규칙" status line. Mirrors the preview-endpoint
+ * outcomes (rule / llm / no_match ± llmTried) plus the network-error
+ * fallback. Kept as a pure formatter so UI copy tweaks don't require
+ * reaching into onEventOpen's control flow.
  */
 function formatMatchLine(preview) {
   if (!preview) return "매칭된 규칙 없음";
@@ -358,6 +359,13 @@ function formatMatchLine(preview) {
       return "매칭된 규칙: '" + name + "' (키워드: '" + preview.matchedKeyword + "')";
     }
     return "매칭된 규칙: '" + name + "'";
+  }
+  if (preview.source === 'llm' && preview.category) {
+    var llmName = preview.category.name || "규칙";
+    return "🤖 AI 분류: '" + llmName + "'";
+  }
+  if (preview.source === 'no_match' && preview.llmTried) {
+    return "🤖 AI 분류 결과 없음";
   }
   if (preview.llmAvailable) {
     return "매칭된 규칙 없음 — 다음 동기화 시 AI 분류 시도";
@@ -400,7 +408,14 @@ function fetchCategoriesOrError() {
 function onEventOpen(e) {
   var title = "선택된 일정 없음";
   var appliedColorLabel = "기본";
-  var previewResult = null; // { source, category?, matchedKeyword?, llmAvailable?, error? }
+  var previewResult = null; // { source, category?, matchedKeyword?, llmAvailable?, llmTried?, error? }
+
+  // §5 후속 — if actionClassifyWithLlm stashed an on-demand LLM preview in
+  // the card parameters, use it instead of re-fetching rule-only. JSON
+  // round-trips through parameters so the card re-render shows the LLM
+  // result in place without a second network call.
+  var stashed = readStashedLlmPreview(e);
+  if (stashed) previewResult = stashed;
 
   if (e && e.calendar && e.calendar.id) {
     var event = null;
@@ -430,15 +445,17 @@ function onEventOpen(e) {
         // Leave default label on any EventColor access failure.
       }
 
-      previewResult = fetchPreviewOrError({
-        summary: title,
-        description: (function () {
-          try { return event.getDescription() || ""; } catch (_) { return ""; }
-        })(),
-        location: (function () {
-          try { return event.getLocation() || ""; } catch (_) { return ""; }
-        })(),
-      });
+      if (!previewResult) {
+        previewResult = fetchPreviewOrError({
+          summary: title,
+          description: (function () {
+            try { return event.getDescription() || ""; } catch (_) { return ""; }
+          })(),
+          location: (function () {
+            try { return event.getLocation() || ""; } catch (_) { return ""; }
+          })(),
+        });
+      }
 
       if (previewResult && previewResult.error === 'AUTH_EXPIRED') {
         return buildReconnectCard();
@@ -460,6 +477,22 @@ function onEventOpen(e) {
   statusSection.addWidget(CardService.newDecoratedText()
     .setText(formatMatchLine(previewResult))
     .setWrapText(true));
+
+  // §5 후속 — opt-in LLM preview button appears only on rule-miss when the
+  // backend has OPENAI_API_KEY AND we haven't already run the LLM leg for
+  // this card render. Once AI was tried (hit or miss), no retry button —
+  // the result stands and the user can switch events to re-engage.
+  if (
+    previewResult &&
+    previewResult.source === 'no_match' &&
+    previewResult.llmAvailable &&
+    !(!!previewResult.llmTried) &&
+    e && e.calendar && e.calendar.id
+  ) {
+    statusSection.addWidget(CardService.newTextButton()
+      .setText("🤖 AI 분류 확인")
+      .setOnClickAction(CardService.newAction().setFunctionName("actionClassifyWithLlm")));
+  }
 
   builder.addSection(statusSection);
   
@@ -548,6 +581,104 @@ function actionSelectColor(e) {
 function actionExcludeEvent(e) {
   return CardService.newActionResponseBuilder()
     .setNotification(CardService.newNotification().setText("자동 분류에서 제외되었습니다."))
+    .build();
+}
+
+/**
+ * §5 후속 — reads an LLM preview result that actionClassifyWithLlm stashed
+ * in the card parameters. Returns null if none present or JSON parse fails
+ * so onEventOpen falls back to a fresh rule-only fetch. Checks both the
+ * top-level `e.parameters` and the CardService v2 `commonEventObject.parameters`
+ * shapes the framework flips between depending on event source.
+ */
+function readStashedLlmPreview(e) {
+  if (!e) return null;
+  var raw = null;
+  if (e.parameters && e.parameters.llmPreviewJson) {
+    raw = e.parameters.llmPreviewJson;
+  } else if (
+    e.commonEventObject &&
+    e.commonEventObject.parameters &&
+    e.commonEventObject.parameters.llmPreviewJson
+  ) {
+    raw = e.commonEventObject.parameters.llmPreviewJson;
+  }
+  if (!raw) return null;
+  try {
+    return JSON.parse(raw);
+  } catch (_err) {
+    return null;
+  }
+}
+
+/**
+ * §5 후속 — explicit on-demand LLM classification. Re-sends the currently
+ * open event through POST /api/classify/preview with `llm: true` and
+ * re-renders onEventOpen with the result stashed in card parameters so the
+ * AI outcome shows in place. Failure modes:
+ *   - AUTH_EXPIRED → reconnect card (same as other write actions).
+ *   - Network / server error → toast only; card unchanged.
+ * Shares the backend's per-user daily LLM quota with the sync pipeline.
+ */
+function actionClassifyWithLlm(e) {
+  if (!e || !e.calendar || !e.calendar.id) {
+    return CardService.newActionResponseBuilder()
+      .setNotification(CardService.newNotification().setText("선택된 일정을 찾지 못했습니다."))
+      .build();
+  }
+
+  var event = null;
+  try {
+    event = CalendarApp.getCalendarById(e.calendar.calendarId).getEventById(e.calendar.id);
+  } catch (_err) {
+    event = null;
+  }
+  if (!event) {
+    return CardService.newActionResponseBuilder()
+      .setNotification(CardService.newNotification().setText("일정 정보를 읽지 못했습니다."))
+      .build();
+  }
+
+  var title = event.getTitle() || "제목 없음";
+  var description = (function () {
+    try { return event.getDescription() || ""; } catch (_) { return ""; }
+  })();
+  var location = (function () {
+    try { return event.getLocation() || ""; } catch (_) { return ""; }
+  })();
+
+  var preview = fetchPreviewOrError({
+    summary: title,
+    description: description,
+    location: location,
+    llm: true,
+  });
+
+  if (preview && preview.error === 'AUTH_EXPIRED') {
+    return CardService.newActionResponseBuilder()
+      .setNavigation(CardService.newNavigation().popToRoot().updateCard(buildReconnectCard()))
+      .build();
+  }
+
+  if (preview && preview.error) {
+    return CardService.newActionResponseBuilder()
+      .setNotification(CardService.newNotification().setText("AI 분류 중 오류가 발생했습니다."))
+      .build();
+  }
+
+  if (!e.parameters) e.parameters = {};
+  e.parameters.llmPreviewJson = JSON.stringify(preview);
+
+  var toastText;
+  if (preview && preview.source === 'llm' && preview.category) {
+    toastText = "AI 분류 완료: '" + (preview.category.name || "규칙") + "'";
+  } else {
+    toastText = "AI 분류 결과 없음";
+  }
+
+  return CardService.newActionResponseBuilder()
+    .setNavigation(CardService.newNavigation().updateCard(onEventOpen(e)))
+    .setNotification(CardService.newNotification().setText(toastText))
     .build();
 }
 

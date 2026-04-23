@@ -4,10 +4,24 @@ vi.mock("../db", () => ({ getDb: vi.fn() }));
 vi.mock("../services/sessionService", () => ({
   verifySession: vi.fn(),
 }));
+// §5 후속 — classifierChain is mocked at module boundary so the preview-LLM
+// suite can drive the chain's return value without wiring up real fetch / DB
+// UPSERT machinery. The real chain has its own coverage in classifierChain.test.ts.
+vi.mock("../services/classifierChain", () => ({
+  buildDefaultClassifier: vi.fn(),
+}));
 
 import { app } from "../index";
 import { getDb } from "../db";
 import { verifySession } from "../services/sessionService";
+import { buildDefaultClassifier } from "../services/classifierChain";
+import type { ChainDeps } from "../services/classifierChain";
+import type {
+  Classification,
+  ClassifyContext,
+  ClassifyEventFn,
+} from "../services/classifier";
+import type { CalendarEvent } from "../services/googleCalendar";
 
 const USER_A = "00000000-0000-0000-0000-00000000000a";
 const USER_B = "00000000-0000-0000-0000-00000000000b";
@@ -68,11 +82,20 @@ type FakeDbHandle = {
   db: unknown;
   close: () => Promise<void>;
   state: { rows: Row[] };
+  inserts: { table: unknown; values: unknown }[];
 };
 
-function makeFakeDb(initial: Row[] = []): FakeDbHandle {
+type InsertRecord = { table: unknown; values: unknown };
+
+type FakeDb = {
+  select(_cols: unknown): unknown;
+  insert(table: unknown): { values(values: unknown): Promise<void> };
+};
+
+function makeFakeDb(initial: Row[] = []): FakeDbHandle & { inserts: InsertRecord[] } {
   const state = { rows: [...initial] };
-  const db = {
+  const inserts: InsertRecord[] = [];
+  const db: FakeDb = {
     select(_cols: unknown) {
       return {
         from(_table: unknown) {
@@ -94,8 +117,18 @@ function makeFakeDb(initial: Row[] = []): FakeDbHandle {
         },
       };
     },
+    // Preview LLM hit/miss tests exercise the §6 Wave A `llm_calls` writer.
+    // The fake records each insert so tests can assert the shape without
+    // reaching for a real drizzle builder chain.
+    insert(table: unknown) {
+      return {
+        values: async (values: unknown) => {
+          inserts.push({ table, values });
+        },
+      };
+    },
   };
-  return { db, close: async () => undefined, state };
+  return { db, close: async () => undefined, state, inserts };
 }
 
 const baseEnv = {
@@ -142,7 +175,32 @@ beforeEach(() => {
     if (token === "token-b") return { userId: USER_B, email: "b@test" };
     return null;
   });
+  // §5 후속 — default fails loudly if a test accidentally engages the LLM
+  // branch without supplying its own stub. The rule-only tests never call
+  // the factory, so the default is never exercised there.
+  vi.mocked(buildDefaultClassifier).mockImplementation(() => {
+    throw new Error("buildDefaultClassifier called without test-specific stub");
+  });
 });
+
+// Helper — returns a stub `ChainDeps → ClassifyEventFn` builder that invokes
+// the provided hooks in the order the real chain would, then returns the
+// configured classification. Default `reason` prefix drives the route's
+// rule-vs-llm response branch.
+function stubChain(opts: {
+  result: Classification | null;
+  engageLlmLeg?: boolean;
+  llmCallRecord?: Parameters<NonNullable<ChainDeps["onLlmCall"]>>[0];
+}): (deps: ChainDeps) => ClassifyEventFn {
+  return (deps: ChainDeps): ClassifyEventFn =>
+    async (_event: CalendarEvent, _ctx: ClassifyContext) => {
+      if (opts.engageLlmLeg) {
+        deps.onLlmAttempted?.();
+        if (opts.llmCallRecord) deps.onLlmCall?.(opts.llmCallRecord);
+      }
+      return opts.result;
+    };
+}
 
 afterEach(() => {
   vi.clearAllMocks();
@@ -251,5 +309,163 @@ describe("POST /api/classify/preview", () => {
     };
     expect(body.source).toBe("rule");
     expect(body.matchedKeyword).toBe("운동");
+  });
+
+  // §5 후속 — on-demand LLM preview. These cases pin the `llm: true` branch.
+  // Regression guard for the default path: buildDefaultClassifier must NOT
+  // be called when the flag is absent, so the rule-only path stays cheap.
+  it("llm flag omitted — buildDefaultClassifier never called (regression guard)", async () => {
+    currentDb.state.rows.push(row({ keywords: ["주간회의"] }));
+    const res = await invoke("/api/classify/preview", {
+      method: "POST",
+      userToken: "token-a",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ summary: "오늘의 주간회의" }),
+    });
+    const body = (await res.json()) as { source: string };
+    expect(body.source).toBe("rule");
+    expect(vi.mocked(buildDefaultClassifier)).not.toHaveBeenCalled();
+  });
+
+  it("llm:true + OPENAI_API_KEY absent — no_match without llmTried (chain bails at key check)", async () => {
+    currentDb.state.rows.push(row({}));
+    // Chain bails before onLlmAttempted fires (stub mirrors classifierChain's
+    // env.OPENAI_API_KEY check returning null without invoking the hook).
+    vi.mocked(buildDefaultClassifier).mockImplementation(
+      stubChain({ result: null, engageLlmLeg: false }),
+    );
+    const res = await invoke("/api/classify/preview", {
+      method: "POST",
+      userToken: "token-a",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ summary: "임의 이벤트", llm: true }),
+    });
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ source: "no_match", llmAvailable: false });
+  });
+
+  it("llm:true + rule hit (via chain) — source:'rule', onLlmAttempted not called", async () => {
+    currentDb.state.rows.push(row({ keywords: ["회의"] }));
+    vi.mocked(buildDefaultClassifier).mockImplementation(
+      stubChain({
+        result: {
+          colorId: "9",
+          categoryId: "11111111-1111-1111-1111-111111111111",
+          reason: "rule_match:회의",
+          matchedKeyword: "회의",
+        },
+        // Rule hit short-circuits inside the chain — LLM leg never engages.
+        engageLlmLeg: false,
+      }),
+    );
+    const res = await invoke("/api/classify/preview", {
+      method: "POST",
+      userToken: "token-a",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ summary: "주간 회의", llm: true }),
+      env: { ...baseEnv, OPENAI_API_KEY: "sk-test" },
+    });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as Record<string, unknown>;
+    expect(body.source).toBe("rule");
+    expect(body).not.toHaveProperty("llmTried");
+    expect(body.matchedKeyword).toBe("회의");
+  });
+
+  it("llm:true + LLM hit — source:'llm', category shape correct, no matchedKeyword", async () => {
+    currentDb.state.rows.push(
+      row({
+        id: "11111111-1111-1111-1111-111111111111",
+        name: "회의",
+        colorId: "9",
+      }),
+    );
+    vi.mocked(buildDefaultClassifier).mockImplementation(
+      stubChain({
+        result: {
+          colorId: "9",
+          categoryId: "11111111-1111-1111-1111-111111111111",
+          reason: "llm_match:회의",
+        },
+        engageLlmLeg: true,
+        llmCallRecord: {
+          outcome: "hit",
+          latencyMs: 42,
+          categoryCount: 1,
+          attempts: 1,
+          categoryName: "회의",
+        },
+      }),
+    );
+    const res = await invoke("/api/classify/preview", {
+      method: "POST",
+      userToken: "token-a",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        summary: "전혀 무관한 제목",
+        llm: true,
+      }),
+      env: { ...baseEnv, OPENAI_API_KEY: "sk-test" },
+    });
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({
+      source: "llm",
+      category: {
+        id: "11111111-1111-1111-1111-111111111111",
+        name: "회의",
+        colorId: "9",
+      },
+    });
+    // §6 Wave A parity — preview's onCall record reaches the llm_calls table.
+    // Sync path bulk-inserts; preview inserts one row per request through the
+    // same execCtx.waitUntil / warn-on-failure discipline.
+    const row0 = currentDb.inserts[0]?.values as Record<string, unknown>;
+    expect(row0).toMatchObject({
+      userId: USER_A,
+      outcome: "hit",
+      latencyMs: 42,
+      categoryCount: 1,
+      attempts: 1,
+      categoryName: "회의",
+    });
+  });
+
+  it("llm:true + LLM miss (null) — no_match with llmTried:true", async () => {
+    currentDb.state.rows.push(row({}));
+    vi.mocked(buildDefaultClassifier).mockImplementation(
+      stubChain({
+        result: null,
+        engageLlmLeg: true,
+        llmCallRecord: {
+          outcome: "miss",
+          latencyMs: 120,
+          categoryCount: 1,
+          attempts: 1,
+        },
+      }),
+    );
+    const res = await invoke("/api/classify/preview", {
+      method: "POST",
+      userToken: "token-a",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ summary: "아무 이벤트", llm: true }),
+      env: { ...baseEnv, OPENAI_API_KEY: "sk-test" },
+    });
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({
+      source: "no_match",
+      llmAvailable: true,
+      llmTried: true,
+    });
+    // Miss also emits its own llm_calls row — §6 Wave A parity across
+    // outcomes, not only hits.
+    const missRow = currentDb.inserts[0]?.values as Record<string, unknown>;
+    expect(missRow).toMatchObject({
+      userId: USER_A,
+      outcome: "miss",
+      latencyMs: 120,
+      categoryCount: 1,
+      attempts: 1,
+    });
   });
 });
