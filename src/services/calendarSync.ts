@@ -5,6 +5,7 @@ import { categories, syncState } from "../db/schema";
 import type { Bindings } from "../env";
 import type { ClassifyContext, ClassifyEventFn } from "./classifier";
 import { buildDefaultClassifier } from "./classifierChain";
+import type { LlmCallRecord } from "./llmClassifier";
 import {
   AUTOCOLOR_KEYS,
   AUTOCOLOR_MARKER_VERSION,
@@ -45,6 +46,11 @@ export type SyncContext = {
   userId: string;
   calendarId: string;
   classifyEvent?: ClassifyEventFn;
+  // §6 Wave A — bulk sink for per-call LLM records captured during this run.
+  // Called once at sync-run end with the accumulated buffer. Production
+  // callers (syncConsumer) wire this to `execCtx.waitUntil(db.insert(...))`;
+  // tests omit to skip persistence. No-op when the buffer is empty.
+  recordLlmCalls?: (records: LlmCallRecord[]) => void;
 };
 
 export type RunResult =
@@ -216,6 +222,15 @@ async function runPagedList(
   chunked: boolean,
 ): Promise<RunResult> {
   const summary = makeSummary();
+  // §6 Wave A buffer — every LLM call during this run (including quota-
+  // latched skips) pushes a record. Flushed via `flushLlmCalls()` before
+  // every return, so retryable failures still record the work done before
+  // the page loop aborted.
+  const llmCallBuffer: LlmCallRecord[] = [];
+  const flushLlmCalls = (): void => {
+    if (llmCallBuffer.length === 0) return;
+    ctx.recordLlmCalls?.(llmCallBuffer);
+  };
   const classify =
     ctx.classifyEvent ??
     buildDefaultClassifier({
@@ -234,8 +249,12 @@ async function runPagedList(
       onLlmQuotaExceeded: () => {
         summary.llm_quota_exceeded += 1;
       },
+      onLlmCall: (rec) => {
+        llmCallBuffer.push(rec);
+      },
     });
 
+  try {
   let accessToken: string;
   try {
     const res = await getValidAccessToken(ctx.db, ctx.env, ctx.userId);
@@ -363,6 +382,10 @@ async function runPagedList(
       lastError: null,
       lastErrorAt: null,
       lastRunSummary: summary,
+      // §6 Wave A — clear any retryable-failure summary that was staged by
+      // a prior attempt. Leaving it set after a successful run would cause
+      // the next DLQ landing on an unrelated job to snapshot stale data.
+      lastFailureSummary: null,
       updatedAt: sql`now()` as unknown as Date,
     };
     if (start.timeMin) {
@@ -383,6 +406,8 @@ async function runPagedList(
       .update(syncState)
       .set({
         lastRunSummary: summary,
+        // Same clear-on-progress rationale as the full-sync branch above.
+        lastFailureSummary: null,
         updatedAt: sql`now()`,
       })
       .where(
@@ -394,4 +419,10 @@ async function runPagedList(
   }
 
   return { ok: true, summary, continuation };
+  } finally {
+    // Every return path above flows through here — including each
+    // reauth/forbidden/not_found/retryable early return — so the buffer
+    // always flushes once per run, never twice and never zero times.
+    flushLlmCalls();
+  }
 }

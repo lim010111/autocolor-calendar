@@ -3,7 +3,13 @@ import type { PostgresJsDatabase } from "drizzle-orm/postgres-js";
 import type { Bindings } from "../env";
 import type { ClassifyEventFn } from "./classifier";
 import { classifyEvent as ruleClassify } from "./classifier";
-import { classifyWithLlm, type LlmOutcome, type ReserveLlmCallFn } from "./llmClassifier";
+import {
+  classifyWithLlm,
+  LLM_PROMPT_MAX_CATEGORIES,
+  type LlmCallRecord,
+  type LlmOutcome,
+  type ReserveLlmCallFn,
+} from "./llmClassifier";
 
 // §5.3 chain composition: rule → LLM fallback → null.
 //
@@ -30,6 +36,11 @@ export type ChainDeps = {
   onLlmSucceeded?: () => void;
   onLlmTimeout?: () => void;
   onLlmQuotaExceeded?: () => void;
+  // §6 Wave A — per-call telemetry. Fired once per event that engaged the
+  // LLM leg, including the quota-latched short-circuit (latencyMs:0,
+  // attempts:0). Pass-through from classifyWithLlm's `onCall` plus a
+  // synthetic record for the latch path.
+  onLlmCall?: (record: LlmCallRecord) => void;
   // Test-only: inject a custom reserve fn to bypass the real drizzle writer.
   reserve?: ReserveLlmCallFn;
 };
@@ -49,6 +60,12 @@ export function buildDefaultClassifier(deps: ChainDeps): ClassifyEventFn {
       // event so the summary reflects that the chain wanted to call LLM.
       deps.onLlmAttempted?.();
       deps.onLlmQuotaExceeded?.();
+      deps.onLlmCall?.({
+        outcome: "quota_exceeded",
+        latencyMs: 0,
+        categoryCount: Math.min(LLM_PROMPT_MAX_CATEGORIES, ctx.categories.length),
+        attempts: 0,
+      });
       return null;
     }
 
@@ -58,6 +75,7 @@ export function buildDefaultClassifier(deps: ChainDeps): ClassifyEventFn {
       env: deps.env,
       userId: deps.userId,
       ...(deps.reserve !== undefined ? { reserve: deps.reserve } : {}),
+      ...(deps.onLlmCall !== undefined ? { onCall: deps.onLlmCall } : {}),
     });
 
     switch (outcome.kind) {
