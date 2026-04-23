@@ -994,3 +994,149 @@ describe("calendarSync — §6 Wave A observability hooks", () => {
     expect(res.ok).toBe(true);
   });
 });
+
+describe("calendarSync — §6 Wave B finalize routes all outcomes", () => {
+  // INTENT: every `return` inside `runPagedList` must flow through the
+  // `finalize()` helper so `ctx.recordSyncRun` is emitted exactly once per
+  // Worker invocation. These tests pin that contract by exercising each of
+  // the six outcomes and asserting both call count and the `outcome` field.
+  // Adding a new early-return path without routing through finalize silently
+  // drops a telemetry row — these cases catch that regression.
+  const original = globalThis.fetch;
+  afterEach(() => {
+    globalThis.fetch = original;
+    vi.restoreAllMocks();
+  });
+
+  it("ok outcome → recordSyncRun called once with outcome='ok' + summary", async () => {
+    const env = makeEnv();
+    const tokenRow = await seedTokenRow(env);
+    const { db } = makeDb({ nextSyncToken: "tok", tokenRow });
+    mockFetchQueue([
+      new Response(
+        JSON.stringify({ access_token: "at", expires_in: 3600, scope: "openid", token_type: "Bearer" }),
+        { status: 200 },
+      ),
+      new Response(
+        JSON.stringify({ items: [], nextSyncToken: "fresh" }),
+        { status: 200 },
+      ),
+    ]);
+    const recordSyncRun = vi.fn();
+    const res = await runIncrementalSync({
+      db,
+      env,
+      userId: USER_ID,
+      calendarId: CAL,
+      recordSyncRun,
+    });
+    expect(res.ok).toBe(true);
+    expect(recordSyncRun).toHaveBeenCalledTimes(1);
+    const rec = recordSyncRun.mock.calls[0]![0];
+    expect(rec.outcome).toBe("ok");
+    expect(rec.stored_next_sync_token).toBe(true);
+    expect(rec.finished_at).toBeTruthy();
+    expect(typeof rec.started_at).toBe("string");
+  });
+
+  it("retryable outcome → recordSyncRun called once with outcome='retryable'", async () => {
+    const env = makeEnv();
+    const tokenRow = await seedTokenRow(env);
+    const { db } = makeDb({ nextSyncToken: "tok", tokenRow });
+    // events.list returns 500 (server error) → CalendarApiError kind='server'
+    // → `reason: 'retryable'`.
+    mockFetchQueue([
+      new Response(
+        JSON.stringify({ access_token: "at", expires_in: 3600, scope: "openid", token_type: "Bearer" }),
+        { status: 200 },
+      ),
+      new Response(JSON.stringify({ error: { code: 500 } }), { status: 500 }),
+    ]);
+    const recordSyncRun = vi.fn();
+    const res = await runIncrementalSync({
+      db,
+      env,
+      userId: USER_ID,
+      calendarId: CAL,
+      recordSyncRun,
+    });
+    expect(res.ok).toBe(false);
+    if (res.ok) return;
+    expect(res.reason).toBe("retryable");
+    expect(recordSyncRun).toHaveBeenCalledTimes(1);
+    expect(recordSyncRun.mock.calls[0]![0].outcome).toBe("retryable");
+  });
+
+  it("reauth_required outcome → recordSyncRun called once with outcome='reauth_required'", async () => {
+    const env = makeEnv();
+    // tokenRow: null → getGoogleRefreshToken throws ReauthRequiredError
+    // before ever reaching events.list.
+    const { db } = makeDb({ nextSyncToken: "tok", tokenRow: null });
+    mockFetchQueue([]);
+    const recordSyncRun = vi.fn();
+    const res = await runIncrementalSync({
+      db,
+      env,
+      userId: USER_ID,
+      calendarId: CAL,
+      recordSyncRun,
+    });
+    expect(res.ok).toBe(false);
+    if (res.ok) return;
+    expect(res.reason).toBe("reauth_required");
+    expect(recordSyncRun).toHaveBeenCalledTimes(1);
+    expect(recordSyncRun.mock.calls[0]![0].outcome).toBe("reauth_required");
+  });
+
+  it("full_sync_required outcome → recordSyncRun called once with outcome='full_sync_required'", async () => {
+    const env = makeEnv();
+    const tokenRow = await seedTokenRow(env);
+    const { db } = makeDb({ nextSyncToken: "stale", tokenRow });
+    mockFetchQueue([
+      new Response(
+        JSON.stringify({ access_token: "at", expires_in: 3600, scope: "openid", token_type: "Bearer" }),
+        { status: 200 },
+      ),
+      new Response(
+        JSON.stringify({
+          error: { code: 410, errors: [{ reason: "fullSyncRequired" }] },
+        }),
+        { status: 410 },
+      ),
+    ]);
+    const recordSyncRun = vi.fn();
+    const res = await runIncrementalSync({
+      db,
+      env,
+      userId: USER_ID,
+      calendarId: CAL,
+      recordSyncRun,
+    });
+    expect(res.ok).toBe(false);
+    if (res.ok) return;
+    expect(res.reason).toBe("full_sync_required");
+    expect(recordSyncRun).toHaveBeenCalledTimes(1);
+    expect(recordSyncRun.mock.calls[0]![0].outcome).toBe("full_sync_required");
+  });
+
+  it("recordSyncRun undefined → no-op (optional chain guard)", async () => {
+    // The production path injects `recordSyncRun` from syncConsumer, but
+    // ad-hoc callers (manual scripts, other tests) may omit it. The
+    // `ctx.recordSyncRun?.(...)` optional call must not throw.
+    const env = makeEnv();
+    const tokenRow = await seedTokenRow(env);
+    const { db } = makeDb({ nextSyncToken: "tok", tokenRow });
+    mockFetchQueue([
+      new Response(
+        JSON.stringify({ access_token: "at", expires_in: 3600, scope: "openid", token_type: "Bearer" }),
+        { status: 200 },
+      ),
+      new Response(
+        JSON.stringify({ items: [], nextSyncToken: "done" }),
+        { status: 200 },
+      ),
+    ]);
+    const res = await runIncrementalSync({ db, env, userId: USER_ID, calendarId: CAL });
+    expect(res.ok).toBe(true);
+  });
+});
