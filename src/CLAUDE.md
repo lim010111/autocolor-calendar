@@ -258,6 +258,40 @@ Retention: no TTL in Wave B. The `(user_id, finished_at)` btree keeps
 recent-window reads fast, but `sync_runs` grows monotonically. A pg_cron
 purge lands with the §3-후속 "세션 GC" job.
 
+## Preview LLM (§5 후속)
+
+`POST /api/classify/preview` accepts an optional `{ llm: true }` body flag.
+When set, rule-miss events are forwarded through the same
+`buildDefaultClassifier` closure the sync pipeline uses, so:
+
+- Per-user daily quota (`llm_usage_daily` via `reserveLlmCall`) is **shared**
+  with the sync path — there is no separate preview cap. A sync burst that
+  exhausts quota immediately blocks preview too, and vice versa.
+- Per-call telemetry lands in `llm_calls` via the same record shape. Writer
+  location differs — sync's `runPagedList` does a bulk insert at run end,
+  preview does a one-row `execCtx.waitUntil(db.insert(llmCalls).values(...).catch(warn))`
+  inside the route handler finally. Same fire-and-forget / error-isolation
+  discipline: a DB write failure downgrades to a warn log and never blocks
+  the response, because the preview path has no Queue message to retry.
+- `classifierChain`'s internal quota-latch path is a **dead branch** in
+  preview. The latch matters only for ≥2 rule-miss events sharing a single
+  factory closure; preview builds a fresh closure per request. If a future
+  refactor reuses the closure across requests (e.g. an LRU cache), the
+  latch's state-leak potential must be reconsidered.
+- Rule hits short-circuit inside the chain before the LLM leg runs — the
+  `llm: true` flag does not suppress rule evaluation, and rule-hit responses
+  retain the existing `source: "rule"` shape (regression-guarded by
+  `classifyRoute.test.ts`'s "rule hit via chain" case).
+- Preview is triggered by an explicit GAS button (`actionClassifyWithLlm`),
+  which throttles user-initiated invocations socially. A dedicated preview
+  rate limit is deferred to §6.4 후속.
+
+Response shape additions: `source: "llm"` for LLM hits (no
+`matchedKeyword`); `llmTried: true` on `source: "no_match"` when the chain
+engaged the LLM leg (key present + categories ≥ 1 + reached `onLlmAttempted`).
+Callers that are `llm: false` / omit the flag see the pre-existing three
+shapes only — the new shapes are opt-in and backwards-compatible.
+
 ## Manual-trigger rate limit (§6.4)
 
 `sync_state.last_manual_trigger_at` is the **sole writer** for the 30-second
