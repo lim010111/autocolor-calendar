@@ -136,60 +136,135 @@ function buildWelcomeCard() {
 
 /**
  * Screen 2: Home Card (메인 대시보드 - homepageTrigger)
+ *
+ * Fetches /api/stats synchronously on every render (UrlFetchApp is blocking
+ * in GAS). AUTH_EXPIRED falls through to the reconnect card so homepage
+ * entry from an expired session doesn't show a blank dashboard. Empty-state
+ * (no syncs yet): classification.updated = 0 + lastSync = null → renders
+ * "아직 분류된 일정이 없습니다" + "아직 동기화하지 않았습니다".
  */
 function buildHomeCard() {
+  var stats = fetchStatsOrError();
+  if (stats && stats.error === 'AUTH_EXPIRED') {
+    return buildReconnectCard();
+  }
+
   var builder = CardService.newCardBuilder();
-  
+
   builder.setHeader(CardService.newCardHeader()
     .setTitle("AutoColor 대시보드"));
-    
+
   var section = CardService.newCardSection();
-  
+
   var switchControl = CardService.newSwitch()
     .setFieldName("auto_color_enabled")
     .setValue("true")
     .setSelected(true)
     .setOnChangeAction(CardService.newAction().setFunctionName("actionToggleAutoColor"));
-    
+
   section.addWidget(CardService.newDecoratedText()
     .setText("자동 분류 활성화")
     .setSwitchControl(switchControl));
-    
+
+  var classifiedLine;
+  var syncLine;
+  var llmLine = null;
+  if (!stats || stats.error) {
+    classifiedLine = "통계를 불러오지 못했습니다";
+    syncLine = "잠시 후 다시 시도해주세요";
+  } else {
+    var updatedCount = (stats.classification && stats.classification.updated) || 0;
+    classifiedLine = updatedCount > 0
+      ? "최근 7일 분류된 일정: " + updatedCount + "건"
+      : "아직 분류된 일정이 없습니다";
+
+    var finishedAt = stats.lastSync && stats.lastSync.finishedAt;
+    syncLine = finishedAt
+      ? "최근 동기화: " + formatRelativeTime(finishedAt)
+      : "아직 동기화하지 않았습니다";
+
+    var hits = stats.llm && stats.llm.hits;
+    var avg = stats.llm && stats.llm.avgLatencyMs;
+    if (hits && hits > 0) {
+      llmLine = avg != null
+        ? "AI 분류: " + hits + "건 성공 / 평균 " + avg + "ms"
+        : "AI 분류: " + hits + "건 성공";
+    }
+  }
+
   section.addWidget(CardService.newDecoratedText()
-    .setText("이번 주 분류된 일정: 15건")
+    .setText(classifiedLine)
     .setStartIcon(CardService.newIconImage().setIcon(CardService.Icon.BOOKMARK)));
-    
+
   section.addWidget(CardService.newDecoratedText()
-    .setText("최근 동기화: 10분 전")
+    .setText(syncLine)
     .setStartIcon(CardService.newIconImage().setIcon(CardService.Icon.CLOCK)));
-    
+
+  if (llmLine) {
+    section.addWidget(CardService.newDecoratedText()
+      .setText(llmLine)
+      .setStartIcon(CardService.newIconImage().setIcon(CardService.Icon.STAR)));
+  }
+
   builder.addSection(section);
-  
+
   var actionSection = CardService.newCardSection();
-  
+
   var ruleButton = CardService.newTextButton()
     .setText("매핑 규칙 관리")
     .setOnClickAction(CardService.newAction().setFunctionName("actionGoToRuleManagement"));
-    
+
   var settingsButton = CardService.newTextButton()
     .setText("상세 설정")
     .setOnClickAction(CardService.newAction().setFunctionName("actionGoToSettings"));
-    
+
   actionSection.addWidget(CardService.newButtonSet()
     .addButton(ruleButton)
     .addButton(settingsButton));
-    
+
   builder.addSection(actionSection);
-  
+
   var fixedFooter = CardService.newFixedFooter()
     .setPrimaryButton(CardService.newTextButton()
       .setText("지금 즉시 동기화")
       .setTextButtonStyle(CardService.TextButtonStyle.FILLED)
       .setOnClickAction(CardService.newAction().setFunctionName("actionSyncNow")));
-      
+
   builder.setFixedFooter(fixedFooter);
-  
+
   return builder.build();
+}
+
+/**
+ * Fetch /api/stats?window=7d. Mirrors fetchCategoriesOrError / fetchPreviewOrError:
+ * returns payload JSON on 2xx, { error } on failure so the caller renders
+ * an inline fallback instead of throwing out of the homepage trigger.
+ */
+function fetchStatsOrError() {
+  try {
+    var res = AutoColorAPI.fetchBackend('/api/stats?window=7d', { method: 'get' });
+    return JSON.parse(res.getContentText() || '{}');
+  } catch (err) {
+    if (err && err.message === 'AUTH_EXPIRED') return { error: 'AUTH_EXPIRED' };
+    return { error: err && err.message ? err.message : 'unknown_error' };
+  }
+}
+
+/**
+ * ISO timestamp → "방금" / "N분 전" / "N시간 전" / "N일 전".
+ * Used only by the homecard; deliberately coarse so the label stays stable
+ * across render/rerender cycles within a minute.
+ */
+function formatRelativeTime(iso) {
+  var ms = Date.now() - Date.parse(iso);
+  if (!isFinite(ms) || ms < 0) return "방금";
+  var minutes = Math.floor(ms / 60000);
+  if (minutes < 1) return "방금";
+  if (minutes < 60) return minutes + "분 전";
+  var hours = Math.floor(minutes / 60);
+  if (hours < 24) return hours + "시간 전";
+  var days = Math.floor(hours / 24);
+  return days + "일 전";
 }
 
 function actionToggleAutoColor(e) {

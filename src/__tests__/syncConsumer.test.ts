@@ -30,18 +30,23 @@ vi.mock("../db", () => ({
       insert: () => ({
         values: (row: Record<string, unknown> | Array<Record<string, unknown>>) => {
           // The two existing callers chain `.onConflictDoNothing().returning()`.
-          // The §6 Wave A callers (rollback_runs, llm_calls) await the
-          // `values()` result directly (optionally with `.catch`). We model
-          // both by returning an object that exposes the chain methods AND
-          // is itself a thenable.
-          const promise: Promise<undefined> = mocks.insertRejects
-            ? Promise.reject(mocks.insertRejects)
-            : Promise.resolve(undefined);
+          // The §6 Wave A callers (rollback_runs, llm_calls, sync_runs) await
+          // the `values()` result directly (optionally with `.catch`). We
+          // model both by returning an object that exposes the chain methods
+          // AND is itself a thenable. The rejected promise is created
+          // lazily — only when then/catch is actually invoked — so the
+          // bootstrap caller (`onConflictDoNothing`) does NOT generate an
+          // unhandled rejection when `mocks.insertRejects` is set for a
+          // different table's insert.
           if (Array.isArray(row)) {
             for (const r of row) mocks.insertedRows.push(r);
           } else {
             mocks.insertedRows.push(row);
           }
+          const makePromise = (): Promise<undefined> =>
+            mocks.insertRejects
+              ? Promise.reject(mocks.insertRejects)
+              : Promise.resolve(undefined);
           return {
             onConflictDoNothing: () => ({
               returning: async () => mocks.bootstrapReturning,
@@ -49,9 +54,9 @@ vi.mock("../db", () => ({
             then: (
               onFulfilled: (v: undefined) => unknown,
               onRejected?: (e: unknown) => unknown,
-            ) => promise.then(onFulfilled, onRejected),
+            ) => makePromise().then(onFulfilled, onRejected),
             catch: (onRejected: (e: unknown) => unknown) =>
-              promise.catch(onRejected),
+              makePromise().catch(onRejected),
           };
         },
       }),
@@ -153,6 +158,10 @@ function makeSummary() {
     skipped_equal: 0,
     cancelled: 0,
     no_match: 100,
+    llm_attempted: 0,
+    llm_succeeded: 0,
+    llm_timeout: 0,
+    llm_quota_exceeded: 0,
     stored_next_sync_token: false,
     started_at: new Date().toISOString(),
     finished_at: new Date().toISOString(),
@@ -558,6 +567,87 @@ describe("syncConsumer.handleSyncBatch", () => {
       expect(msg.ack).toHaveBeenCalled();
       const warned = warnSpy.mock.calls.map((c) => String(c[0])).join("\n");
       expect(warned).toContain("rollback_runs insert failed");
+      warnSpy.mockRestore();
+      mocks.insertRejects = null;
+    });
+  });
+
+  describe("§6 Wave B — sync_runs writer", () => {
+    it("injects recordSyncRun into runIncrementalSync SyncContext", async () => {
+      // Source-level check complements this: verifies the callback-shape is
+      // passed. The fully-mocked runIncrementalSync never invokes the hook
+      // (see `isolated insert failure` below for behavioral coverage).
+      const { runIncrementalSync } = await import("../services/calendarSync");
+      const mockFn = vi.mocked(runIncrementalSync);
+      mockFn.mockClear();
+      const msg = makeMessage({
+        type: "incremental",
+        userId: "u1",
+        calendarId: "primary",
+        reason: "manual",
+        enqueuedAt: Date.now(),
+      });
+      await handleSyncBatch(makeBatch(msg), {} as never, makeCtx());
+      expect(mockFn).toHaveBeenCalled();
+      const ctxArg = mockFn.mock.calls[0]![0] as {
+        recordSyncRun?: unknown;
+      };
+      expect(typeof ctxArg.recordSyncRun).toBe("function");
+    });
+
+    it("sync_runs insert failure is isolated — msg.ack still fires", async () => {
+      // Make the mocked runIncrementalSync actually invoke `recordSyncRun`
+      // once, then ensure the rejected insert lands in warn and never blocks
+      // msg.ack. Mirrors the rollback_runs isolation guard.
+      const { runIncrementalSync } = await import("../services/calendarSync");
+      vi.mocked(runIncrementalSync).mockImplementationOnce(
+        async (ctx) => {
+          ctx.recordSyncRun?.({
+            pages: 1,
+            seen: 0,
+            evaluated: 0,
+            updated: 0,
+            skipped_manual: 0,
+            skipped_equal: 0,
+            cancelled: 0,
+            no_match: 0,
+            llm_attempted: 0,
+            llm_succeeded: 0,
+            llm_timeout: 0,
+            llm_quota_exceeded: 0,
+            stored_next_sync_token: true,
+            started_at: "2026-04-22T10:00:00.000Z",
+            finished_at: "2026-04-22T10:00:00.500Z",
+            outcome: "ok",
+          });
+          return { ok: true, summary: makeSummary() };
+        },
+      );
+
+      mocks.insertRejects = new Error("DB hiccup");
+      const warnSpy = vi
+        .spyOn(console, "warn")
+        .mockImplementation(() => undefined);
+      const ctx = makeCtx();
+      const msg = makeMessage({
+        type: "incremental",
+        userId: "u1",
+        calendarId: "primary",
+        reason: "manual",
+        enqueuedAt: Date.now(),
+      });
+      await handleSyncBatch(makeBatch(msg), {} as never, ctx);
+
+      // Drain any fire-and-forget promises routed through execCtx.waitUntil
+      // so the .catch handler runs and the warn is visible.
+      const ctxMock = vi.mocked(ctx.waitUntil);
+      for (const call of ctxMock.mock.calls) {
+        await (call[0] as Promise<unknown>).catch(() => undefined);
+      }
+
+      expect(msg.ack).toHaveBeenCalled();
+      const warned = warnSpy.mock.calls.map((c) => String(c[0])).join("\n");
+      expect(warned).toContain("sync_runs insert failed");
       warnSpy.mockRestore();
       mocks.insertRejects = null;
     });

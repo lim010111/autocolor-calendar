@@ -51,7 +51,27 @@ export type SyncContext = {
   // callers (syncConsumer) wire this to `execCtx.waitUntil(db.insert(...))`;
   // tests omit to skip persistence. No-op when the buffer is empty.
   recordLlmCalls?: (records: LlmCallRecord[]) => void;
+  // §6 Wave B — per-run sync log sink. Called exactly once per Worker
+  // invocation through the `finalize()` helper wrapping every `runPagedList`
+  // return path, so a retry→DLQ sequence surfaces as N records (attempts
+  // counter owned by the consumer) and a chunked full_resync surfaces as
+  // one record per Worker invocation. Production callers (syncConsumer)
+  // wire this to `execCtx.waitUntil(db.insert(syncRuns).values(...))`;
+  // tests omit to skip persistence. Synchronous callback — failure-
+  // isolation is the wiring layer's responsibility (`.catch(warn)` in the
+  // waitUntil chain).
+  recordSyncRun?: (record: SyncRunRecord) => void;
 };
+
+export type SyncRunOutcome =
+  | "ok"
+  | "reauth_required"
+  | "not_found"
+  | "forbidden"
+  | "full_sync_required"
+  | "retryable";
+
+export type SyncRunRecord = SyncSummary & { outcome: SyncRunOutcome };
 
 export type RunResult =
   | {
@@ -63,12 +83,7 @@ export type RunResult =
     }
   | {
       ok: false;
-      reason:
-        | "reauth_required"
-        | "not_found"
-        | "forbidden"
-        | "full_sync_required"
-        | "retryable";
+      reason: Exclude<SyncRunOutcome, "ok">;
       error: Error;
       summary: SyncSummary;
       retryAfterSec?: number | undefined;
@@ -231,6 +246,19 @@ async function runPagedList(
     if (llmCallBuffer.length === 0) return;
     ctx.recordLlmCalls?.(llmCallBuffer);
   };
+  // §6 Wave B — every early return must be routed through `finalize()` so
+  // `ctx.recordSyncRun` fires exactly once per Worker invocation. Bypassing
+  // this helper silently drops the observability row for that outcome; the
+  // `calendarSync.test.ts` "finalize routes all outcomes" suite tests all
+  // six branches to catch regressions.
+  const finalize = (result: RunResult): RunResult => {
+    if (!summary.finished_at) {
+      summary.finished_at = new Date().toISOString();
+    }
+    const outcome: SyncRunOutcome = result.ok ? "ok" : result.reason;
+    ctx.recordSyncRun?.({ ...summary, outcome });
+    return result;
+  };
   const classify =
     ctx.classifyEvent ??
     buildDefaultClassifier({
@@ -262,9 +290,9 @@ async function runPagedList(
   } catch (err) {
     summary.finished_at = new Date().toISOString();
     if (err instanceof ReauthRequiredError) {
-      return { ok: false, reason: "reauth_required", error: err, summary };
+      return finalize({ ok: false, reason: "reauth_required", error: err, summary });
     }
-    return { ok: false, reason: "retryable", error: err as Error, summary };
+    return finalize({ ok: false, reason: "retryable", error: err as Error, summary });
   }
 
   const cats = await loadCategories(ctx.db, ctx.userId);
@@ -326,7 +354,7 @@ async function runPagedList(
       summary.finished_at = new Date().toISOString();
       if (err instanceof CalendarApiError) {
         if (err.kind === "auth") {
-          return { ok: false, reason: "reauth_required", error: err, summary };
+          return finalize({ ok: false, reason: "reauth_required", error: err, summary });
         }
         if (err.kind === "full_sync_required") {
           // Clear the stale token here; lastFullResyncAt is stamped only when
@@ -343,10 +371,10 @@ async function runPagedList(
                 eq(syncState.calendarId, ctx.calendarId),
               ),
             );
-          return { ok: false, reason: "full_sync_required", error: err, summary };
+          return finalize({ ok: false, reason: "full_sync_required", error: err, summary });
         }
         if (err.kind === "forbidden") {
-          return { ok: false, reason: "forbidden", error: err, summary };
+          return finalize({ ok: false, reason: "forbidden", error: err, summary });
         }
         if (err.kind === "not_found") {
           await ctx.db
@@ -358,17 +386,17 @@ async function runPagedList(
                 eq(syncState.calendarId, ctx.calendarId),
               ),
             );
-          return { ok: false, reason: "not_found", error: err, summary };
+          return finalize({ ok: false, reason: "not_found", error: err, summary });
         }
-        return {
+        return finalize({
           ok: false,
           reason: "retryable",
           error: err,
           retryAfterSec: err.retryAfterSec,
           summary,
-        };
+        });
       }
-      return { ok: false, reason: "retryable", error: err as Error, summary };
+      return finalize({ ok: false, reason: "retryable", error: err as Error, summary });
     }
   } while (pageToken);
 
@@ -418,11 +446,13 @@ async function runPagedList(
       );
   }
 
-  return { ok: true, summary, continuation };
+  return finalize({ ok: true, summary, continuation });
   } finally {
     // Every return path above flows through here — including each
     // reauth/forbidden/not_found/retryable early return — so the buffer
     // always flushes once per run, never twice and never zero times.
+    // `recordSyncRun` runs on the return side (inside finalize), not here,
+    // because outcome isn't known until the RunResult is in hand.
     flushLlmCalls();
   }
 }

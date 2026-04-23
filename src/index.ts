@@ -13,6 +13,7 @@ import { classifyRoutes } from "./routes/classify";
 import { healthRoutes } from "./routes/health";
 import { meRoutes } from "./routes/me";
 import { oauthRoutes } from "./routes/oauth";
+import { statsRoutes } from "./routes/stats";
 import { syncRoutes } from "./routes/sync";
 import { webhookRoutes } from "./routes/webhooks";
 import { renewExpiringWatches } from "./services/watchRenewal";
@@ -30,6 +31,7 @@ app.route("/sync", syncRoutes);
 app.route("/webhooks", webhookRoutes);
 app.route("/api/categories", categoriesRoutes);
 app.route("/api/classify", classifyRoutes);
+app.route("/api/stats", statsRoutes);
 
 export default {
   fetch: app.fetch,

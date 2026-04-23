@@ -212,6 +212,52 @@ category being deleted, so the target is already gone by write time.
 (`status/reason/op`), consistent with the `sync_failures.error_body`
 contract.
 
+## Observability tables (§6 Wave B)
+
+### `sync_runs`
+
+Reader-source for `/api/stats` weekly rollups. Without this table, only the
+inline `sync_state.last_run_summary` (one row per (user, calendar)) would
+exist and any windowed aggregate would collapse to "the last run's numbers."
+
+- Writer path: `calendarSync.runPagedList` owns a local `finalize(result)`
+  helper that every `return` statement is required to pass through. The
+  helper stamps `finished_at` if not already set, derives the `outcome`
+  (`ok` when `result.ok === true`, else `result.reason`), and invokes
+  `ctx.recordSyncRun?.(record)` exactly once per Worker invocation. Adding
+  a new early-return path without routing through `finalize` silently drops
+  an observability row — `calendarSync.test.ts`'s "§6 Wave B finalize
+  routes all outcomes" suite pins the invariant by exercising each of the
+  six outcome branches.
+- Consumer wiring: `syncConsumer.handleOne` injects `recordSyncRun: (rec)
+  => execCtx.waitUntil(db.insert(syncRuns).values(...).catch(warn))`. Same
+  fire-and-forget / error-isolation discipline as `llm_calls` and
+  `rollback_runs`: an insert failure lands at warn and **never** triggers
+  `msg.retry`. A retried sync would re-issue `events.list` + `events.patch`
+  against Google, costing API quota and risking duplicate side-effects —
+  telemetry must not drive that loop.
+- **Multi-row semantics**: because `handleOne` processes one Queue message
+  per call, a "retry → retry → DLQ" sequence produces N `sync_runs` rows
+  (Queue owns the `attempts` counter, not this table). A chunked
+  `full_resync` that terminates via `MAX_PAGES_PER_FULL_RESYNC_RUN` also
+  produces one row per Worker invocation — so a single logical "full
+  resync arc" can appear as several rows. Dashboards that want "unique
+  syncs" must aggregate on `(user_id, calendar_id, started_at)` or filter
+  `outcome = 'ok' AND stored_next_sync_token = true`.
+- **Duplication with `sync_state.last_run_summary` is intentional**. The
+  inline column still feeds `/me` and stays as the "what did the most
+  recent run do" snapshot; `sync_runs` is the append-only history. Removing
+  the inline column would reshape the `/me` response and break GAS client
+  parsing — scoped to a separate cleanup PR.
+
+PII stance: counters only. The `SyncSummary` type is aggregate-by-
+construction (see `calendarSync.ts`), so no event content reaches this
+table. Respects the calendar-event-payload logging ban above.
+
+Retention: no TTL in Wave B. The `(user_id, finished_at)` btree keeps
+recent-window reads fast, but `sync_runs` grows monotonically. A pg_cron
+purge lands with the §3-후속 "세션 GC" job.
+
 ## Environments
 
 - `dev`: `autocolor-dev` Worker, `autocolor-dev-db` Hyperdrive, full secrets.

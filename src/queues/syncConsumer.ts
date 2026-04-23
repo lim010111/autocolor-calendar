@@ -1,7 +1,7 @@
 import { and, eq, sql } from "drizzle-orm";
 
 import { getDb } from "../db";
-import { llmCalls, rollbackRuns, syncState } from "../db/schema";
+import { llmCalls, rollbackRuns, syncRuns, syncState } from "../db/schema";
 import type { Bindings } from "../env";
 import { computeBackoffSeconds } from "../lib/backoff";
 import { claimSyncRun, releaseSyncRun } from "../lib/syncClaim";
@@ -9,6 +9,7 @@ import {
   runFullResync,
   runIncrementalSync,
   type RunResult,
+  type SyncRunRecord,
 } from "../services/calendarSync";
 import {
   runColorRollback,
@@ -120,6 +121,52 @@ async function handleOne(
       );
     };
 
+    // §6 Wave B — per-run sync log sink. Same fire-and-forget discipline as
+    // recordLlmCalls above: insert errors fall through to a warn log and never
+    // trigger msg.retry. `finalize()` in runPagedList guarantees exactly one
+    // record per Worker invocation regardless of outcome, so retried messages
+    // emit N rows (Queue owns `attempts`) and chunked full_resync runs emit
+    // one row per invocation.
+    const recordSyncRun = (record: SyncRunRecord): void => {
+      execCtx.waitUntil(
+        db
+          .insert(syncRuns)
+          .values({
+            userId: job.userId,
+            calendarId: job.calendarId,
+            startedAt: new Date(record.started_at),
+            finishedAt: new Date(
+              record.finished_at || new Date().toISOString(),
+            ),
+            pages: record.pages,
+            seen: record.seen,
+            evaluated: record.evaluated,
+            updated: record.updated,
+            skippedManual: record.skipped_manual,
+            skippedEqual: record.skipped_equal,
+            cancelled: record.cancelled,
+            noMatch: record.no_match,
+            llmAttempted: record.llm_attempted,
+            llmSucceeded: record.llm_succeeded,
+            llmTimeout: record.llm_timeout,
+            llmQuotaExceeded: record.llm_quota_exceeded,
+            storedNextSyncToken: record.stored_next_sync_token,
+            outcome: record.outcome,
+          })
+          .catch((e: unknown) => {
+            console.warn(
+              JSON.stringify({
+                level: "warn",
+                msg: "sync_runs insert failed",
+                error: e instanceof Error ? e.message : String(e),
+                userId: job.userId,
+                calendarId: job.calendarId,
+              }),
+            );
+          }),
+      );
+    };
+
     let result: RunResult;
     try {
       result =
@@ -130,6 +177,7 @@ async function handleOne(
               userId: job.userId,
               calendarId: job.calendarId,
               recordLlmCalls,
+              recordSyncRun,
             })
           : await runFullResync(
               {
@@ -138,6 +186,7 @@ async function handleOne(
                 userId: job.userId,
                 calendarId: job.calendarId,
                 recordLlmCalls,
+                recordSyncRun,
               },
               {
                 ...(job.pageToken ? { pageToken: job.pageToken } : {}),

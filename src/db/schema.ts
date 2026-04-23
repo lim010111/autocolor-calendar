@@ -281,3 +281,63 @@ export const rollbackRuns = pgTable(
     ),
   ],
 );
+
+// §6 Wave B — per-run sync log.
+//
+// Promotes `SyncSummary` into a historical append-only table so weekly rollups
+// (`/api/stats`) can sum counters across runs. `sync_state.last_run_summary`
+// keeps the most recent row inline for `/me` latency, but it only holds one
+// row per (user, calendar) — insufficient for any windowed aggregate. Every
+// `runPagedList` termination (ok / reauth_required / forbidden / not_found /
+// full_sync_required / retryable) inserts exactly one row via `finalize()`,
+// so a retry→DLQ sequence appears as N rows with increasing attempts and a
+// chunked full resync appears as one row per Worker invocation.
+//
+// Written by `syncConsumer.handleOne` through
+// `execCtx.waitUntil(db.insert(syncRuns).values(...).catch(warn))` —
+// fire-and-forget so response latency is unaffected, and a DB write failure
+// only downgrades to a warn log. Observability writes MUST NOT cause the
+// sync itself to retry.
+//
+// PII: counters only. No Calendar event payload ever reaches this table —
+// `SyncSummary` itself is aggregate-only by construction (see
+// calendarSync.ts). Consistent with src/CLAUDE.md log-redaction contract.
+//
+// Retention: no TTL applied in Wave B. Index on (user_id, finished_at) keeps
+// recent-window reads fast regardless. pg_cron-based purge lands with the
+// §3-후속 "세션 GC" cleanup wave.
+export const syncRuns = pgTable(
+  "sync_runs",
+  {
+    id: uuid("id")
+      .primaryKey()
+      .default(sql`gen_random_uuid()`),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    calendarId: text("calendar_id").notNull(),
+    startedAt: timestamp("started_at", { withTimezone: true }).notNull(),
+    finishedAt: timestamp("finished_at", { withTimezone: true }).notNull(),
+    pages: integer("pages").notNull().default(0),
+    seen: integer("seen").notNull().default(0),
+    evaluated: integer("evaluated").notNull().default(0),
+    updated: integer("updated").notNull().default(0),
+    skippedManual: integer("skipped_manual").notNull().default(0),
+    skippedEqual: integer("skipped_equal").notNull().default(0),
+    cancelled: integer("cancelled").notNull().default(0),
+    noMatch: integer("no_match").notNull().default(0),
+    llmAttempted: integer("llm_attempted").notNull().default(0),
+    llmSucceeded: integer("llm_succeeded").notNull().default(0),
+    llmTimeout: integer("llm_timeout").notNull().default(0),
+    llmQuotaExceeded: integer("llm_quota_exceeded").notNull().default(0),
+    storedNextSyncToken: boolean("stored_next_sync_token").notNull().default(false),
+    outcome: text("outcome").notNull(),
+  },
+  (t) => [
+    index("sync_runs_user_finished_at_idx").on(t.userId, t.finishedAt),
+    check(
+      "sync_runs_outcome_check",
+      sql`${t.outcome} IN ('ok','reauth_required','forbidden','not_found','full_sync_required','retryable')`,
+    ),
+  ],
+);
