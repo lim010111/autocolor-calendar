@@ -57,6 +57,29 @@ export type LlmOutcome =
   | { kind: "bad_response" }
   | { kind: "disabled" };
 
+// §6 Wave A — per-call log record emitted via `LlmClassifyDeps.onCall`.
+// Persisted into the `llm_calls` table by `calendarSync.runPagedList` at
+// sync-run end (bulk insert, fire-and-forget). Contains only telemetry and
+// the user's own category name — never event content.
+export type LlmCallRecord = {
+  outcome: LlmOutcome["kind"];
+  // Only set for outcome='http_error'. undefined otherwise.
+  httpStatus?: number;
+  latencyMs: number;
+  // Post-slice count sent to the model: min(LLM_MAX_CATEGORIES, categories.length).
+  categoryCount: number;
+  // Total attempts including the final outcome. 0 when the caller short-
+  // circuits before any fetch (e.g. quota-latched in classifierChain).
+  attempts: number;
+  // Only set for outcome='hit'. undefined otherwise.
+  categoryName?: string;
+};
+
+// Exported for `classifierChain.ts` quota-latched skip path so the skipped
+// record reports the same post-slice count the prompt builder would have
+// used. Shared constant so both modules stay in lockstep.
+export const LLM_PROMPT_MAX_CATEGORIES = 50;
+
 export type ReserveLlmCallFn = (
   db: PostgresJsDatabase,
   userId: string,
@@ -71,6 +94,10 @@ export type LlmClassifyDeps = {
   // callers omit this and get the real `reserveLlmCall`; tests inject a stub
   // to bypass the drizzle builder chain without touching the DB.
   reserve?: ReserveLlmCallFn;
+  // §6 Wave A telemetry hook — called exactly once before every return with
+  // the per-call record. Kept as a callback (not a return-type extension) so
+  // the existing `LlmOutcome` shape stays stable across 13+ test assertions.
+  onCall?: (record: LlmCallRecord) => void;
 };
 
 // Pure, exported for testing. Whitelist-based: only `summary`, `description`,
@@ -238,14 +265,35 @@ export async function classifyWithLlm(
   categories: Category[],
   deps: LlmClassifyDeps,
 ): Promise<LlmOutcome> {
+  // §6 Wave A — single emission point. Every return in this function routes
+  // through `finish()` so the per-call record (latency, attempts, outcome)
+  // is always emitted exactly once. Skipping `finish()` would silently drop
+  // a row from the observability log.
+  const t0 = Date.now();
+  const categoryCount = Math.min(LLM_MAX_CATEGORIES, categories.length);
+  let attempts = 0;
+
+  function finish(outcome: LlmOutcome): LlmOutcome {
+    const rec: LlmCallRecord = {
+      outcome: outcome.kind,
+      latencyMs: Date.now() - t0,
+      categoryCount,
+      attempts,
+    };
+    if (outcome.kind === "http_error") rec.httpStatus = outcome.status;
+    if (outcome.kind === "hit") rec.categoryName = outcome.classification.reason.replace(/^llm_match:/, "");
+    deps.onCall?.(rec);
+    return outcome;
+  }
+
   const apiKey = deps.env.OPENAI_API_KEY;
-  if (!apiKey) return { kind: "disabled" };
-  if (categories.length === 0) return { kind: "disabled" };
+  if (!apiKey) return finish({ kind: "disabled" });
+  if (categories.length === 0) return finish({ kind: "disabled" });
 
   const limit = parseDailyLimit(deps.env.LLM_DAILY_LIMIT);
   const reserve = deps.reserve ?? reserveLlmCall;
   const reservation = await reserve(deps.db, deps.userId, limit);
-  if (!reservation.ok) return { kind: "quota_exceeded" };
+  if (!reservation.ok) return finish({ kind: "quota_exceeded" });
 
   const redacted = redactEventForLlm(event);
   const messages = buildPrompt(redacted, categories);
@@ -253,51 +301,52 @@ export async function classifyWithLlm(
   let lastOutcome: LlmOutcome = { kind: "bad_response" };
 
   for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt += 1) {
+    attempts = attempt;
     try {
       const res = await callOpenAi(apiKey, messages);
       if (!res.ok) {
         lastOutcome = { kind: "http_error", status: res.status };
         if (attempt < MAX_ATTEMPTS && isTransient(res.status)) continue;
-        return lastOutcome;
+        return finish(lastOutcome);
       }
       let body: OpenAiChatResponse;
       try {
         body = (await res.json()) as OpenAiChatResponse;
       } catch {
-        return { kind: "bad_response" };
+        return finish({ kind: "bad_response" });
       }
       const content = body.choices?.[0]?.message?.content;
-      if (typeof content !== "string") return { kind: "bad_response" };
+      if (typeof content !== "string") return finish({ kind: "bad_response" });
 
       const name = parseCategoryName(content);
-      if (name === undefined) return { kind: "bad_response" };
+      if (name === undefined) return finish({ kind: "bad_response" });
 
       const classification = mapCategoryNameToClassification(name, categories);
       if (classification === null) {
         // Either explicit "none" or unknown name — both fold to silent miss.
-        return name === null ? { kind: "miss" } : { kind: "bad_response" };
+        return finish(name === null ? { kind: "miss" } : { kind: "bad_response" });
       }
-      return { kind: "hit", classification };
+      return finish({ kind: "hit", classification });
     } catch (err) {
       if (err instanceof Error && err.name === "TimeoutError") {
         lastOutcome = { kind: "timeout" };
         if (attempt < MAX_ATTEMPTS) continue;
-        return lastOutcome;
+        return finish(lastOutcome);
       }
       if (err instanceof TypeError) {
         // Workers runtime wraps network failures as TypeError.
         lastOutcome = { kind: "http_error", status: 0 };
         if (attempt < MAX_ATTEMPTS) continue;
-        return lastOutcome;
+        return finish(lastOutcome);
       }
       // Unknown error: do not retry, do not log content. Emit the error
       // name only (never `.message` — some runtimes embed request bodies or
       // PII in the message) so operators have a signal when this path trips.
       const errName = err instanceof Error ? err.name : typeof err;
       console.warn(`[llmClassifier] unknown error: ${errName}`);
-      return { kind: "bad_response" };
+      return finish({ kind: "bad_response" });
     }
   }
 
-  return lastOutcome;
+  return finish(lastOutcome);
 }

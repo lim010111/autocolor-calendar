@@ -64,6 +64,13 @@
       "when": 1776689164005,
       "tag": "0008_llm_usage_daily",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1776851197641,
+      "tag": "0009_premium_paladin",
+      "breakpoints": true
     }
   ]
 }

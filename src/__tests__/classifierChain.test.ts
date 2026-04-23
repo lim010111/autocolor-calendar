@@ -242,6 +242,73 @@ describe("buildDefaultClassifier — rule → LLM chain", () => {
     expect(counters.onLlmSucceeded).not.toHaveBeenCalled();
   });
 
+  it("onLlmCall fires once with outcome='hit', attempts>=1, categoryCount, categoryName", async () => {
+    // §6 Wave A telemetry contract. `classifyWithLlm` threads `onCall` through
+    // the chain so `calendarSync`'s bulk buffer sees every call.
+    globalThis.fetch = vi.fn(async () => openAiJson("회의")) as unknown as typeof fetch;
+    const onLlmCall = vi.fn();
+    const classify = buildDefaultClassifier({
+      db: {} as never,
+      env: makeEnv(),
+      userId: USER,
+      reserve: okReserve,
+      onLlmCall,
+    });
+    const out = await classify(
+      ev({ summary: "unrelated" }),
+      ctxOf([cat({ name: "회의", colorId: "9" })]),
+    );
+    expect(out).toBeTruthy();
+    expect(onLlmCall).toHaveBeenCalledTimes(1);
+    const rec = onLlmCall.mock.calls[0]![0] as {
+      outcome: string;
+      attempts: number;
+      categoryCount: number;
+      categoryName?: string;
+      latencyMs: number;
+    };
+    expect(rec.outcome).toBe("hit");
+    expect(rec.attempts).toBeGreaterThanOrEqual(1);
+    expect(rec.categoryCount).toBe(1);
+    expect(rec.categoryName).toBe("회의");
+    expect(rec.latencyMs).toBeGreaterThanOrEqual(0);
+  });
+
+  it("onLlmCall fires on quota-latched skip path with attempts:0, latencyMs:0", async () => {
+    // Second+ rule-miss events after the latch engages do NOT call
+    // `classifyWithLlm`. The chain itself must still emit a synthetic
+    // record so the §6 log captures the intent to call.
+    const fetchSpy = vi.fn();
+    globalThis.fetch = fetchSpy as unknown as typeof fetch;
+    const reserveSpy = vi.fn(async () => ({ ok: false, count: 201 }));
+    const onLlmCall = vi.fn();
+    const classify = buildDefaultClassifier({
+      db: {} as never,
+      env: makeEnv(),
+      userId: USER,
+      reserve: reserveSpy,
+      onLlmCall,
+    });
+
+    // First call engages latch (onCall fires from classifyWithLlm with
+    // attempts:0 since reserve blocks before any attempt).
+    await classify(ev({ summary: "x" }), ctxOf([cat()]));
+    // Second call is the synthetic latched path.
+    await classify(ev({ summary: "y" }), ctxOf([cat()]));
+
+    expect(onLlmCall).toHaveBeenCalledTimes(2);
+    const second = onLlmCall.mock.calls[1]![0] as {
+      outcome: string;
+      attempts: number;
+      latencyMs: number;
+      categoryCount: number;
+    };
+    expect(second.outcome).toBe("quota_exceeded");
+    expect(second.attempts).toBe(0);
+    expect(second.latencyMs).toBe(0);
+    expect(second.categoryCount).toBe(1);
+  });
+
   it("empty categories → null, no LLM counters bumped (LLM leg short-circuits)", async () => {
     const fetchSpy = vi.fn();
     globalThis.fetch = fetchSpy as unknown as typeof fetch;

@@ -50,7 +50,7 @@
 ### 4 후속 작업 (§4 범위 밖 이월)
 
 - [ ] **Prod Watch API 활성화** — verified custom domain 확보(§1) 후 `WEBHOOK_BASE_URL`을 prod `env.prod.vars`에 설정. 그 전까지 prod `/sync/bootstrap`은 Watch 채널 등록을 skip함.
-- [ ] **DLQ 감사 필드 확장** — 현재 `sync_failures`는 job envelope + error_code만 저장. SyncSummary·google error_body 상세 기록은 §6(관측성)에서 처리. (주요 작업: `sync_failures`에 `summary_snapshot jsonb` 컬럼 추가 — consumer는 이미 SyncSummary를 보유하므로 스키마/라이터 확장만 필요)
+- [x] **DLQ 감사 필드 확장** — `drizzle/0009`에 `sync_failures.summary_snapshot jsonb` + `sync_state.last_failure_summary jsonb` 추가. `applyResult`가 retryable 실패 시 `last_failure_summary`에 summary 기록, 성공 시 null 클리어. `dlqConsumer`가 DLQ 적재 시 `last_failure_summary`를 SELECT해 `summary_snapshot`에 복사(SELECT 실패 시 null로 fallback해도 감사 행은 항상 기록). error_body는 이미 `CalendarApiError` 경로로 Google API 에러만 저장 중이라 추가 작업 없음.
 
 ## 5. 하이브리드 분류(Classification) 엔진 구현 (2-stage: Rule → LLM)
 
@@ -104,10 +104,10 @@
 - [ ] 실패 재시도 및 DLQ 적재 동작 검증 테스트
 - [ ] Rule → LLM 각 단계별 정확도/비용/지연 추적 및 PII 마스킹 단위 테스트.
 - [ ] Add-on <-> Worker <-> Supabase 전체 흐름 E2E 테스트
-- [ ] **LLM 호출 로그·비용 대시보드** (§5 후속에서 이월) — `SyncSummary.llm_*` 카운터를 `llm_calls` 로그 테이블로 승격, 사용자별·일별 성공률·지연·cost 노출.
+- [ ] **LLM 호출 로그·비용 대시보드** (§5 후속에서 이월) — **Wave A 완료**: `drizzle/0009`에 `llm_calls` 테이블 + `classifyWithLlm.finish()` 단일 emission + `classifierChain.onLlmCall` 전달 + `calendarSync.runPagedList` 버퍼 + `syncConsumer.execCtx.waitUntil(...).catch(warn)` fire-and-forget. retention/TTL·대시보드 UI·`/api/stats` 주간 롤업은 Wave B로 이월.
 - [ ] **사용자별 rate limit 확장** (§5 후속에서 이월) — §5.3에서 `LLM_DAILY_LIMIT`(per-user daily)만 구현. 분당/시간당 rate limit, preview endpoint throttle, `/sync/run` manual trigger rate limit을 통합 관리.
 - [ ] **규칙 적용 카운터 노출** (§5 후속에서 이월) — `gas/addon.js`의 홈카드 "이번 주 분류된 일정" mock을 실제 `SyncSummary` 집계 소스로 연결. `/me`에 주간 롤업 필드 추가 또는 별도 `/api/stats` 엔드포인트.
-- [ ] **`color_rollback` 텔레메트리** — 현재 rollback 결과는 console.log 한 줄. DLQ 적재 모니터링 + `rollback_runs` 테이블(`llm_usage_daily` 대칭)로 per-user 실행 이력 저장 검토.
+- [x] **`color_rollback` 텔레메트리** — `drizzle/0009`에 `rollback_runs` 테이블 추가. `applyRollbackResult`가 모든 outcome(ok/reauth_required/forbidden/not_found/retryable)에 대해 `attempt=msg.attempts`로 insert, insert 실패 시 warn 로그만 내고 `msg.retry`로 번지지 않아 중복 PATCH 방지. DLQ 적재 모니터링 대시보드는 Wave B(sync_failures 대시보드와 묶음)로 이월.
 - [ ] **claim/release Postgres round-trip 통합테스트** (§4A 리뷰 Finding #2) — 현재 `syncConsumer.test.ts`의 `syncClaim — precision invariant` 블록은 소스 파일 regex 가드일 뿐 실제 `date_trunc('milliseconds', now())` → JS `Date` → `eq(inProgressAt, claimedAt)` round-trip을 검증하지 않는다. postgres-in-container 또는 Hyperdrive 에뮬레이터 도입 시 실제 round-trip 테스트 추가.
 - [ ] **`/sync/run` 레이트리밋 컬럼 분리 검토** (§4A 리뷰 Finding #7) — 현재 `sync_state.updated_at` 기반 30초 coalesce window는 consumer의 claim/release/요약 쓰기까지 전부 밀어 "방금 끝난 직후 변경사항 추가" 재트리거 UX가 429로 막힌다. `last_manual_trigger_at` 컬럼 분리로 consumer 쓰기와 수동 트리거 레이트리밋을 분리 고려.
 - [ ] **Watch 채널 DB round-trip 통합테스트** (§4B 리뷰 m4) — `lookupChannelOwner`, `registerWatchChannel`의 UPDATE 테넌트 스코프, `drizzle/0005`의 partial `UNIQUE (watch_channel_id, watch_resource_id)` 충돌 거동을 실제 Postgres에 대해 검증. 현재 mock-only 테스트로는 인덱스/컬럼 레벨 실수를 잡지 못한다. §4A Finding #2 해법과 같은 harness 재사용.

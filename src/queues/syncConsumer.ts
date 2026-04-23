@@ -1,7 +1,7 @@
 import { and, eq, sql } from "drizzle-orm";
 
 import { getDb } from "../db";
-import { syncState } from "../db/schema";
+import { llmCalls, rollbackRuns, syncState } from "../db/schema";
 import type { Bindings } from "../env";
 import { computeBackoffSeconds } from "../lib/backoff";
 import { claimSyncRun, releaseSyncRun } from "../lib/syncClaim";
@@ -14,6 +14,7 @@ import {
   runColorRollback,
   type RollbackResult,
 } from "../services/colorRollback";
+import type { LlmCallRecord } from "../services/llmClassifier";
 import { markReauthRequired } from "../services/oauthTokenService";
 import { enqueueSync } from "./syncProducer";
 import type { SyncJob } from "./types";
@@ -86,6 +87,39 @@ async function handleOne(
       return;
     }
 
+    // §6 Wave A — bulk sink for the sync run's LLM call log. `runPagedList`
+    // buffers per-call records and flushes once through this hook. We wrap
+    // the insert in `waitUntil` so the response is not blocked on telemetry,
+    // and `.catch` downgrades any DB write failure to a warn log — missing
+    // observability must never cause the sync itself to retry.
+    const recordLlmCalls = (records: LlmCallRecord[]): void => {
+      if (records.length === 0) return;
+      const rows = records.map((r) => ({
+        userId: job.userId,
+        outcome: r.outcome,
+        latencyMs: r.latencyMs,
+        categoryCount: r.categoryCount,
+        attempts: r.attempts,
+        ...(r.httpStatus !== undefined ? { httpStatus: r.httpStatus } : {}),
+        ...(r.categoryName !== undefined ? { categoryName: r.categoryName } : {}),
+      }));
+      execCtx.waitUntil(
+        db
+          .insert(llmCalls)
+          .values(rows)
+          .catch((e: unknown) => {
+            console.warn(
+              JSON.stringify({
+                level: "warn",
+                msg: "llm_calls insert failed",
+                error: e instanceof Error ? e.message : String(e),
+                userId: job.userId,
+              }),
+            );
+          }),
+      );
+    };
+
     let result: RunResult;
     try {
       result =
@@ -95,6 +129,7 @@ async function handleOne(
               env,
               userId: job.userId,
               calendarId: job.calendarId,
+              recordLlmCalls,
             })
           : await runFullResync(
               {
@@ -102,6 +137,7 @@ async function handleOne(
                 env,
                 userId: job.userId,
                 calendarId: job.calendarId,
+                recordLlmCalls,
               },
               {
                 ...(job.pageToken ? { pageToken: job.pageToken } : {}),
@@ -143,6 +179,44 @@ async function applyRollbackResult(
   job: Extract<SyncJob, { type: "color_rollback" }>,
   result: RollbackResult,
 ): Promise<void> {
+  // §6 Wave A — persist run result BEFORE ack/retry so every outcome
+  // (including retryable attempts that later DLQ) is visible in
+  // `rollback_runs`. The insert is best-effort: a failure here must NOT
+  // cause msg.retry, since a retried rollback re-issues clearEventColor
+  // PATCHes on already-cleared events and costs Google API quota.
+  await db
+    .insert(rollbackRuns)
+    .values({
+      userId: job.userId,
+      calendarId: job.calendarId,
+      categoryId: job.categoryId,
+      startedAt: new Date(result.summary.started_at),
+      finishedAt: new Date(
+        result.summary.finished_at || new Date().toISOString(),
+      ),
+      pages: result.summary.pages,
+      seen: result.summary.seen,
+      cleared: result.summary.cleared,
+      skippedStaleMarker: result.summary.skipped_stale_marker,
+      skippedManualOverride: result.summary.skipped_manual_override,
+      skippedVersionMismatch: result.summary.skipped_version_mismatch,
+      notFound: result.summary.not_found,
+      forbiddenEvents: result.summary.forbidden_events,
+      outcome: result.ok ? "ok" : result.reason,
+      attempt: msg.attempts,
+      errorMessage: result.ok ? null : result.error.message,
+    })
+    .catch((e: unknown) => {
+      console.warn(
+        JSON.stringify({
+          level: "warn",
+          msg: "rollback_runs insert failed",
+          error: e instanceof Error ? e.message : String(e),
+          job: safeJob(job),
+        }),
+      );
+    });
+
   if (result.ok) {
     console.log(
       JSON.stringify({
@@ -208,13 +282,19 @@ async function applyResult(
     return;
   }
 
-  // Persist last_error for UI.
+  // Persist last_error for UI. §6 Wave A — also persist the current run's
+  // summary to `last_failure_summary` so the DLQ consumer can snapshot it
+  // into `sync_failures.summary_snapshot` if retries eventually exhaust.
+  // Non-retryable reasons (reauth/forbidden/not_found/full_sync_required)
+  // do not round-trip through DLQ, so stamping them is cheap bookkeeping.
+  // Success paths (calendarSync.ts) clear the column to null.
   const errMessage = result.error.message;
   await db
     .update(syncState)
     .set({
       lastError: errMessage,
       lastErrorAt: sql`now()`,
+      lastFailureSummary: result.summary,
       updatedAt: sql`now()`,
     })
     .where(
