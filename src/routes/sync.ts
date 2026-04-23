@@ -1,4 +1,4 @@
-import { and, eq } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import { Hono } from "hono";
 
 import { getDb } from "../db";
@@ -44,6 +44,7 @@ syncRoutes.post("/run", async (c) => {
       .select({
         nextSyncToken: syncState.nextSyncToken,
         inProgressAt: syncState.inProgressAt,
+        lastManualTriggerAt: syncState.lastManualTriggerAt,
         updatedAt: syncState.updatedAt,
         active: syncState.active,
       })
@@ -67,14 +68,17 @@ syncRoutes.post("/run", async (c) => {
     if (inProgFresh) {
       return c.json({ ok: true, enqueued: false, coalesced: true }, 200);
     }
-    // Plan §H — per-user rate limit. Once a sync has completed within the
-    // coalesce window, deny a fresh trigger to absorb manual button-spam.
-    // `updated_at` is the row's last-touched timestamp (claim, release,
-    // summary write) and is a reasonable proxy for "last activity".
-    const updatedAgeMs = now - new Date(row.updatedAt).getTime();
-    if (updatedAgeMs < COALESCE_WINDOW_SECONDS * 1000) {
+    // §6.4 — per-user manual-trigger rate limit. `last_manual_trigger_at` is
+    // stamped only by this route on successful enqueue, so the consumer's
+    // own claim/release/summary writes (which touch `updated_at`) no longer
+    // lock out a re-trigger inside the 30s window. Pre-migration rows have
+    // NULL here; we fall back to `updated_at` in that case to preserve the
+    // pre-split behavior until the first post-deploy trigger lands.
+    const rateLimitRef = row.lastManualTriggerAt ?? row.updatedAt;
+    const refAgeMs = now - new Date(rateLimitRef).getTime();
+    if (refAgeMs < COALESCE_WINDOW_SECONDS * 1000) {
       const retryAfterSec = Math.ceil(
-        (COALESCE_WINDOW_SECONDS * 1000 - updatedAgeMs) / 1000,
+        (COALESCE_WINDOW_SECONDS * 1000 - refAgeMs) / 1000,
       );
       return c.json(
         { error: "rate_limited", retry_after_sec: retryAfterSec },
@@ -110,6 +114,17 @@ syncRoutes.post("/run", async (c) => {
       }
       throw err;
     }
+
+    // §6.4 — stamp only after enqueue succeeds, so an enqueue failure doesn't
+    // punish the user with an unwarranted 30s lockout. Not atomic with the
+    // SELECT above; two racing requests can both pass the rate-limit check,
+    // which is acceptable for manual button-spam absorption.
+    await db
+      .update(syncState)
+      .set({ lastManualTriggerAt: sql`now()` })
+      .where(
+        and(eq(syncState.userId, userId), eq(syncState.calendarId, PRIMARY)),
+      );
 
     return c.json({ ok: true, enqueued: true, jobType }, 202);
   } finally {
