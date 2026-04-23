@@ -160,9 +160,10 @@ Hyperdrive knows the origin credentials.
 - `scripts/gen-secrets.ts` (§3.6a). Generates and injects the three Worker
   secrets per environment.
 - `scripts/sync-secrets.ts`. Per-environment reconciliation of the Worker
-  secret set against a team backup store. Optional secrets (like
-  `OPENAI_API_KEY`, `LLM_DAILY_LIMIT`) are handled separately so absence
-  does not block deploy.
+  secret set against a team backup store. Optional secrets (currently
+  `OPENAI_API_KEY`) are handled separately so absence does not block
+  deploy. `LLM_DAILY_LIMIT` is a runtime variable configured in
+  `wrangler.toml`, not a secret — it does not pass through this script.
 - `src/CLAUDE.md` → `DB connectivity`. Records why `DIRECT_DATABASE_URL`
   must never become a Worker secret: migrations run locally through the
   Session Pooler, and the Worker path stays behind Hyperdrive.
