@@ -1,4 +1,4 @@
-# AutoColor for Calendar - Project TODO
+> 다음에 실행할 작업은 [`next-todo.md`](./next-todo.md)에서 관리됩니다. (`/next-todo` 스킬 전용)
 
 ## 1. 기획 및 아키텍처 확정
 
@@ -99,23 +99,34 @@
 
 ## 6. 테스트 및 관측성(Observability) 확보
 
+### 6.1 회귀/단위·E2E 테스트 커버리지
+
 - [ ] `Vitest` 단위 테스트 및 모킹 (OAuth 토큰 갱신 실패, Sync Token 410 에러 등)
 - [ ] Webhook 대량 발생 시 Queue 부하 분산, 캘린더 락(Lock) 및 동시성 제어 테스트
 - [ ] 실패 재시도 및 DLQ 적재 동작 검증 테스트
 - [ ] Rule → LLM 각 단계별 정확도/비용/지연 추적 및 PII 마스킹 단위 테스트.
-- [ ] Add-on <-> Worker <-> Supabase 전체 흐름 E2E 테스트
-- [ ] **LLM 호출 로그·비용 대시보드** (§5 후속에서 이월) — **Wave A 완료**: `drizzle/0009`에 `llm_calls` 테이블 + `classifyWithLlm.finish()` 단일 emission + `classifierChain.onLlmCall` 전달 + `calendarSync.runPagedList` 버퍼 + `syncConsumer.execCtx.waitUntil(...).catch(warn)` fire-and-forget. retention/TTL·대시보드 UI·`/api/stats` 주간 롤업은 Wave B로 이월.
-- [ ] **사용자별 rate limit 확장** (§5 후속에서 이월) — §5.3에서 `LLM_DAILY_LIMIT`(per-user daily)만 구현. 분당/시간당 rate limit, preview endpoint throttle, `/sync/run` manual trigger rate limit을 통합 관리.
-- [ ] **규칙 적용 카운터 노출** (§5 후속에서 이월) — `gas/addon.js`의 홈카드 "이번 주 분류된 일정" mock을 실제 `SyncSummary` 집계 소스로 연결. `/me`에 주간 롤업 필드 추가 또는 별도 `/api/stats` 엔드포인트.
-- [x] **`color_rollback` 텔레메트리** — `drizzle/0009`에 `rollback_runs` 테이블 추가. `applyRollbackResult`가 모든 outcome(ok/reauth_required/forbidden/not_found/retryable)에 대해 `attempt=msg.attempts`로 insert, insert 실패 시 warn 로그만 내고 `msg.retry`로 번지지 않아 중복 PATCH 방지. DLQ 적재 모니터링 대시보드는 Wave B(sync_failures 대시보드와 묶음)로 이월.
+- [ ] Add-on <-> Worker <-> Supabase 전체 흐름 E2E 테스트 (→ Wave 3: §7 CI/CD 파이프라인 선행조건)
+
+### 6.2 통합 테스트 하네스 (postgres-in-container / Hyperdrive 에뮬레이터)
+
 - [ ] **claim/release Postgres round-trip 통합테스트** (§4A 리뷰 Finding #2) — 현재 `syncConsumer.test.ts`의 `syncClaim — precision invariant` 블록은 소스 파일 regex 가드일 뿐 실제 `date_trunc('milliseconds', now())` → JS `Date` → `eq(inProgressAt, claimedAt)` round-trip을 검증하지 않는다. postgres-in-container 또는 Hyperdrive 에뮬레이터 도입 시 실제 round-trip 테스트 추가.
-- [ ] **`/sync/run` 레이트리밋 컬럼 분리 검토** (§4A 리뷰 Finding #7) — 현재 `sync_state.updated_at` 기반 30초 coalesce window는 consumer의 claim/release/요약 쓰기까지 전부 밀어 "방금 끝난 직후 변경사항 추가" 재트리거 UX가 429로 막힌다. `last_manual_trigger_at` 컬럼 분리로 consumer 쓰기와 수동 트리거 레이트리밋을 분리 고려.
 - [ ] **Watch 채널 DB round-trip 통합테스트** (§4B 리뷰 m4) — `lookupChannelOwner`, `registerWatchChannel`의 UPDATE 테넌트 스코프, `drizzle/0005`의 partial `UNIQUE (watch_channel_id, watch_resource_id)` 충돌 거동을 실제 Postgres에 대해 검증. 현재 mock-only 테스트로는 인덱스/컬럼 레벨 실수를 잡지 못한다. §4A Finding #2 해법과 같은 harness 재사용.
+
+### 6.3 Wave B 관측성 (대시보드·롤업 엔드포인트)
+
+- [x] **LLM 호출 로그·비용 대시보드** (§5 후속에서 이월) — **Wave A 완료**: `drizzle/0009`에 `llm_calls` 테이블 + `classifyWithLlm.finish()` 단일 emission + `classifierChain.onLlmCall` 전달 + `calendarSync.runPagedList` 버퍼 + `syncConsumer.execCtx.waitUntil(...).catch(warn)` fire-and-forget. **Wave B 완료**: `GET /api/stats?window=7d|30d`가 `llm_calls`를 outcome별(hit/miss/timeout/quota_exceeded/http_error/bad_response/disabled) 집계 + `AVG`/`percentile_cont(0.95) FILTER (WHERE outcome='hit')`로 hit-only 지연 지표 노출 + `llm_usage_daily` 오늘자 row 조인해 `dailyQuotaRemaining` 포함. 비용 환산(토큰×가격), 전용 관리자 UI, retention/TTL(pg_cron)은 Wave B 후속으로 이월.
+- [x] **규칙 적용 카운터 노출** (§5 후속에서 이월) — `drizzle/0010`에 `sync_runs` 테이블 추가(`SyncSummary` unfold + outcome 6종 check). `calendarSync.runPagedList`에 `finalize(result)` 헬퍼 도입 — 모든 early-return을 경유하므로 모든 outcome(ok/reauth_required/forbidden/not_found/full_sync_required/retryable)이 정확히 1 row 기록. `syncConsumer.handleOne`이 `execCtx.waitUntil(db.insert(syncRuns)...catch(warn))` fire-and-forget로 주입(Wave A와 동일 격리). `GET /api/stats`의 `classification.updated` 필드를 `gas/addon.js` 홈카드 "최근 7일 분류된 일정: N건" 라이브 카운터로 연결(mock 제거), `lastSync.finishedAt`으로 "최근 동기화: M분 전" 렌더링. `sync_state.last_run_summary`는 `/me` 스냅샷 surface로 의도적 병존.
+- [x] **`color_rollback` 텔레메트리** — `drizzle/0009`에 `rollback_runs` 테이블 추가. `applyRollbackResult`가 모든 outcome(ok/reauth_required/forbidden/not_found/retryable)에 대해 `attempt=msg.attempts`로 insert, insert 실패 시 warn 로그만 내고 `msg.retry`로 번지지 않아 중복 PATCH 방지. DLQ 적재 모니터링 대시보드는 Wave B(sync_failures 대시보드와 묶음)로 이월.
+
+### 6.4 설계 후속 (레이트리밋·동시성·rate limit 통합)
+
+- [ ] **사용자별 rate limit 확장** (§5 후속에서 이월) — §5.3에서 `LLM_DAILY_LIMIT`(per-user daily)만 구현. 분당/시간당 rate limit, preview endpoint throttle, `/sync/run` manual trigger rate limit, `/api/stats`(§6.3 Wave B 이후 GAS homecard render마다 호출) throttle을 통합 관리.
+- [ ] **`/sync/run` 레이트리밋 컬럼 분리 검토** (§4A 리뷰 Finding #7) — 현재 `sync_state.updated_at` 기반 30초 coalesce window는 consumer의 claim/release/요약 쓰기까지 전부 밀어 "방금 끝난 직후 변경사항 추가" 재트리거 UX가 429로 막힌다. `last_manual_trigger_at` 컬럼 분리로 consumer 쓰기와 수동 트리거 레이트리밋을 분리 고려.
 - [ ] **Watch 갱신 동시성 가드 검토** (§4B 리뷰 M4) — Cloudflare cron은 동일 schedule 중복 실행을 하지 않지만, 수동 어드민 재트리거 경로가 생기면 `renewExpiringWatches`가 같은 row set에 대해 overlap할 수 있다. stop→register 구간에서 신규 채널을 죽이는 race가 가능. row-level `in_progress_at` 스탬프 또는 짧은 dedup window 도입 검토.
 
 ## 7. 배포 및 출시
 
-- [ ] Cloudflare Workers 배포 및 CI/CD 파이프라인 (GitHub Actions) 구축
+- [ ] Cloudflare Workers 배포 및 CI/CD 파이프라인 (GitHub Actions) 구축 (→ §6.1 E2E 테스트의 선행조건)
 - [ ] Supabase 데이터베이스 백업/복구 정책 수립
 - [ ] Google Cloud Console: OAuth Consent Screen 검수(Verification) 신청을 위한 데모/문서 준비
 - [ ] 개인정보처리방침, 서비스 약관 작성 및 Google Workspace Marketplace 등록
