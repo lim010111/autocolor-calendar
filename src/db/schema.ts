@@ -129,6 +129,13 @@ export const syncState = pgTable(
     // race between the consumer's failure write and a concurrent successful
     // run overwriting it.
     lastFailureSummary: jsonb("last_failure_summary"),
+    // §6.4 manual-trigger rate limit. Stamped only by `POST /sync/run` on a
+    // successful enqueue, so the consumer's own claim/release/summary writes
+    // (which touch `updated_at`) can't starve a manual re-trigger inside the
+    // 30s coalesce window. NULL on pre-migration rows — the route falls back
+    // to `updated_at` for those, which preserves the old behavior until they
+    // get their first manual trigger.
+    lastManualTriggerAt: timestamp("last_manual_trigger_at", { withTimezone: true }),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [

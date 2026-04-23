@@ -78,6 +78,13 @@
       "when": 1776923015593,
       "tag": "0010_slimy_gauntlet",
       "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1776929520262,
+      "tag": "0011_foamy_titanium_man",
+      "breakpoints": true
     }
   ]
 }

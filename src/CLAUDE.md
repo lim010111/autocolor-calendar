@@ -258,6 +258,38 @@ Retention: no TTL in Wave B. The `(user_id, finished_at)` btree keeps
 recent-window reads fast, but `sync_runs` grows monotonically. A pg_cron
 purge lands with the §3-후속 "세션 GC" job.
 
+## Manual-trigger rate limit (§6.4)
+
+`sync_state.last_manual_trigger_at` is the **sole writer** for the 30-second
+`POST /sync/run` coalesce window. Only `src/routes/sync.ts`'s `/sync/run`
+handler stamps it, and only **after** a successful `enqueueSync` — an
+enqueue failure must not punish the user with a 30s lockout.
+
+**The consumer must never write this column.** Pre-§6.4 the rate limit read
+`sync_state.updated_at`, but the consumer's own claim / release / summary /
+`last_error` writes all touch `updated_at`, so a sync that just completed
+would keep the window shut and 429 the user when they added a rule and
+re-triggered immediately (§4A Finding #7). Splitting this column out was
+the fix; if a future consumer path starts writing `last_manual_trigger_at`,
+the bug returns silently and the `syncRoute.test.ts` §6.4 suite won't catch
+it (those tests exercise the route layer, not the consumer).
+
+**NULL semantics / backfill**: pre-migration rows land with `NULL`. The
+route falls back to `updated_at` in that case — old behavior preserved
+until the first post-deploy manual trigger stamps the column. No backfill
+job: NULL is the correct "no manual trigger observed in this column's
+lifetime" signal, and the fallback makes it indistinguishable from the
+pre-split behavior for affected rows.
+
+**Atomicity**: the SELECT and UPDATE are not wrapped in a transaction.
+Two concurrent `/sync/run` requests can both read a stale
+`last_manual_trigger_at`, both pass the rate-limit check, and both enqueue.
+This is intentional — button-spam absorption, not hard rate limiting — and
+the consumer's `in_progress_at` claim serialises actual sync work
+regardless. Do not upgrade this to `SELECT ... FOR UPDATE` or a conditional
+UPDATE; the extra round-trip costs more than duplicate incremental jobs
+(which the sync-token consumer absorbs idempotently).
+
 ## Environments
 
 - `dev`: `autocolor-dev` Worker, `autocolor-dev-db` Hyperdrive, full secrets.

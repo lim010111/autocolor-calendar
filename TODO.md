@@ -121,7 +121,7 @@
 ### 6.4 설계 후속 (레이트리밋·동시성·rate limit 통합)
 
 - [ ] **사용자별 rate limit 확장** (§5 후속에서 이월) — §5.3에서 `LLM_DAILY_LIMIT`(per-user daily)만 구현. 분당/시간당 rate limit, preview endpoint throttle, `/sync/run` manual trigger rate limit, `/api/stats`(§6.3 Wave B 이후 GAS homecard render마다 호출) throttle을 통합 관리.
-- [ ] **`/sync/run` 레이트리밋 컬럼 분리 검토** (§4A 리뷰 Finding #7) — 현재 `sync_state.updated_at` 기반 30초 coalesce window는 consumer의 claim/release/요약 쓰기까지 전부 밀어 "방금 끝난 직후 변경사항 추가" 재트리거 UX가 429로 막힌다. `last_manual_trigger_at` 컬럼 분리로 consumer 쓰기와 수동 트리거 레이트리밋을 분리 고려.
+- [x] **`/sync/run` 레이트리밋 컬럼 분리** (§4A 리뷰 Finding #7) — `drizzle/0011`에 `sync_state.last_manual_trigger_at timestamptz` 추가. `POST /sync/run`만 이 컬럼을 성공 시 스탬프(enqueue 이후), consumer의 `updated_at` 터치와 완전히 분리. 기존 row NULL → `updated_at` fallback으로 pre-deploy 동작 유지. `syncRoute.test.ts`에 §6.4 suite 6 케이스(fresh×stale 매트릭스 4칸 + coalesce-no-stamp + enqueue-fail-no-stamp). `src/CLAUDE.md`에 "Manual-trigger rate limit (§6.4)" 계약 섹션 추가 — consumer가 이 컬럼을 절대 쓰지 않도록 invariant 못 박음.
 - [ ] **Watch 갱신 동시성 가드 검토** (§4B 리뷰 M4) — Cloudflare cron은 동일 schedule 중복 실행을 하지 않지만, 수동 어드민 재트리거 경로가 생기면 `renewExpiringWatches`가 같은 row set에 대해 overlap할 수 있다. stop→register 구간에서 신규 채널을 죽이는 race가 가능. row-level `in_progress_at` 스탬프 또는 짧은 dedup window 도입 검토.
 
 ## 7. 배포 및 출시
