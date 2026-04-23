@@ -121,6 +121,14 @@ export const syncState = pgTable(
     lastError: text("last_error"),
     lastErrorAt: timestamp("last_error_at", { withTimezone: true }),
     lastRunSummary: jsonb("last_run_summary"),
+    // §6 Wave A — snapshot of the most recent FAILED SyncSummary on
+    // retryable errors. Cleared to null on the next successful run. The DLQ
+    // consumer reads this column when a message lands in `sync_failures` so
+    // the dead-letter row captures the work-done-before-failure counters.
+    // Separate from `last_run_summary` on purpose: reusing one column would
+    // race between the consumer's failure write and a concurrent successful
+    // run overwriting it.
+    lastFailureSummary: jsonb("last_failure_summary"),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [
@@ -168,7 +176,108 @@ export const syncFailures = pgTable(
     // Google API error body only — never Calendar event payloads.
     errorBody: text("error_body"),
     attempt: integer("attempt").notNull(),
+    // §6 Wave A — `SyncSummary` snapshot copied from
+    // `sync_state.last_failure_summary` at DLQ-write time. Aggregate
+    // counters only (no event payloads). Nullable — absent when the
+    // consumer produced no summary (e.g. job envelope rejected before run).
+    summarySnapshot: jsonb("summary_snapshot"),
     failedAt: timestamp("failed_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [index("sync_failures_user_failed_at_idx").on(t.userId, t.failedAt)],
+);
+
+// §6 Wave A — per-call LLM log.
+//
+// Promotes the four aggregate `SyncSummary.llm_*` counters into per-call rows
+// so operators can see latency distribution, outcome mix by http_status,
+// and which categories the model actually picks. Written as a bulk INSERT
+// at sync-run end via `SyncContext.recordLlmCalls` + `execCtx.waitUntil(...)`
+// — one subrequest per sync run regardless of event count, so this doesn't
+// burn the Worker's 50-subrequest budget.
+//
+// PII: `category_name` is the user's own category name (not PII). `outcome`,
+// `http_status`, counts, and `latency_ms` are pure telemetry. No event
+// content crosses this boundary — the calendar event payload never reaches
+// this table, consistent with the log-redaction contract in src/CLAUDE.md.
+export const llmCalls = pgTable(
+  "llm_calls",
+  {
+    id: uuid("id")
+      .primaryKey()
+      .default(sql`gen_random_uuid()`),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    occurredAt: timestamp("occurred_at", { withTimezone: true }).notNull().defaultNow(),
+    outcome: text("outcome").notNull(),
+    // Only populated for outcome='http_error'. Nullable otherwise.
+    httpStatus: integer("http_status"),
+    latencyMs: integer("latency_ms").notNull(),
+    // Post-slice candidate count (= min(LLM_MAX_CATEGORIES=50, categories.length))
+    // so this reflects what the model actually saw, not what the user owns.
+    categoryCount: integer("category_count").notNull(),
+    // Total attempts including the final outcome (1 or 2 per MAX_ATTEMPTS=2).
+    // 0 when the chain quota-latched mid-run and skipped the fetch entirely.
+    attempts: integer("attempts").notNull().default(1),
+    // Only populated for outcome='hit'. Nullable otherwise.
+    categoryName: text("category_name"),
+  },
+  (t) => [
+    index("llm_calls_user_occurred_at_idx").on(t.userId, t.occurredAt),
+    check(
+      "llm_calls_outcome_check",
+      sql`${t.outcome} IN ('hit','miss','timeout','quota_exceeded','http_error','bad_response','disabled')`,
+    ),
+  ],
+);
+
+// §6 Wave A — per-run rollback log.
+//
+// Every `color_rollback` queue job result (ok / reauth_required / forbidden /
+// not_found / retryable) inserts one row here before `msg.ack`/`msg.retry`.
+// `attempt = msg.attempts` so a "retry then DLQ" pattern is visible as
+// multiple rows with increasing attempt numbers.
+//
+// `category_id` has no FK: the trigger for a rollback is the category being
+// deleted, so the FK target is already gone by the time the consumer writes.
+// This matches the consumer's `ON DELETE CASCADE` intent for user removal
+// without blocking the common happy path.
+//
+// Insert failures are caught and logged at warn — observability writes MUST
+// NOT cause the rollback job itself to retry, since that would re-emit
+// `clearEventColor` PATCHes on already-cleared events.
+export const rollbackRuns = pgTable(
+  "rollback_runs",
+  {
+    id: uuid("id")
+      .primaryKey()
+      .default(sql`gen_random_uuid()`),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    calendarId: text("calendar_id").notNull(),
+    categoryId: uuid("category_id").notNull(),
+    startedAt: timestamp("started_at", { withTimezone: true }).notNull(),
+    finishedAt: timestamp("finished_at", { withTimezone: true }).notNull(),
+    pages: integer("pages").notNull().default(0),
+    seen: integer("seen").notNull().default(0),
+    cleared: integer("cleared").notNull().default(0),
+    skippedStaleMarker: integer("skipped_stale_marker").notNull().default(0),
+    skippedManualOverride: integer("skipped_manual_override").notNull().default(0),
+    skippedVersionMismatch: integer("skipped_version_mismatch").notNull().default(0),
+    notFound: integer("not_found").notNull().default(0),
+    forbiddenEvents: integer("forbidden_events").notNull().default(0),
+    outcome: text("outcome").notNull(),
+    attempt: integer("attempt").notNull(),
+    // Google API error message shape only (status/reason/op name). Consistent
+    // with sync_failures.error_body contract — never event payloads.
+    errorMessage: text("error_message"),
+  },
+  (t) => [
+    index("rollback_runs_user_finished_at_idx").on(t.userId, t.finishedAt),
+    check(
+      "rollback_runs_outcome_check",
+      sql`${t.outcome} IN ('ok','reauth_required','forbidden','not_found','retryable')`,
+    ),
+  ],
 );
