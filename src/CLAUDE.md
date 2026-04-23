@@ -139,6 +139,79 @@ future debug path needed it. The PII redactor for the LLM leg
 (`src/services/piiRedactor.ts`) does not touch this field because the LLM
 prompt builder whitelists only `summary`/`description`/`location` (§5.3).
 
+## Observability tables (§6 Wave A)
+
+Three storage surfaces landed together so dashboards and runbooks have data to
+read once they ship. No UI / rollup endpoints in this wave — schema + writers
+only.
+
+### `sync_failures.summary_snapshot` + `sync_state.last_failure_summary`
+
+DLQ rows now carry the `SyncSummary` of the last failed attempt. Flow:
+
+1. `applyResult` (syncConsumer) writes `result.summary` to
+   `sync_state.last_failure_summary` on every retryable failure alongside
+   `lastError` / `lastErrorAt`.
+2. Successful sync runs (`calendarSync.runPagedList`) clear
+   `last_failure_summary: null` in the same UPDATE that stamps
+   `last_run_summary` — both the full-sync-complete branch and the mid-chunk
+   branch. Missing the clear would leave a stale snapshot for an unrelated
+   future DLQ landing.
+3. When a retried message finally dies, `handleDlqBatch` SELECTs
+   `last_failure_summary` for the (user, calendar) pair and copies it into
+   `sync_failures.summary_snapshot`. Absent row or SELECT error → `null`
+   snapshot; we never drop the DLQ audit row over a failed snapshot read.
+
+The summary is **aggregate counters only** — no Calendar event content — so
+this field respects the calendar-event-payload logging ban.
+
+### `llm_calls`
+
+Per-call LLM telemetry promoted from the four `SyncSummary.llm_*` counters.
+Written as a single bulk INSERT at sync-run end, not per event:
+
+- `classifyWithLlm` emits one `LlmCallRecord` via `deps.onCall` before every
+  return (all outcomes covered by a `finish()` helper — adding a new outcome
+  without routing through `finish()` would silently drop a row).
+- `classifierChain` forwards the record to its own `onLlmCall` callback and
+  synthesizes a record for the quota-latched short-circuit path
+  (`latencyMs: 0`, `attempts: 0`) so "we wanted to call the model" is still
+  observable.
+- `runPagedList` buffers records into a per-run array; on the way out — via
+  a `try { ... } finally { flushLlmCalls() }` that wraps the entire body —
+  it calls `ctx.recordLlmCalls?.(buffer)` exactly once. Every return path
+  (success, retryable, reauth, forbidden, not_found, full_sync_required)
+  flows through the finally, so the record stream is never lost on early
+  failures.
+- `syncConsumer.handleOne` injects the hook with
+  `execCtx.waitUntil(db.insert(llmCalls).values(rows).catch(warn))` —
+  fire-and-forget so response latency is unaffected, and a DB write failure
+  only downgrades to a warn log. **Observability writes must never cause
+  the sync itself to retry.**
+
+PII stance: `category_name` is the user's own category name (not PII).
+`outcome`, `latency_ms`, `category_count`, `attempts`, `http_status` are pure
+telemetry. No event content crosses this boundary — the whitelist in
+`buildPrompt` and the `redactEventForLlm` call happen upstream of the record
+emission.
+
+### `rollback_runs`
+
+`color_rollback` queue job audit log. Written by `applyRollbackResult` before
+`msg.ack` / `msg.retry`. **All outcomes** (`ok` / `reauth_required` /
+`forbidden` / `not_found` / `retryable`) insert a row with `attempt =
+msg.attempts`, so a "retry then DLQ" sequence is visible as multiple rows
+with increasing attempt numbers. Same error-isolation discipline as
+`llm_calls`: insert errors land in a warn log and **never trigger
+`msg.retry`**, because a retried rollback re-issues `clearEventColor`
+PATCHes on already-cleared events and costs Google API quota.
+
+`category_id` deliberately has no FK — the trigger for a rollback is the
+category being deleted, so the target is already gone by write time.
+`error_message` carries only the Google API error shape
+(`status/reason/op`), consistent with the `sync_failures.error_body`
+contract.
+
 ## Environments
 
 - `dev`: `autocolor-dev` Worker, `autocolor-dev-db` Hyperdrive, full secrets.
