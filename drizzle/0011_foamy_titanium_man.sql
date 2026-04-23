@@ -1,0 +1,22 @@
+-- §6.4 — Manual-trigger rate limit column split.
+--
+-- `POST /sync/run` used to read `sync_state.updated_at` to decide whether the
+-- 30s coalesce window was active. But `updated_at` is also touched by the
+-- consumer's own claim / release / summary writes, so a sync that *just
+-- completed* would keep the window shut and spam the user with 429s if they
+-- added a rule and re-triggered immediately.
+--
+-- Splitting out `last_manual_trigger_at` keeps the rate limit tied strictly
+-- to the action we're rate-limiting — the route stamps this column only on a
+-- successful enqueue. Consumer writes leave it untouched.
+--
+-- Pre-migration rows land with NULL; the route falls back to `updated_at` in
+-- that case so the first post-deploy manual trigger after a recent consumer
+-- write still coalesces (old behavior). No backfill — NULL is the correct
+-- "no manual trigger yet in this column's lifetime" signal.
+--
+-- Nullable / no default / no index: the column is only ever read by compound
+-- WHERE (user_id, calendar_id) on the unique key, so the existing
+-- `sync_state_user_calendar_uq` is sufficient for lookups.
+
+ALTER TABLE "sync_state" ADD COLUMN "last_manual_trigger_at" timestamp with time zone;
