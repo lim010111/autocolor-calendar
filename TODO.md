@@ -4,7 +4,7 @@
 
 - [x] PRD 및 시스템 아키텍처(SaaS 확장 모델) 최종 리뷰 (Cloudflare Workers + Supabase 하이브리드 모델로 확정)
 - [ ] UI/UX 와이어프레임 작성 (Add-on Card UI, 설정 페이지)
-- [ ] 데이터 저장 최소화, PII 마스킹, 권한(Scope) 최소화 등 보안/컴플라이언스 원칙 수립
+- [x] 데이터 저장 최소화, PII 마스킹, 권한(Scope) 최소화 등 보안/컴플라이언스 원칙 수립 — `docs/security-principles.md` 신규 인덱스 문서 (6개 원칙 × 정본 포인터 anchored reference; 본문 중복 없이 기존 CLAUDE.md / architecture-guidelines.md로 포인팅).
 - [ ] 운영용 도메인 확보 및 Google Search Console 소유권 인증 (Webhook용) — §4 후속 "Prod Watch API 활성화"의 `WEBHOOK_BASE_URL` 설정을 gate함
 - [ ] Google Workspace Marketplace 퍼블리싱 정책 및 제약사항, 심사 대비 시나리오 검토
 

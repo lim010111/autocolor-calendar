@@ -2,10 +2,10 @@
 
 > 이 파일은 `/next-todo` 스킬이 관리합니다. 한 번에 한 개의 "다음 실행할 작업"만 유지하고, 완료 직후 문서 갱신과 함께 다음 작업으로 rotate됩니다. 홈 섹션(§1~§7)의 체크박스 상태는 계속 `TODO.md`가 정본입니다.
 
-- **§6.4 Watch 갱신 동시성 가드 (§4B 리뷰 M4)**
-  - **문제**: 현재 `renewExpiringWatches`는 Cloudflare cron trigger에만 의존해 중복 실행을 막고 있지만, 수동 어드민 재트리거 경로(예: `/admin/watch/renew`)가 생기거나 cron이 overlap하는 환경(타 리전 / 장애 재시도)이 생기면 같은 `watch_channels` 행에 대해 stop → register 구간이 race될 수 있음. 기존 채널을 죽이고 신규 채널을 세팅하는 동안 또 다른 갱신 경로가 같은 row를 잡아 중간 상태의 신규 채널 ID를 날리는 시나리오가 가능. 현재는 잠재 버그지만, §7 어드민 도구 또는 §4 후속 "Prod Watch API 활성화" 시 surface 확률 높음.
-  - **해결**: `watch_channels` 테이블에 `in_progress_at timestamptz` 컬럼 추가(`sync_state.in_progress_at`와 동일 패턴). `renewExpiringWatches`가 row를 잡을 때 `SELECT ... WHERE in_progress_at IS NULL OR in_progress_at < now() - interval '2 minutes'` + `UPDATE SET in_progress_at = now()` 원자적 claim. stop + register 성공 후 `in_progress_at = null` 릴리스. 실패(Google 4xx/5xx/timeout) 시 `in_progress_at`은 stale TTL(2분) 경과 후 자연 재획득 가능. Drizzle migration + test + `src/CLAUDE.md`에 watch concurrency 계약 섹션.
-  - **주요 변경**: `drizzle/NNNN_watch_channel_in_progress_at.sql` (컬럼 + btree index on `(user_id, in_progress_at)`), `src/db/schema.ts` `watchChannels` drizzle 정의에 필드 추가, `src/services/watchRenewal.ts` claim/release 로직, `src/__tests__/watchRenewal.test.ts`에 3~4 케이스(claim 성공 / 이미 진행 중 skip / 2분 TTL stale row 재획득 / stop 실패 시 release 없이 return). `src/CLAUDE.md`에 "Watch renewal concurrency (§6.4)" 계약 섹션.
-  - **문서**: `src/CLAUDE.md` 새 섹션(Manual-trigger rate limit 바로 뒤) + `docs/architecture-guidelines.md` "Watch 채널 수명주기" 항목에 concurrency 정책 1~2줄 추가. TODO.md §6.4 해당 체크박스 flip.
-  - **의존성**: 없음. `sync_state.in_progress_at` 패턴을 그대로 차용하므로 schema review 부담 적음.
-  - **사이즈**: M (migration 1 + schema 1 + service 1 + test 3~4).
+- **§6.1 DLQ 적재 동작 검증 테스트 확장**
+  - **문제**: `src/__tests__/dlqConsumer.test.ts`가 존재하긴 하지만 §6 Wave A에서 랜딩한 `sync_failures.summary_snapshot` 복사 경로(마지막 실패 시도의 `SyncSummary`를 `sync_state.last_failure_summary`에서 SELECT → `sync_failures`로 INSERT)의 회귀 가드가 얇다. 특히 (a) 마지막 실패 summary가 없는 경우 `null` snapshot으로 기록되는 경로, (b) SELECT 실패 시 DLQ 감사 행은 여전히 쓰여야 한다는 불변식, (c) `msg.attempts` 값이 DLQ 행과 최종 consume 시점의 attempt 카운터가 일치하는지 검증, (d) `sync_state.last_failure_summary`는 성공 sync 시 null로 클리어되는지가 테스트로 못 박혀 있지 않아 `src/CLAUDE.md`의 "Observability tables (§6 Wave A)" 계약이 향후 리팩터링 시 silent하게 깨질 수 있다.
+  - **해결**: `dlqConsumer.test.ts`에 §6 Wave A 회귀 가드 4~5 케이스 추가. (1) `last_failure_summary` 존재 시 `summary_snapshot`에 그대로 복사, (2) `last_failure_summary` NULL 시 `summary_snapshot = null`로 rows 기록, (3) SELECT 실패 mock 시 snapshot은 null이지만 DLQ 감사 행은 여전히 INSERT됨, (4) `msg.attempts` 값이 `sync_failures.attempts`와 일치, (5) 성공 sync 경로(`applyResult`)가 `last_failure_summary`를 null로 클리어하는 회귀는 `syncConsumer.test.ts`에 추가(Wave A 계약의 양 끝단을 묶음). 새 소스 코드는 추가하지 않음 — 순수 회귀 가드.
+  - **주요 변경**: `src/__tests__/dlqConsumer.test.ts`에 `describe("§6 Wave A — summary_snapshot 회귀 가드")` 신규 블록 4 케이스. `src/__tests__/syncConsumer.test.ts`에 "applyResult가 last_failure_summary를 성공 시 null로 클리어" 1 케이스 추가. 소스 파일 수정 없음.
+  - **문서**: 없음 — 기존 `src/CLAUDE.md: Observability tables (§6 Wave A)` 계약을 회귀 가드로 못 박는 것이 이번 작업의 목적이고, 계약 자체는 이미 정본에 있어서 문서 변경 불필요.
+  - **의존성**: 없음.
+  - **사이즈**: M (test 5 케이스, mock 팩토리 재사용).
