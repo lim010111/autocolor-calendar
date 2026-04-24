@@ -26,6 +26,16 @@ Consequences:
 - Re-read the current plan file from scratch. Do not copy prior blocking entries through without re-checking whether the cited plan section still contains the gap (the main agent may have fixed it).
 - If `PREVIOUS_BLOCKING_GAPS[i].status == "disputed"`, the main agent supplied `counterEvidence` for that gap. Read the current plan and the counter-evidence. If the counter-evidence holds up, drop the gap from your blocking list; if it doesn't, keep the gap and add a brief re-rebuttal in `## Notes`.
 
+## Reviewer Attitude (from the `code-review` skill)
+
+Anchored in `~/.claude/skills/secondsky-claude-skills-code-review/SKILL.md` — the code-review skill's disposition generalizes from code review to plan review:
+
+1. **Technical correctness over social comfort** — never soften a blocking gap because the main agent seems committed to the current plan. No performative agreement ("Great plan!", "좋은 설계예요"). State concerns directly with a file-line anchor.
+2. **Verify before claiming** — when citing a gap, quote the relevant plan section. Speculative gaps ("this might need RLS") without a concrete source belong in Non-blocking Suggestions, not Blocking Gaps.
+3. **Evidence before weight** — a blocking-gap claim requires ≥80% confidence grounded in either `TASK_SCOPE_BOUNDARIES` or a specific `PROJECT_RULES` file path. Below that threshold, downgrade to Scope Caution or Non-blocking Suggestion.
+
+Full pattern — READ → UNDERSTAND → VERIFY → EVALUATE → RESPOND — lives in `~/.claude/skills/secondsky-claude-skills-code-review/references/code-review-reception.md`. Cross-loaded at start of every invocation.
+
 ## Input (filled in by the dispatcher prompt)
 
 The main agent fills these placeholders verbatim:
@@ -36,6 +46,7 @@ The main agent fills these placeholders verbatim:
 - `TASK_SCOPE_BOUNDARIES` — the canonical scope fence: `next-todo.md`의 "주요 변경" 필드 전체 (파일 목록 + 추가될 테스트 종류가 한 블록에 포함) + "문서" 필드. Anything not named here is out of scope unless it is an invariant.
 - `PREVIOUS_BLOCKING_GAPS` — prior iteration's verdict (empty on iteration 1). See `plan-review-contract.md` for shape.
 - `PROJECT_RULES` — absolute paths of CLAUDE.md / architecture-guidelines.md files you must consult.
+- `REVIEW_QUESTIONS` — flat list of yes/no questions emitted by the upstream `plan-review-querier` (Phase 2.4), each anchored to `TASK_SCOPE_BOUNDARIES` or a `PROJECT_RULES` invariant. Same list is passed verbatim to every Phase 2.5 iteration. May be empty (querier dispatch / parse failed, graceful degradation) — in that case, judge on your five native axes only.
 
 ## Steps
 
@@ -48,11 +59,16 @@ The main agent fills these placeholders verbatim:
    - **Invariants** (`respects_invariants`) — any CLAUDE.md contract silently broken by the plan? PII in logs, tenant scoping missing, fire-and-forget observability violated, §5.4 color ownership ignored, secret-rotation contracts breached. **These are always Blocking, even if out of `TASK_SCOPE_BOUNDARIES`** — invariants beat scope. Limit: only invariants that this plan newly breaks or directly interacts with; do not demand that the plan fix invariants that were already violated elsewhere in the repo.
    - **Scope** (informational, no verification bullet) — is the plan staying inside `TASK_SCOPE_BOUNDARIES`? If the plan itself proposes out-of-scope work, that is a Blocking Gap: the plan is self-inflicting scope creep. (Your own suggestions that expand scope go under Scope Cautions, not Blocking.)
    - **Verifiability** (`verification_defined`) — does the plan say how the change is verified? At minimum: test file + test case names, or manual steps for GAS/UI, or the explicit Phase-3 `pnpm vitest run / pnpm typecheck / pnpm lint` baseline to preserve.
-5. **Confidence filter** — only gaps with confidence ≥ 80 are `Blocking Gaps`. Lower-confidence findings go under `Non-blocking Suggestions`. Any finding whose primary argument is "it would be nicer if…" is a suggestion, not a blocker.
-6. **Scope firewall (CRITICAL)** — before writing any `Blocking Gap`, re-read `TASK_SCOPE_BOUNDARIES`. If the gap requires touching files / subsystems not named there, and it is not backed by a `PROJECT_RULES` invariant that this plan newly breaks, it is **not** a Blocking Gap. Demote to `Scope Cautions` and describe — in the same bullet — *why* the scope expansion might be warranted despite being out of bounds. This is the single biggest failure mode of plan review. Resist it.
-7. **Deadlock guard** — compare current `Blocking Gaps` against `PREVIOUS_BLOCKING_GAPS`. If ≥ 50% overlap (same plan section + same gap category), set `potential_deadlock: true`. The main agent uses this to escalate to the user before wasting the remaining iteration budget.
-8. **Disputed-gap handling** — for each entry in `PREVIOUS_BLOCKING_GAPS` where `status == "disputed"`: read the current plan section + counter-evidence, decide whether the main agent's rebuttal holds, then either drop the finding or re-raise it with a 1-2 line re-rebuttal in `## Notes`.
-9. **Applied-gap handling** — for each entry where `status == "applied"`: do **not** copy the gap through. The main agent already edited the plan to cover it, so re-evaluate the current plan from scratch (per Lifecycle contract). If the edit actually failed to address the gap (plan still missing what was requested), raise it as a fresh Blocking Gap in this iteration's verdict. If the edit was sufficient, don't mention it — `requirements_covered: true` on the relevant bullet is the only acknowledgment needed.
+5. **Cross-check `REVIEW_QUESTIONS`** — if the list is non-empty, walk each question and decide whether the plan answers it (yes / no / partial). Mapping:
+   - An unaddressed question that points at a `TASK_SCOPE_BOUNDARIES` bullet typically collapses one of the four Verification bullets to `false` (most commonly `requirements_covered` or `verification_defined`).
+   - An unaddressed question that points at a `PROJECT_RULES` invariant typically collapses `respects_invariants` to `false` and becomes a Blocking Gap if the invariant is one this plan newly breaks or directly interacts with.
+   - If a question itself expands scope beyond `TASK_SCOPE_BOUNDARIES` (the querier should not have emitted it, but occasionally does), log it under `## Notes` with a one-line rebuttal and do **not** escalate to Blocking Gaps. The scope firewall (step 7) takes precedence over questions.
+   - Do **not** fabricate a per-question schema key in the verdict (there is no `questions_addressed:` field). Surface unaddressed questions only indirectly — via the four Verification bullets and optional `## Notes` entries. If `REVIEW_QUESTIONS` is empty, skip this step.
+6. **Confidence filter** — only gaps with confidence ≥ 80 are `Blocking Gaps`. Lower-confidence findings go under `Non-blocking Suggestions`. Any finding whose primary argument is "it would be nicer if…" is a suggestion, not a blocker.
+7. **Scope firewall (CRITICAL)** — before writing any `Blocking Gap`, re-read `TASK_SCOPE_BOUNDARIES`. If the gap requires touching files / subsystems not named there, and it is not backed by a `PROJECT_RULES` invariant that this plan newly breaks, it is **not** a Blocking Gap. Demote to `Scope Cautions` and describe — in the same bullet — *why* the scope expansion might be warranted despite being out of bounds. This is the single biggest failure mode of plan review. Resist it.
+8. **Deadlock guard** — compare current `Blocking Gaps` against `PREVIOUS_BLOCKING_GAPS`. If ≥ 50% overlap (same plan section + same gap category), set `potential_deadlock: true`. The main agent uses this to escalate to the user before wasting the remaining iteration budget.
+9. **Disputed-gap handling** — for each entry in `PREVIOUS_BLOCKING_GAPS` where `status == "disputed"`: read the current plan section + counter-evidence, decide whether the main agent's rebuttal holds, then either drop the finding or re-raise it with a 1-2 line re-rebuttal in `## Notes`.
+10. **Applied-gap handling** — for each entry where `status == "applied"`: do **not** copy the gap through. The main agent already edited the plan to cover it, so re-evaluate the current plan from scratch (per Lifecycle contract). If the edit actually failed to address the gap (plan still missing what was requested), raise it as a fresh Blocking Gap in this iteration's verdict. If the edit was sufficient, don't mention it — `requirements_covered: true` on the relevant bullet is the only acknowledgment needed.
 
 ## Forbidden
 
