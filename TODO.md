@@ -127,6 +127,6 @@
 ## 7. 배포 및 출시
 
 - [ ] Cloudflare Workers 배포 및 CI/CD 파이프라인 (GitHub Actions) 구축 (→ §6.1 E2E 테스트의 선행조건)
-- [ ] Supabase 데이터베이스 백업/복구 정책 수립
+- [x] **Supabase 데이터베이스 백업/복구 정책 수립** — `docs/backup-recovery-policy.md` 신규 인덱스 문서 수립. Promise + RTO/RPO 테이블(dev 24h/24h — Supabase 일일 백업 베이스라인 기준 각주, prod TBD — §3 후속 `TODO.md:35` 종속) + 정본 포인터(§2) + DB 복구 절차(§4 PITR → 일일 백업 → `pg_dump` → `drizzle/0000..0012` 마이그레이션 베이스라인 재생 → Hyperdrive rebind) + 시크릿 복구 절차(§5 Worker 3종 키·Hyperdrive origin·GCP OAuth 재인가) + 분기별 드릴(§6, prod 활성화 후 본격화) + 미해결 TBD(§7 PITR 티어·prod 환경·계정 삭제 엔드포인트·`TOKEN_ENCRYPTION_KEY` 재암호화 배치) 포함. 본문은 `src/CLAUDE.md` → `Secret rotation impact` / `DB connectivity` / `Environments`와 `scripts/gen-secrets.ts` / `scripts/sync-secrets.ts` / `wrangler.toml:30-32` / `drizzle/`로 포인팅하며 중복 없음. `docs/marketplace-readiness.md:262` §5 "Backup / recovery policy" 행을 `미작성 / TODO.md:130` → `초안 / docs/backup-recovery-policy.md`로 갱신. `docs/security-principles.md` Principle 5(Secret Hygiene)의 순환 파트너 문서로 cross-reference 배치.
 - [ ] Google Cloud Console: OAuth Consent Screen 검수(Verification) 신청을 위한 데모/문서 준비 (체크리스트: `docs/marketplace-readiness.md`)
 - [ ] 개인정보처리방침, 서비스 약관 작성 및 Google Workspace Marketplace 등록 (체크리스트: `docs/marketplace-readiness.md`)

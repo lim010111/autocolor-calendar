@@ -259,7 +259,7 @@ a gate, edit the owning source first and then the status here.
 | Account-deletion endpoint live | Marketplace submission | Eng | 미작성 | §3 |
 | Reviewer demo bundle | OAuth verification | Product + Eng | 미작성 | §4 |
 | CI/CD pipeline | Quality gate | Eng | 미작성 | `TODO.md:129` |
-| Backup / recovery policy | Admin review | Eng | 미작성 | `TODO.md:130` |
+| Backup / recovery policy | Admin review | Eng | 초안 | `docs/backup-recovery-policy.md` |
 | Security principles index current | Reviewer spot-checks | Eng | 완료 | `docs/security-principles.md` |
 
 ## How to use this document
