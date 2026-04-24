@@ -6,7 +6,7 @@
 - [ ] UI/UX 와이어프레임 작성 (Add-on Card UI, 설정 페이지)
 - [x] 데이터 저장 최소화, PII 마스킹, 권한(Scope) 최소화 등 보안/컴플라이언스 원칙 수립 — `docs/security-principles.md` 신규 인덱스 문서 (6개 원칙 × 정본 포인터 anchored reference; 본문 중복 없이 기존 CLAUDE.md / architecture-guidelines.md로 포인팅).
 - [ ] 운영용 도메인 확보 및 Google Search Console 소유권 인증 (Webhook용) — §4 후속 "Prod Watch API 활성화"의 `WEBHOOK_BASE_URL` 설정을 gate함
-- [ ] Google Workspace Marketplace 퍼블리싱 정책 및 제약사항, 심사 대비 시나리오 검토
+- [x] Google Workspace Marketplace 퍼블리싱 정책 및 제약사항, 심사 대비 시나리오 검토 — `docs/marketplace-readiness.md` 신규 인덱스 (5개 섹션 × 상태 테이블; 본문은 `docs/security-principles.md`·`src/CLAUDE.md`로 포인팅).
 
 ## 2. Google Apps Script (Add-on 클라이언트) 개발
 
@@ -128,5 +128,5 @@
 
 - [ ] Cloudflare Workers 배포 및 CI/CD 파이프라인 (GitHub Actions) 구축 (→ §6.1 E2E 테스트의 선행조건)
 - [ ] Supabase 데이터베이스 백업/복구 정책 수립
-- [ ] Google Cloud Console: OAuth Consent Screen 검수(Verification) 신청을 위한 데모/문서 준비
-- [ ] 개인정보처리방침, 서비스 약관 작성 및 Google Workspace Marketplace 등록
+- [ ] Google Cloud Console: OAuth Consent Screen 검수(Verification) 신청을 위한 데모/문서 준비 (체크리스트: `docs/marketplace-readiness.md`)
+- [ ] 개인정보처리방침, 서비스 약관 작성 및 Google Workspace Marketplace 등록 (체크리스트: `docs/marketplace-readiness.md`)

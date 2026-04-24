@@ -18,6 +18,7 @@
 - `docs/`: Contains architectural documentation.
 - `plans/`: Contains detailed architecture and implementation plans.
 - `TODO.md`: Tracks ongoing tasks and features.
+- `docs/marketplace-readiness.md`: Marketplace 심사 제출 자료 체크리스트 (§1 / §7 런치 게이트 인덱스).
 - `wrangler.toml`: Cloudflare Workers project configuration for the backend.
 - `src/`: Source code for the Cloudflare Workers backend.
 - `.gemini/`: Gemini CLI specific configurations, hooks, and agents.
