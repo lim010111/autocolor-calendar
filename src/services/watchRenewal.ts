@@ -7,19 +7,20 @@
 // the batch keeps going).
 //
 // Called from `scheduled` handler (wrangler.toml [env.dev.triggers] crons).
-// Safe to invoke *sequentially* — channels outside the renewal window are
-// skipped on each tick. Concurrent invocations against the same row set
-// (e.g., cron overlap with a manual admin trigger) would race at the
-// stop→register boundary and orphan fresh channels; Cloudflare cron does
-// not overlap itself on a single schedule, so we rely on that guarantee
-// rather than an in-row claim. Adding a claim is a §6 follow-up once
-// manual re-trigger paths exist.
+// Per-row concurrency is guarded by `claimWatchRenewal` / `releaseWatchRenewal`
+// against `sync_state.watch_renewal_in_progress_at` (§6.4 / §4B M4). Cloudflare
+// cron does not overlap itself on a single schedule, but adding the claim
+// pre-emptively protects against future manual-trigger paths (e.g. an admin
+// "renew now" button in §6.3 Wave B follow-ups) racing with a cron tick at
+// the stop→register boundary. See `src/CLAUDE.md` "Watch renewal concurrency
+// (§6.4)" for the writer/reader contract.
 
 import { and, eq, lt, sql, isNotNull } from "drizzle-orm";
 import type { PostgresJsDatabase } from "drizzle-orm/postgres-js";
 
 import { syncState } from "../db/schema";
 import type { Bindings } from "../env";
+import { claimWatchRenewal, releaseWatchRenewal } from "../lib/watchClaim";
 import { CalendarApiError } from "./googleCalendar";
 import { getValidAccessToken, ReauthRequiredError } from "./tokenRefresh";
 import { registerWatchChannel, stopWatchChannel } from "./watchChannel";
@@ -82,6 +83,24 @@ export async function renewExpiringWatches(
   summary.scanned = rows.length;
 
   for (const row of rows) {
+    // §6.4 concurrency claim. If another worker holds the lock (future manual
+    // trigger overlapping cron), skip this row — next cron tick will re-check.
+    // Firing stop→register anyway would potentially destroy a fresh channel
+    // the other worker just registered.
+    const claim = await claimWatchRenewal(db, row.userId, row.calendarId);
+    if (!claim.acquired) {
+      console.log(
+        JSON.stringify({
+          level: "info",
+          msg: "watch renewal skipped — claim not acquired",
+          userId: row.userId,
+          calendarId: row.calendarId,
+        }),
+      );
+      summary.skipped += 1;
+      continue;
+    }
+
     try {
       const { accessToken } = await getValidAccessToken(db, env, row.userId);
       // Stop the old channel first so we don't accumulate duplicates. 404 is
@@ -115,12 +134,34 @@ export async function renewExpiringWatches(
         }),
       );
       summary.failed += 1;
+    } finally {
+      // Release before the next iteration so a downstream manual trigger can
+      // immediately re-claim this row without waiting STALE_WINDOW_MS.
+      // `.catch(warn)` mirrors `llm_calls` / `rollback_runs` fire-and-forget
+      // discipline: observability / lock-release failure must not halt the
+      // outer renewal loop. A release failure auto-heals after the 10-min
+      // stale window regardless.
+      await releaseWatchRenewal(
+        db,
+        row.userId,
+        row.calendarId,
+        claim.claimedAt,
+      ).catch((releaseErr: unknown) => {
+        console.warn(
+          JSON.stringify({
+            level: "warn",
+            msg: "watch renewal release failed — lock auto-heals after 10min TTL",
+            userId: row.userId,
+            calendarId: row.calendarId,
+            error:
+              releaseErr instanceof Error
+                ? releaseErr.message
+                : String(releaseErr),
+          }),
+        );
+      });
     }
   }
-
-  // Anything we didn't touch was either not in the renewal window or already
-  // renewed earlier this tick via a concurrent run.
-  summary.skipped = summary.scanned - summary.renewed - summary.failed;
 
   console.log(
     JSON.stringify({
