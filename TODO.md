@@ -103,7 +103,7 @@
 
 - [ ] `Vitest` 단위 테스트 및 모킹 (OAuth 토큰 갱신 실패, Sync Token 410 에러 등)
 - [ ] Webhook 대량 발생 시 Queue 부하 분산, 캘린더 락(Lock) 및 동시성 제어 테스트
-- [ ] 실패 재시도 및 DLQ 적재 동작 검증 테스트
+- [x] **실패 재시도 및 DLQ 적재 동작 검증 테스트** — §6 Wave A 계약 감사 결과 `dlqConsumer.test.ts`의 4 케이스(`summary_snapshot` 복사 / NULL 처리 / SELECT 실패 fallback / INSERT 실패 시 ack·no-retry)와 `syncConsumer.test.ts`의 retryable 쪽 2 케이스(behavioral + source-level regex guard)가 이미 구현되어 있음을 확인. 유일하게 비어 있던 슬롯 — `calendarSync.runPagedList` mid-chunk continuation 분기(`calendarSync.ts:431-447`)의 `lastFailureSummary: null` 클리어 — 에 대해 `calendarSync.test.ts`에 1 케이스(`mid-chunked full_resync UPDATE also clears last_failure_summary to null`) 추가. 변형 드릴(소스 line 438 삭제 → 테스트 fail 확인 → 원복)로 가드가 실제로 작동함을 검증.
 - [ ] Rule → LLM 각 단계별 정확도/비용/지연 추적 및 PII 마스킹 단위 테스트.
 - [ ] Add-on <-> Worker <-> Supabase 전체 흐름 E2E 테스트 (→ Wave 3: §7 CI/CD 파이프라인 선행조건)
 

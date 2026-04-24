@@ -938,6 +938,54 @@ describe("calendarSync — §6 Wave A observability hooks", () => {
     expect(finalUpdate).toHaveProperty("lastFailureSummary", null);
   });
 
+  it("mid-chunked full_resync UPDATE also clears last_failure_summary to null", async () => {
+    // guards calendarSync.ts:438 — the §6 Wave A contract requires the clear
+    // to happen on BOTH the full-sync-complete branch (above) and the
+    // mid-chunk branch below. Removing the clear would let a stale snapshot
+    // survive a long chunked resync and land in an unrelated future DLQ row.
+    const env = makeEnv();
+    const tokenRow = await seedTokenRow(env);
+    const { db, updates } = makeDb({ nextSyncToken: null, tokenRow });
+
+    let page = 0;
+    globalThis.fetch = vi.fn(async (input: RequestInfo | URL) => {
+      const url = typeof input === "string" ? input : input.toString();
+      if (url.includes("oauth2.googleapis.com/token")) {
+        return new Response(
+          JSON.stringify({ access_token: "at", expires_in: 3600, scope: "openid", token_type: "Bearer" }),
+          { status: 200 },
+        );
+      }
+      page += 1;
+      // Every page hands back nextPageToken but never nextSyncToken, so
+      // runPagedList loops past MAX_PAGES_PER_FULL_RESYNC_RUN=5 and exits
+      // via the `else if (!finalSyncToken)` branch at calendarSync.ts:431-447.
+      return new Response(
+        JSON.stringify({
+          items: [{ id: `e-${page}`, status: "confirmed", colorId: "" }],
+          nextPageToken: `pt-${page + 1}`,
+        }),
+        { status: 200 },
+      );
+    }) as typeof fetch;
+
+    const result = await runFullResync(
+      { db, env, userId: USER_ID, calendarId: CAL },
+      { timeMin: "2024-01-01T00:00:00.000Z", timeMax: "2030-01-01T00:00:00.000Z" },
+    );
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    // Truthy continuation confirms the mid-chunk branch fired, not full-sync.
+    expect(result.continuation).toBeTruthy();
+
+    // Filter for the UPDATE that stamps lastRunSummary instead of indexing
+    // the tail — robust against a future UPDATE (e.g. token refresh) landing
+    // after this one and silently shadowing the assertion.
+    const runSummaryUpdate = updates.find((u) => "lastRunSummary" in u);
+    expect(runSummaryUpdate).toBeDefined();
+    expect(runSummaryUpdate!).toHaveProperty("lastFailureSummary", null);
+  });
+
   it("recordLlmCalls receives the buffer when LLM fires (rule-miss path)", async () => {
     const env = makeEnv();
     const tokenRow = await seedTokenRow(env);
