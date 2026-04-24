@@ -118,6 +118,14 @@ export const syncState = pgTable(
     lastFullResyncAt: timestamp("last_full_resync_at", { withTimezone: true }),
     active: boolean("active").notNull().default(true),
     inProgressAt: timestamp("in_progress_at", { withTimezone: true }),
+    // §6.4 / §4B M4 — watch renewal claim. Deliberately distinct from
+    // `inProgressAt` (sync consumer claim): sync and renewal touch independent
+    // Google API surfaces (events.list vs channels.watch), so conflating them
+    // would block renewal while a sync is running. See `src/CLAUDE.md`
+    // "Watch renewal concurrency (§6.4)" for the writer/reader contract.
+    watchRenewalInProgressAt: timestamp("watch_renewal_in_progress_at", {
+      withTimezone: true,
+    }),
     lastError: text("last_error"),
     lastErrorAt: timestamp("last_error_at", { withTimezone: true }),
     lastRunSummary: jsonb("last_run_summary"),

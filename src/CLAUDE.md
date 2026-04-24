@@ -324,6 +324,55 @@ regardless. Do not upgrade this to `SELECT ... FOR UPDATE` or a conditional
 UPDATE; the extra round-trip costs more than duplicate incremental jobs
 (which the sync-token consumer absorbs idempotently).
 
+## Watch renewal concurrency (§6.4 / §4B M4)
+
+`sync_state.watch_renewal_in_progress_at` is the per-row claim column for the
+Google Calendar watch-channel renewal job. Mirrors the claim-with-staleness
+pattern of `in_progress_at` (sync consumer) and `last_manual_trigger_at`
+(manual-trigger rate limit), but is intentionally **separate from both**.
+
+**Sole writer** is `src/services/watchRenewal.ts`'s per-row loop, via
+`claimWatchRenewal` / `releaseWatchRenewal` in `src/lib/watchClaim.ts`. Any
+future manual-trigger route (e.g. `/admin/watch/renew` once §6.3 Wave B lands
+the admin surface) **must route through the same helpers** — adding a second
+writer to this column would re-open the race this work closed.
+
+**The sync consumer must never touch this column.** `sync_state.in_progress_at`
+(owned by `syncClaim.ts`) already holds the sync claim. Sync (events.list +
+events.patch) and renewal (channels.stop + channels.watch) act on independent
+Google API surfaces, so collapsing them into one lock would pointlessly
+serialise two workloads with no data-race justification and could starve
+renewal for a heavily-syncing user (worst case: slipping past the 7-day watch
+expiry boundary).
+
+**TTL is 10 minutes**, longer than syncClaim's 5-minute window. `channels.stop`
++ `channels.watch` plus a 429 retry can legitimately run for tens of seconds,
+and renewal fires only from cron (not a user-visible request path), so the
+latency tradeoff is different. If the original worker hangs, a second worker
+can take over after 10 minutes; `channels.stop` absorbs 404 and the next cron
+tick converges any transient double-register — same "observed, not prevented"
+policy as the concurrent PATCH race in §5.4.
+
+**Millisecond-precision ownership probe** (`date_trunc('milliseconds', now())`)
+is preserved from `syncClaim.ts`: without it, the Postgres µs → JS `Date` ms
+round-trip would silently no-op every release's ownership check and leave the
+lock held until the 10-min stale window expires. Pinned behaviorally in
+`watchRenewal.test.ts` case 1 (release receives the exact `claimedAt` reference
+back from claim) and source-level via a regex guard (same form as the
+`syncClaim` precision invariant).
+
+**NULL semantics**: pre-migration rows land with `NULL`. The first claim
+stamps the column atomically; a crashed worker's abandoned non-NULL value
+auto-heals via the 10-min stale window. No backfill job.
+
+**Atomicity**: the per-row UPDATE is a single-statement atomic
+`UPDATE ... WHERE (NULL OR lt(now() - interval)) ... RETURNING`; two concurrent
+workers racing on the same row will see exactly one succeed. The loser sees
+`acquired: false` and skips. `continue` in the renewal loop lives **outside**
+the `try { ... } finally { release }` block specifically so a skipped row
+does not trigger a spurious release (which would no-op via the ownership guard
+anyway, but avoiding the DB round-trip keeps the observable behavior clean).
+
 ## Environments
 
 - `dev`: `autocolor-dev` Worker, `autocolor-dev-db` Hyperdrive, full secrets.

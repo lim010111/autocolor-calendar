@@ -1,0 +1,29 @@
+-- §6.4 / §4B M4 — Watch renewal concurrency claim.
+--
+-- This column is DELIBERATELY SEPARATE from `sync_state.in_progress_at`
+-- (which is the sync consumer claim used by `src/lib/syncClaim.ts`).
+-- Sync (events.list + events.patch) and watch renewal (channels.stop +
+-- channels.watch) act on independent Google API surfaces — conflating
+-- them into one lock would block a user's watch renewal while a sync is
+-- in flight, with no data-race justification.
+--
+-- Writer: ONLY `src/services/watchRenewal.ts`'s per-row `claimWatchRenewal`
+-- / `releaseWatchRenewal` helpers. Any future manual-trigger route (e.g.
+-- `/admin/watch/renew`) must go through the same helpers. The sync
+-- consumer must never touch this column — same invariant pattern as
+-- `last_manual_trigger_at` (§6.4 / drizzle/0011).
+--
+-- TTL semantics: 10-minute stale window (longer than syncClaim's 5-min
+-- because channels.stop + channels.watch round trip + 429 retry can
+-- legitimately take tens of seconds, and renewal runs from cron — user
+-- perceived latency is not sensitive here). Stale takeover is acceptable
+-- because channels.stop absorbs 404 and concurrent `register` converges
+-- on the next cron tick.
+--
+-- Indexing: no dedicated index. Renewal loop claims by the existing
+-- compound key `(user_id, calendar_id)` covered by
+-- `sync_state_user_calendar_uq`. If a future admin UI needs a "stuck
+-- rows (in-progress > 10min)" list view, add a partial
+-- `WHERE watch_renewal_in_progress_at IS NOT NULL` btree at that point.
+
+ALTER TABLE "sync_state" ADD COLUMN "watch_renewal_in_progress_at" timestamp with time zone;
