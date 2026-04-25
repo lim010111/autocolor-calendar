@@ -14,15 +14,14 @@
 - **Pre-conditions:**
   - Test account from `08-test-account.md` is signed in to Google.
   - Add-on already installed from Workspace Marketplace. Marketplace
-    install grants the 7 GAS framework scopes declared in
-    `gas/appsscript.json:5-13` (`calendar` /
-    `script.external_request` / `script.locale` /
+    install grants 7 scopes declared in `gas/appsscript.json:5-13` —
+    5 framework scopes (`script.external_request` / `script.locale` /
     `calendar.addons.execute` /
     `calendar.addons.current.event.read` /
-    `calendar.addons.current.event.write` / `userinfo.email`); see
-    `docs/assets/marketplace/scope-justifications.md` "Out of scope"
-    list for why these are framework-required and not separately
-    justified.
+    `calendar.addons.current.event.write`; justifications under
+    `docs/assets/marketplace/scope-justifications.md` "Out of scope")
+    plus `calendar` and `userinfo.email` (per-scope justifications at
+    `docs/assets/marketplace/scope-justifications.md` §1 / §3).
   - Test account is NOT yet authenticated to the AutoColor backend
     (no `sessions` row, no `oauth_tokens` row).
 
@@ -33,12 +32,13 @@ scenario covers the second. Before walking the steps, surface the
 distinction:
 
 - **Marketplace install consent** — granted once when the user
-  installed the Add-on (before Step 1 below). Lists the 7 scopes from
-  `gas/appsscript.json` `oauthScopes` (`gas/appsscript.json:5-13`),
-  including the framework scopes (`script.*`, `calendar.addons.*`)
-  plus `calendar` and `userinfo.email`. Their justifications live as
+  installed the Add-on (before Step 1 below). Lists 7 scopes from
+  `gas/appsscript.json` `oauthScopes` (`gas/appsscript.json:5-13`):
+  5 framework scopes (`script.*`, `calendar.addons.*`) justified under
   the "Out of scope" list in
-  `docs/assets/marketplace/scope-justifications.md`.
+  `docs/assets/marketplace/scope-justifications.md`, plus `calendar`
+  and `userinfo.email` whose per-scope justifications live at
+  `docs/assets/marketplace/scope-justifications.md` §1 / §3.
 - **Backend OAuth consent (this scenario)** — granted at Step 3 below
   when the reviewer clicks "Google 계정으로 시작하기". Lists the 4
   backend scopes from `src/config/constants.ts:1-6` (`openid` /
@@ -131,7 +131,7 @@ and the §5.4 ownership-marker contract.
 - **Surface.** Google's own consent page — this is hosted by Google,
   so AutoColor has no in-product copy to quote here. The page lists
   exactly the 4 scopes from `src/config/constants.ts:1-6`; the 7
-  framework scopes were already granted at Marketplace install time
+  Marketplace-install scopes were already granted at install time
   and are not re-prompted on this surface (see "Two consent
   surfaces" pre-read above).
 - **Pre-verification interstitial.** If the deployment has not yet
@@ -279,8 +279,9 @@ and the §5.4 ownership-marker contract.
 - `docs/add-on-ui-plan.md` Screen 1 — Welcome card design source.
 - `docs/assets/marketplace/scope-justifications.md` §1-§3 — per-scope
   justifications for `calendar` / `calendar.events` / `userinfo.email`;
-  "Out of scope" section enumerates the 7 GAS framework scopes the
-  Marketplace-install consent surface grants.
+  "Out of scope" section enumerates the 5 GAS framework scopes the
+  Marketplace-install consent surface grants beyond `calendar` /
+  `userinfo.email`.
 - `docs/security-principles.md` Principle 3 — Scope Minimization.
   This scenario demonstrates two of the four scopes (`openid` /
   `email`); scenarios `02` and `05` will demonstrate `calendar.events`,
