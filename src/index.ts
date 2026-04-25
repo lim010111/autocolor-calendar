@@ -7,6 +7,7 @@ import { loggerMiddleware } from "./middleware/logger";
 import { handleDlqBatch } from "./queues/dlqConsumer";
 import { handleSyncBatch } from "./queues/syncConsumer";
 import type { SyncJob } from "./queues/types";
+import { accountRoutes } from "./routes/account";
 import { authRoutes } from "./routes/auth";
 import { categoriesRoutes } from "./routes/categories";
 import { classifyRoutes } from "./routes/classify";
@@ -32,6 +33,7 @@ app.route("/webhooks", webhookRoutes);
 app.route("/api/categories", categoriesRoutes);
 app.route("/api/classify", classifyRoutes);
 app.route("/api/stats", statsRoutes);
+app.route("/api/account", accountRoutes);
 
 export default {
   fetch: app.fetch,
