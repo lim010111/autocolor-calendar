@@ -15,6 +15,7 @@ export const OAUTH_STATE_TTL_MS = 10 * 60 * 1000;
 export const GOOGLE_AUTH_URL = "https://accounts.google.com/o/oauth2/v2/auth";
 export const GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token";
 export const GOOGLE_USERINFO_URL = "https://openidconnect.googleapis.com/v1/userinfo";
+export const GOOGLE_REVOKE_URL = "https://oauth2.googleapis.com/revoke";
 
 export type OAuthErrorCode =
   | "state_invalid"
