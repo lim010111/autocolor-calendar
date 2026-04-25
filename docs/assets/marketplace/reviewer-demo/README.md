@@ -24,14 +24,14 @@ is standalone and assumes the test account from `08`.
 see scope prompts on two distinct surfaces; the bundle covers both:
 
 - **Marketplace install consent** — granted once when the user installs
-  the Add-on from Workspace Marketplace. Lists the 7 GAS framework scopes
-  declared in `gas/appsscript.json:5-13`
-  (`calendar` / `script.external_request` / `script.locale` /
+  the Add-on from Workspace Marketplace. Lists 7 scopes declared in
+  `gas/appsscript.json:5-13` — 5 framework scopes
+  (`script.external_request` / `script.locale` /
   `calendar.addons.execute` / `calendar.addons.current.event.read` /
-  `calendar.addons.current.event.write` / `userinfo.email`). Out of
-  per-scope justification scope per
-  `docs/assets/marketplace/scope-justifications.md` "Out of scope" list —
-  these are framework-required.
+  `calendar.addons.current.event.write`; justifications under
+  `docs/assets/marketplace/scope-justifications.md` "Out of scope") plus
+  `calendar` and `userinfo.email` (per-scope justifications at
+  `docs/assets/marketplace/scope-justifications.md` §1 / §3).
 - **Backend OAuth consent** — granted at `01-install.md` Step 3 when the
   user clicks "Google 계정으로 시작하기". Lists the 4 backend scopes from
   `src/config/constants.ts:1-6` (`openid` / `email` / `calendar` /
