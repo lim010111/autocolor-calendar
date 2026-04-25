@@ -207,13 +207,13 @@ directory; this section is the index.
 - LLM preview demonstration: `src/routes/classify.ts` + `gas/addon.js`
   "🤖 AI 분류 확인" button (§5 후속 at `TODO.md:97`).
 - Rule-deletion rollback: `src/services/colorRollback.ts`.
-- Demo bundle path: **TBD** `docs/assets/marketplace/reviewer-demo/`.
+- Demo bundle path: `docs/assets/marketplace/reviewer-demo/` (index: `reviewer-demo/README.md`).
 
 ### Status
 
 | Scenario | Scope(s) exercised | Source of truth | Status |
 |---|---|---|---|
-| Install + first-time OAuth | `openid` / `email` / `calendar` / `calendar.events` | TBD `reviewer-demo/01-install.md` | 미작성 |
+| Install + first-time OAuth | `openid` / `email` / `calendar` / `calendar.events` | `docs/assets/marketplace/reviewer-demo/01-install.md` | 초안 |
 | Create rule → color applied | `calendar.events` | `docs/add-on-ui-plan.md` Screen 4 | 미작성 |
 | Event-open preview (rule hit) | `calendar.addons.current.event.read` | `docs/add-on-ui-plan.md` Screen 3 | 미작성 |
 | Event-open AI fallback preview | `calendar.addons.current.event.read` + backend LLM | `docs/add-on-ui-plan.md` Screen 3 + `TODO.md:97` | 미작성 |
