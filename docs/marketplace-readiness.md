@@ -123,9 +123,9 @@ and is not adjudicated here.
 | Authorized domain(s) | TBD | 미작성 | Ops | Must match home / privacy / ToS |
 | Scope list (backend) | `src/config/constants.ts:1-8` | 완료 | Eng | Matches `OAUTH_SCOPES` |
 | Scope list (GAS manifest) | `gas/appsscript.json:5-12` | 완료 | Eng | |
-| `calendar` (Restricted) justification | TBD `docs/assets/marketplace/scope-justifications.md` | 미작성 | Eng + Product | Cite Principle 3 |
-| `calendar.events` (Sensitive) justification | TBD (same file) | 미작성 | Eng + Product | |
-| `userinfo.email` justification | TBD (same file) | 미작성 | Eng | |
+| `calendar` (Restricted) justification | `docs/assets/marketplace/scope-justifications.md` | 초안 | Eng + Product | Cite Principle 3 |
+| `calendar.events` (Sensitive) justification | `docs/assets/marketplace/scope-justifications.md` | 초안 | Eng + Product | |
+| `userinfo.email` justification | `docs/assets/marketplace/scope-justifications.md` | 초안 | Eng | |
 | Demo video (restricted-scope usage) | TBD `docs/assets/marketplace/oauth-verification-video.mp4` | 미작성 | Product | Required by Google's Restricted Scope policy |
 | CASA security assessment (if required) | TBD | 미작성 | Ops | Only if Google flags |
 | Onboarding-card copy refresh | `gas/addon.js:119` | 미작성 | Eng | Pending final Privacy / ToS URLs |
@@ -253,7 +253,7 @@ a gate, edit the owning source first and then the status here.
 | Listing assets bundle | Marketplace submission | Product + Design | 미작성 | §1 |
 | Privacy Policy published | Consent screen, listing | Legal | 미작성 | §2 |
 | Terms of Service published | Consent screen, listing | Legal | 미작성 | §2 |
-| Scope justifications written | OAuth verification | Eng + Product | 미작성 | §2 |
+| Scope justifications written | OAuth verification | Eng + Product | 초안 | §2 → `docs/assets/marketplace/scope-justifications.md` |
 | Restricted-scope demo video | OAuth verification | Product | 미작성 | §2 |
 | Data handling / Admin answers drafted | Marketplace submission | Eng + Ops | 초안 | §3 |
 | Account-deletion endpoint live | Marketplace submission | Eng | 미작성 | §3 |
