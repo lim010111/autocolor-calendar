@@ -961,6 +961,11 @@ function buildSettingsCard() {
     .setTextButtonStyle(CardService.TextButtonStyle.TEXT)
     .setOnClickAction(CardService.newAction().setFunctionName("actionGoToCancelConfirm")));
 
+  accountSection.addWidget(CardService.newTextButton()
+    .setText("계정 삭제 / 데이터 삭제")
+    .setTextButtonStyle(CardService.TextButtonStyle.TEXT)
+    .setOnClickAction(CardService.newAction().setFunctionName("actionGoToAccountDeleteConfirm")));
+
   builder.addSection(accountSection);
 
   return builder.build();
@@ -1016,6 +1021,58 @@ function actionConfirmCancelService(e) {
   return CardService.newActionResponseBuilder()
     .setNavigation(CardService.newNavigation().popToRoot().updateCard(buildWelcomeCard()))
     .setNotification(CardService.newNotification().setText("서비스가 해지되었습니다."))
+    .build();
+}
+
+function actionGoToAccountDeleteConfirm(e) {
+  return CardService.newActionResponseBuilder()
+    .setNavigation(CardService.newNavigation().pushCard(buildAccountDeleteConfirmCard()))
+    .build();
+}
+
+function buildAccountDeleteConfirmCard() {
+  var builder = CardService.newCardBuilder();
+
+  builder.setHeader(CardService.newCardHeader()
+    .setTitle("계정 삭제")
+    .setSubtitle("정말 삭제하시겠습니까?"));
+
+  var warningSection = CardService.newCardSection();
+  warningSection.addWidget(CardService.newDecoratedText()
+    .setText("⚠️ <b>주의</b>: 모든 데이터가 영구 삭제됩니다. 카테고리·동기화 상태·OAuth 연결·세션이 모두 제거되며, 이 작업은 되돌릴 수 없습니다.")
+    .setWrapText(true));
+
+  builder.addSection(warningSection);
+
+  var actionSection = CardService.newCardSection();
+  actionSection.addWidget(CardService.newButtonSet()
+    .addButton(CardService.newTextButton()
+      .setText("⬅ 취소")
+      .setOnClickAction(CardService.newAction().setFunctionName("actionGoBack")))
+    .addButton(CardService.newTextButton()
+      .setText("네, 삭제합니다")
+      .setTextButtonStyle(CardService.TextButtonStyle.FILLED)
+      .setOnClickAction(CardService.newAction().setFunctionName("actionConfirmDeleteAccount"))));
+
+  builder.addSection(actionSection);
+
+  return builder.build();
+}
+
+function actionConfirmDeleteAccount(e) {
+  try {
+    AutoColorAPI.fetchBackend('/api/account/delete', { method: 'post' });
+  } catch (err) {
+    return CardService.newActionResponseBuilder()
+      .setNotification(CardService.newNotification().setText("계정 삭제 실패: " + err.message))
+      .build();
+  }
+  // Clear local state AFTER the 200 so a transient network failure leaves
+  // the GAS client able to retry without a re-login.
+  AutoColorAuth.clearSessionToken();
+  return CardService.newActionResponseBuilder()
+    .setNavigation(CardService.newNavigation().popToRoot().updateCard(buildWelcomeCard()))
+    .setNotification(CardService.newNotification().setText("계정이 삭제되었습니다."))
     .build();
 }
 
