@@ -177,7 +177,7 @@ Admin-question shape without restating the underlying contracts.
 | Encryption at rest / in transit | Principle 5 + Hyperdrive TLS | 초안 | Refresh tokens encrypted per `TOKEN_ENCRYPTION_KEY` |
 | Retention policy | TBD + `TODO.md:38` | 미작성 | `pg_cron` session GC not yet landed |
 | Deletion on account revoke | TBD (endpoint 미작성) | 미작성 | Must exist before submission |
-| Sub-processors list | This document | 미작성 | Three-row Cloudflare / Supabase / OpenAI table to draft |
+| Sub-processors list | `docs/assets/marketplace/sub-processors.md` | 초안 | Three-row Cloudflare / Supabase / OpenAI disclosure landed; region cells defer to row above |
 | LLM data handling | Principle 2 + `src/services/piiRedactor.ts` | 초안 | PII redacted before any LLM call |
 | Domain-wide install posture | TBD | 미작성 | Allowed / opt-in decision pending |
 
