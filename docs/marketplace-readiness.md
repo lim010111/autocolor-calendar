@@ -176,7 +176,7 @@ Admin-question shape without restating the underlying contracts.
 | Processing region | `docs/project-overview.md` + `wrangler.toml` | 미작성 | Needs explicit region statement |
 | Encryption at rest / in transit | Principle 5 + Hyperdrive TLS | 초안 | Refresh tokens encrypted per `TOKEN_ENCRYPTION_KEY` |
 | Retention policy | TBD + `TODO.md:38` | 미작성 | `pg_cron` session GC not yet landed |
-| Deletion on account revoke | TBD (endpoint 미작성) | 미작성 | Must exist before submission |
+| Deletion on account revoke | POST /api/account/delete (`src/routes/account.ts`) | 초안 | FK cascade로 9개 테이블 정리 + Google revoke + 세션 무효화. `src/CLAUDE.md` "Account deletion (§3 row 179)" 참조 |
 | Sub-processors list | `docs/assets/marketplace/sub-processors.md` | 초안 | Three-row Cloudflare / Supabase / OpenAI disclosure landed; region cells defer to row above |
 | LLM data handling | Principle 2 + `src/services/piiRedactor.ts` | 초안 | PII redacted before any LLM call |
 | Domain-wide install posture | TBD | 미작성 | Allowed / opt-in decision pending |

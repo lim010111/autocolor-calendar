@@ -1,4 +1,5 @@
 import {
+  GOOGLE_REVOKE_URL,
   GOOGLE_TOKEN_URL,
   GOOGLE_USERINFO_URL,
   OAuthError,
@@ -83,4 +84,37 @@ export async function fetchUserInfo(accessToken: string): Promise<GoogleUserInfo
     throw new OAuthError("token_exchange_failed", "userinfo missing sub/email");
   }
   return { sub: data.sub, email: data.email };
+}
+
+// Best-effort. Per RFC 7009 + Google docs, /revoke returns 200 on success and
+// 400 {"error":"invalid_token"} when already revoked/expired. Both outcomes
+// are acceptable for the account-delete flow — we just need to attempt
+// revocation. Never throw: a Google API outage must not block the
+// authoritative DELETE FROM users step.
+export async function revokeRefreshToken(refreshToken: string): Promise<void> {
+  try {
+    const body = new URLSearchParams({ token: refreshToken });
+    const res = await fetch(GOOGLE_REVOKE_URL, {
+      method: "POST",
+      headers: { "content-type": "application/x-www-form-urlencoded" },
+      body,
+    });
+    if (!res.ok) {
+      console.warn(
+        JSON.stringify({
+          level: "warn",
+          msg: "google revoke non-2xx",
+          status: res.status,
+        }),
+      );
+    }
+  } catch (err) {
+    console.warn(
+      JSON.stringify({
+        level: "warn",
+        msg: "google revoke threw",
+        err: String(err),
+      }),
+    );
+  }
 }

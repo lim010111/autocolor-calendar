@@ -373,6 +373,53 @@ the `try { ... } finally { release }` block specifically so a skipped row
 does not trigger a spurious release (which would no-op via the ownership guard
 anyway, but avoiding the DB round-trip keeps the observable behavior clean).
 
+## Account deletion (§3 row 179)
+
+`POST /api/account/delete` (auth required) is the user-facing data-deletion
+path required by Marketplace privacy review. Contract:
+
+- **`DELETE FROM users WHERE id = ?` is the sole authoritative writer.** All
+  9 user-scoped tables declare `onDelete: "cascade"` (oauth_tokens, sessions,
+  categories, sync_state, llm_usage_daily, sync_failures, llm_calls,
+  rollback_runs, sync_runs); the cascade is the only row-removal mechanism.
+  Adding a new user-scoped table without
+  `references(() => users.id, { onDelete: "cascade" })` would silently leak
+  rows on deletion — pinned by the regex test in `accountRoute.test.ts`
+  ("schema cascade contract") that greps the schema source for that exact
+  pattern and asserts exactly 9 occurrences. Loosening that regex weakens
+  the contract.
+- **Google revoke + `channels.stop` are best-effort.** Both wrap in
+  try/catch and log warn only. Google API outages MUST NOT block deletion.
+  Orphaned watch channels expire ≤ 7d; webhook deliveries against deleted
+  users no-op via `lookupChannelOwner` returning `null`
+  (`src/services/watchChannel.ts:225-253`).
+- **Idempotency is provided by the auth gate, not the route.** Second call
+  from the same client returns 401 because the bearer no longer resolves a
+  session (sessions row cascade-deleted). The route itself is not
+  specifically idempotent — it is the auth middleware that makes retries
+  safe.
+- **Order is required**: revoke → watch-stop → users delete → explicit
+  session revoke (defense-in-depth, no-op post-cascade). Reordering breaks
+  token decryption (oauth_tokens cascade) and watch-stop row lookups
+  (sync_state cascade).
+- **Concurrency with sync / watch-renewal claim columns is "observed, not
+  prevented."** Deletion does NOT acquire `sync_state.in_progress_at` (sync
+  claim, owned by `syncClaim.ts`) or `sync_state.watch_renewal_in_progress_at`
+  (renewal claim, owned by `watchClaim.ts`). Worst case: cron's
+  `renewExpiringWatches` registers a new channel for a (user, calendar) row
+  immediately before/after the cascade DELETE drops the row, orphaning that
+  fresh channel for ≤ 7d. The orphan is benign — `lookupChannelOwner`
+  returns `null` when the next webhook arrives so no work happens, and
+  Google expires the channel within 7d. This matches the §5.4
+  concurrent-PATCH-race policy ("observed, not prevented"). Adding a Step 0
+  claim of either column would pointlessly serialise deletion against an
+  unrelated worker; do not add it without a concrete bug report.
+- **Warn-line redaction**: the `console.warn` lines in `src/routes/account.ts`
+  log only `op` / `status` / `calendarId` / `String(err)` shape — never event
+  content, never decrypted token material. The route never reads
+  `events.list`, so the calendar-event-payload logging ban above is upheld
+  by construction.
+
 ## Environments
 
 - `dev`: `autocolor-dev` Worker, `autocolor-dev-db` Hyperdrive, full secrets.
