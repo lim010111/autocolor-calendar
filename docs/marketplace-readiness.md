@@ -218,7 +218,7 @@ directory; this section is the index.
 | Event-open preview (rule hit) | `calendar.addons.current.event.read` | `docs/assets/marketplace/reviewer-demo/03-event-preview-rule-hit.md` | 초안 |
 | Event-open AI fallback preview | `calendar.addons.current.event.read` + backend LLM | `docs/assets/marketplace/reviewer-demo/04-event-preview-ai-fallback.md` | 초안 |
 | Rule deletion → color rollback | `calendar.events` | `docs/assets/marketplace/reviewer-demo/05-rule-deletion-rollback.md` | 초안 |
-| Re-auth on `invalid_grant` | `calendar` | `gas/authError.html` | 미작성 |
+| Re-auth on `invalid_grant` | `calendar` | `docs/assets/marketplace/reviewer-demo/06-reauth-invalid-grant.md` | 초안 |
 | Service disconnect / account deletion | all | TBD | 미작성 |
 | Test account credentials | — | TBD (shared secure note) | 미작성 |
 
