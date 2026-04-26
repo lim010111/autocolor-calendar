@@ -25,9 +25,16 @@ const REQUIRED_SECRETS = [
 ] as const;
 
 // Optional secrets are skipped with a notice when absent / empty. Used for
-// features whose Worker-side code tolerates the binding being unset (e.g.
-// §5.3 LLM fallback is inert without OPENAI_API_KEY).
-const OPTIONAL_SECRETS = ["OPENAI_API_KEY"] as const;
+// features whose Worker-side code tolerates the binding being unset:
+//   - OPENAI_API_KEY: §5.3 LLM fallback is inert without it.
+//   - TOKEN_ENCRYPTION_KEY_PREV: §3 후속 rotation window only — operator
+//     injects this alongside a fresh TOKEN_ENCRYPTION_KEY for the duration
+//     of a rotation, then removes it via `wrangler secret delete` once the
+//     batch cron has drained `oauth_tokens.token_version` to TARGET.
+const OPTIONAL_SECRETS = [
+  "OPENAI_API_KEY",
+  "TOKEN_ENCRYPTION_KEY_PREV",
+] as const;
 
 const rawTarget = process.argv[2];
 if (rawTarget !== "dev" && rawTarget !== "prod") {

@@ -36,7 +36,14 @@ export async function getValidAccessToken(
   env: Bindings,
   userId: string,
 ): Promise<AccessTokenResult> {
-  const stored = await getGoogleRefreshToken(db, env.TOKEN_ENCRYPTION_KEY, userId);
+  const stored = await getGoogleRefreshToken(
+    db,
+    {
+      current: env.TOKEN_ENCRYPTION_KEY,
+      previous: env.TOKEN_ENCRYPTION_KEY_PREV,
+    },
+    userId,
+  );
   if (!stored) throw new ReauthRequiredError("no_refresh_token");
   if (stored.needsReauth) throw new ReauthRequiredError("flag_set");
 

@@ -67,11 +67,15 @@ oauthRoutes.get("/google/callback", async (c) => {
         googleSub: userInfo.sub,
         email: userInfo.email,
       });
-      await saveGoogleRefreshToken(db, c.env.TOKEN_ENCRYPTION_KEY, {
-        userId: user.id,
-        refreshToken: tokens.refresh_token,
-        scope: tokens.scope,
-      });
+      await saveGoogleRefreshToken(
+        db,
+        { current: c.env.TOKEN_ENCRYPTION_KEY },
+        {
+          userId: user.id,
+          refreshToken: tokens.refresh_token,
+          scope: tokens.scope,
+        },
+      );
       const userAgent = c.req.header("user-agent") ?? null;
       const session = await issueSession(db, c.env.SESSION_PEPPER, {
         userId: user.id,

@@ -17,6 +17,13 @@ export type Bindings = {
   GOOGLE_CLIENT_SECRET: string;
   GAS_REDIRECT_URL: string;
   TOKEN_ENCRYPTION_KEY: string;
+  // §3 후속 — present ONLY during an active rotation window. The rotation
+  // cron (`src/services/tokenRotation.ts`) decrypts old-key rows with this
+  // and re-encrypts under `TOKEN_ENCRYPTION_KEY`; `getGoogleRefreshToken`
+  // also falls back to it when the primary key fails. Remove via
+  // `wrangler secret delete TOKEN_ENCRYPTION_KEY_PREV --env <target>` once
+  // `oauth_tokens` count of `token_version <> TARGET_TOKEN_VERSION` hits 0.
+  TOKEN_ENCRYPTION_KEY_PREV?: string;
   SESSION_HMAC_KEY: string;
   SESSION_PEPPER: string;
 
