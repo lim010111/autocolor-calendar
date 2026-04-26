@@ -219,7 +219,7 @@ directory; this section is the index.
 | Event-open AI fallback preview | `calendar.addons.current.event.read` + backend LLM | `docs/assets/marketplace/reviewer-demo/04-event-preview-ai-fallback.md` | 초안 |
 | Rule deletion → color rollback | `calendar.events` | `docs/assets/marketplace/reviewer-demo/05-rule-deletion-rollback.md` | 초안 |
 | Re-auth on `invalid_grant` | `calendar` | `docs/assets/marketplace/reviewer-demo/06-reauth-invalid-grant.md` | 초안 |
-| Service disconnect / account deletion | all | TBD | 미작성 |
+| Service disconnect / account deletion | all | `docs/assets/marketplace/reviewer-demo/07-account-deletion.md` | 초안 |
 | Test account credentials | — | TBD (shared secure note) | 미작성 |
 
 ## 5. Launch Gate Checklist
