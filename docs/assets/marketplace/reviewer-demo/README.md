@@ -83,7 +83,7 @@ paragraph) extends to committed documentation: synthetic strings only.
 | Create rule → color applied | `calendar.events` | `02-rule-to-color.md` | 초안 |
 | Event-open preview (rule hit) | `calendar.addons.current.event.read` | `03-event-preview-rule-hit.md` | 초안 |
 | Event-open AI fallback preview | `calendar.addons.current.event.read` + backend LLM | `04-event-preview-ai-fallback.md` | 초안 |
-| Rule deletion → color rollback | `calendar.events` | `05-rule-deletion-rollback.md` | 미작성 |
+| Rule deletion → color rollback | `calendar.events` | `05-rule-deletion-rollback.md` | 초안 |
 | Re-auth on `invalid_grant` | `calendar` | `06-reauth-invalid-grant.md` | 미작성 |
 | Service disconnect / account deletion | all | `07-account-deletion.md` | 미작성 |
 | Test account credentials | — | `08-test-account.md` | 미작성 |
