@@ -85,7 +85,7 @@ paragraph) extends to committed documentation: synthetic strings only.
 | Event-open AI fallback preview | `calendar.addons.current.event.read` + backend LLM | `04-event-preview-ai-fallback.md` | 초안 |
 | Rule deletion → color rollback | `calendar.events` | `05-rule-deletion-rollback.md` | 초안 |
 | Re-auth on `invalid_grant` | `calendar` | `06-reauth-invalid-grant.md` | 초안 |
-| Service disconnect / account deletion | all | `07-account-deletion.md` | 미작성 |
+| Service disconnect / account deletion | all | `07-account-deletion.md` | 초안 |
 | Test account credentials | — | `08-test-account.md` | 미작성 |
 
 Source of truth: `docs/marketplace-readiness.md` §4 "Status" table. This
