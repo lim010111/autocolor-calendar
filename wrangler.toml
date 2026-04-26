@@ -13,19 +13,32 @@ name = "autocolor-dev"
 ENV = "dev"
 GOOGLE_OAUTH_REDIRECT_URI = "https://autocolor-dev.autocolor-lim.workers.dev/oauth/google/callback"
 
-# Watch channel renewal cron — scoped to `[env.dev.triggers]` deliberately.
+# Cron triggers — scoped to `[env.dev.triggers]` deliberately.
 # TOML doesn't nest tables by indentation: `[triggers]` at any offset is a
 # top-level table and would apply to `env.prod` too, which has no Hyperdrive
-# binding — `scheduled()` → `getDb(env)` would crash every 6h on prod once
-# deployed. Prod cron will be added as `[env.prod.triggers]` alongside prod
+# binding — `scheduled()` → `getDb(env)` would crash on prod once deployed.
+# Prod cron will be added as `[env.prod.triggers]` alongside prod
 # Hyperdrive/Supabase (§3 후속 "Prod 환경 활성화").
 #
-# Runs every 6 hours — 4 retry windows inside the 24h pre-expiry renewal
-# window, so a single transient 429/5xx won't let a channel expire.
-# `scheduled()` no-ops when WEBHOOK_BASE_URL is unset, so dev (workers.dev,
-# rejected by Google) still fires the trigger harmlessly.
+# 1. `0 */6 * * *` — Watch channel renewal. Runs every 6 hours, giving 4
+#    retry windows inside the 24h pre-expiry renewal window so a single
+#    transient 429/5xx won't let a channel expire. `scheduled()` no-ops
+#    when WEBHOOK_BASE_URL is unset, so dev (workers.dev, rejected by
+#    Google) still fires the trigger harmlessly.
+# 2. `0 3 * * *` — TOKEN_ENCRYPTION_KEY rotation batch (§3 후속). Daily
+#    at 03:00 UTC ≈ 12:00 KST (off-peak). Drains rows whose
+#    `token_version <> TARGET_TOKEN_VERSION` at batchSize=50 per tick;
+#    operationally this rotates ≈1000 rows in ≈20 days — comfortable
+#    inside a 30-day rotation window. Higher cadence (e.g. `0 */6 * * *`)
+#    would 4× the drain rate at the cost of quadrupling idle-window
+#    invocations; operators can hand-edit the schedule for the duration
+#    of an active rotation if drain time matters more.
+#
+# Cron strings here MUST stay in lockstep with the `WATCH_RENEWAL_CRON` /
+# `TOKEN_ROTATION_CRON` constants at the top of `src/index.ts` — that's
+# how the dispatcher routes each trigger to the right handler.
 [env.dev.triggers]
-crons = ["0 */6 * * *"]
+crons = ["0 */6 * * *", "0 3 * * *"]
 
 [[env.dev.hyperdrive]]
 binding = "HYPERDRIVE"

@@ -40,7 +40,10 @@ accountRoutes.post("/delete", async (c) => {
     try {
       const stored = await getGoogleRefreshToken(
         db,
-        c.env.TOKEN_ENCRYPTION_KEY,
+        {
+          current: c.env.TOKEN_ENCRYPTION_KEY,
+          previous: c.env.TOKEN_ENCRYPTION_KEY_PREV,
+        },
         userId,
       );
       if (stored) await revokeRefreshToken(stored.refreshToken);

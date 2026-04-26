@@ -36,7 +36,7 @@
 - [x] **GAS UX 개선** — `gas/authCallback.html`에 `history.replaceState`로 `?token=` 쿼리 제거 + 자동 창 닫힘; `gas/authError.html`에 `google.script.url.getLocation` 기반 `?error=<code>`별 한국어 메시지 분기 (state_invalid / consent_denied / provider_error / token_exchange_failed / invalid_grant / server_error) 완료 (`93bcf3d`).
 - [x] **`buildHomeCard` 사전 검증** — `buildAddOn` 진입점에 `missingBackendProperties()` gate 추가. `BACKEND_BASE_URL`·`OAUTH_AUTH_URL` 미설정 시 "백엔드 구성 필요" 카드 렌더 (`93bcf3d`).
 - [ ] **세션 GC** — Supabase `pg_cron` 활성화 후 주 1회 `DELETE FROM sessions WHERE expires_at < now() - interval '7 days'` 스케줄 (§6 관측성 범위).
-- [ ] **`TOKEN_ENCRYPTION_KEY` 배치 로테이션** — `token_version` 컬럼 기반 전 `oauth_tokens` 재암호화 job (§6 관측성 범위, 키 교체 전 선행 필수).
+- [x] **`TOKEN_ENCRYPTION_KEY` 배치 로테이션** — `src/services/tokenRotation.ts` `rotateBatch` + `oauth_tokens.token_version` 정본화. Dual-key fallback in `getGoogleRefreshToken` (`TOKEN_ENCRYPTION_KEY_PREV` optional binding) + `[env.dev.triggers].crons` 추가 `0 3 * * *` + `scheduled()` cron 분기 (`WATCH_RENEWAL_CRON` / `TOKEN_ROTATION_CRON`). `drizzle/0013_material_avengers.sql`로 `oauth_tokens_token_version_idx` 추가. 운영 절차는 `src/CLAUDE.md` "Secret rotation impact" / "Token rotation (§3 후속)" + `docs/architecture-guidelines.md` invariant 새 불릿. Prod cron 활성화는 §3 후속 "Prod 환경 활성화"로 분리.
 
 ## 4. 핵심 동기화(Sync) 로직 및 Watch API 안정화
 

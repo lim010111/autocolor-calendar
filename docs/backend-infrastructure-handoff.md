@@ -65,7 +65,7 @@ Session 종료 시점에 **Supabase DB password**와 **Google OAuth client secre
 
 - **Prod 환경 활성화** — Supabase prod 프로젝트 생성 + 마이그레이션, GCP prod OAuth Web Client + redirect URI, `pnpm gen-secrets` + `pnpm sync-secrets prod`, prod Hyperdrive config 생성 및 `[[env.prod.hyperdrive]]` 바인딩 추가. §4에서 Watch API 수신 엔드포인트가 필요해지면 prod custom domain 인증까지 같이 잡는 게 효율적.
 - **세션 GC** — Supabase `pg_cron` extension 활성화 후 주 1회 `DELETE FROM sessions WHERE expires_at < now() - interval '7 days'`. §6 관측성 범위에서 처리 권장.
-- **`TOKEN_ENCRYPTION_KEY` 배치 로테이션** — `token_version` 기반 전 `oauth_tokens` 재암호화 job. §6에서 구현. 이 job이 있어야 `TOKEN_ENCRYPTION_KEY` 실 로테이션이 가능.
+- ~~**`TOKEN_ENCRYPTION_KEY` 배치 로테이션**~~ — 완료(§3 후속). `src/services/tokenRotation.ts` `rotateBatch` + `getGoogleRefreshToken` 듀얼-키 fallback + `[env.dev.triggers].crons` `0 3 * * *`. 운영 절차는 `src/CLAUDE.md` "Secret rotation impact"의 새 다섯-단계 시퀀스 + "Token rotation (§3 후속)" 섹션 참조. Prod cron 활성화는 위 "Prod 환경 활성화" 항목과 함께 진행.
 
 로테이션 후속 조치(§3 세션 중 노출된 자격증명 재발급)는 이번 세션에서 완료됨.
 
@@ -90,7 +90,7 @@ Session 종료 시점에 **Supabase DB password**와 **Google OAuth client secre
 - Pool 설정 (`prepare:false`, `max:1`, `idle_timeout:0`, `fetch_types:false`)은 변경 전에 `/me`·`/oauth/google/callback` 부하 재검증.
 - GAS 웹앱은 "기존 배포 Edit → New Version"으로만 재배포 — `/exec` URL 고정.
 - 로그 redaction은 query string 한정, body는 로그 기록 자체를 하지 않음.
-- 시크릿 로테이션 영향: `SESSION_PEPPER`→전 세션 무효, `TOKEN_ENCRYPTION_KEY`→전 `oauth_tokens` 재암호화 필요 (§6 전까지 교체 금지).
+- 시크릿 로테이션 영향: `SESSION_PEPPER`→전 세션 무효, `TOKEN_ENCRYPTION_KEY`→§3 후속 듀얼-키 fallback + 배치 cron으로 회전 가능 (운영 절차는 `src/CLAUDE.md` "Secret rotation impact").
 
 ## 다음 세션 시작 프롬프트 템플릿
 

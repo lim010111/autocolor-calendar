@@ -49,11 +49,46 @@ code under the same `/exec` URL.
 - `SESSION_PEPPER`: all `sessions.token_hash` values become unverifiable →
   every logged-in user is logged out on next request. Expect a re-auth spike;
   schedule rotation outside peak hours.
-- `TOKEN_ENCRYPTION_KEY`: every `oauth_tokens.encrypted_refresh_token` row
-  stops decrypting. A full re-encryption batch is required (iterate rows,
-  decrypt with the old key, encrypt with the new one, bump `token_version`).
-  The batch job is a Section 6 (observability) deliverable — do **not** rotate
-  this key before that job exists.
+- `TOKEN_ENCRYPTION_KEY`: rotatable via the dual-key fallback +
+  batch re-encryption cron (§3 후속). Operator procedure:
+  1. Mint a fresh 256-bit key (`pnpm gen-secrets` or equivalent).
+     Set the OLD value as `TOKEN_ENCRYPTION_KEY_PREV` in `.dev.vars`,
+     and the NEW value as `TOKEN_ENCRYPTION_KEY`. **Both must be
+     present before the next deploy.**
+  2. `pnpm sync-secrets dev` injects both into Wrangler.
+  3. Bump `TARGET_TOKEN_VERSION` in
+     `src/config/tokenVersion.ts` and deploy. From this point,
+     `saveGoogleRefreshToken` writes new rows under the new key/version
+     pair, and the rotation cron (`0 3 * * *`) starts draining stale
+     rows at `batchSize=50` per tick (≈ row_count / 50 days).
+  4. Monitor:
+     `SELECT count(*) FROM oauth_tokens WHERE token_version <> <target>;`
+     When the count hits 0, remove `TOKEN_ENCRYPTION_KEY_PREV`:
+     `wrangler secret delete TOKEN_ENCRYPTION_KEY_PREV --env dev`,
+     and delete it from `.dev.vars`. Leaving it set after the drain
+     finishes is a security regression (widens the key surface area
+     without any data still depending on it).
+
+  Failure modes inside an active rotation window:
+  - **PREV missing while stale rows exist**: cron logs a warn-only
+    `"skipped — TOKEN_ENCRYPTION_KEY_PREV not configured"` per tick;
+    no rows mutate. User-visible: zero impact UNTIL a user request
+    hits an un-rotated row, at which point `getGoogleRefreshToken`
+    fails decrypt with the original error (NOT mapped to reauth).
+    Surface restored when PREV is re-injected. Deliberate: amplifying
+    an operator typo into mass user logout is worse than the lazy-
+    reauth fallback.
+  - **Per-row PREV decrypt failure**: warn-only log with `userId`
+    and `rowId`. No `needs_reauth` flip — the row falls through to
+    lazy-reauth on the user's next request. Investigate manually if
+    recurring (likely the row was written under an even-older key
+    during a prior botched rotation).
+  - **CURRENT compromised mid-window**: revert by removing the new
+    key, restoring the prior pair, and accepting that any rows
+    already rotated to the new (compromised) version need a fresh
+    cycle (bump `TARGET_TOKEN_VERSION` to `target + 1`).
+
+  See "Token rotation (§3 후속)" below for the read/write contract.
 - `SESSION_HMAC_KEY`: in-flight OAuth state values fail verification → only
   users mid-login are affected; existing sessions keep working.
 - Supabase DB password: update the Hyperdrive origin via
@@ -419,6 +454,73 @@ path required by Marketplace privacy review. Contract:
   content, never decrypted token material. The route never reads
   `events.list`, so the calendar-event-payload logging ban above is upheld
   by construction.
+
+## Token rotation (§3 후속)
+
+`oauth_tokens.encrypted_refresh_token` rotation is owned by
+`src/services/tokenRotation.ts`'s `rotateBatch`. The function runs from
+`scheduled()` in `src/index.ts` on the `0 3 * * *` cron.
+
+**Sole writer of `encrypted_refresh_token` outside `saveGoogleRefreshToken`.**
+The initial-write surface (`saveGoogleRefreshToken` in
+`src/services/oauthTokenService.ts`) stamps every row with
+`token_version: TARGET_TOKEN_VERSION` so a freshly saved row never enters
+the cron's "needs rotation" set.
+
+**The rotation `SELECT … WHERE token_version != $target` is the ONE
+legitimate exception to the "Tenant isolation" rule above** — it filters
+on `token_version` only, with NO `userId` predicate, because the cron
+acts on behalf of the operator, not a request principal. Every other
+`oauth_tokens` query in the codebase MUST keep its
+`where(eq(oauthTokens.userId, ...))` clause; pre-PR static reviews and
+`code-reviewer` should flag any new cross-user query that doesn't fit
+this exception. The exception is written into the rotation file's
+header comment so the rule travels with the code.
+
+**Failure isolation:** every per-row failure is warn-only and never
+rethrown (`scheduled()` `.catch(warn)`s the entire batch promise). Same
+discipline as `llm_calls` / `rollback_runs` / `sync_runs` — observability
+write failures must NEVER cause cron retry, since a retried tick
+re-issues `aesGcmDecrypt` against the same rows and wastes CPU.
+
+**`TARGET_TOKEN_VERSION` is hardcoded** (in `src/config/tokenVersion.ts`).
+Bumping it is a deploy. Rationale: deploying as part of rotation forces
+operators to record rotations in source control, and lets
+`saveGoogleRefreshToken` stamp new writes at the current target without
+an env-var lookup. The constant lives in its own leaf module so both
+the writer and the rotator depend on it without forming a cycle.
+
+**Idempotency under concurrent ticks:** the per-row UPDATE has
+`ne(token_version, target)` as its predicate alongside `eq(id, rowId)`.
+A peer worker that already rotated this row sees zero rows updated —
+counted as `ok` (no-op), not an error. Same "observed, not prevented"
+policy as the §5.4 concurrent PATCH race; a per-row claim column would
+be premature for a workload where the only mutable lock state IS the
+encrypted payload.
+
+**`TOKEN_ENCRYPTION_KEY_PREV` is OPTIONAL.** It is bound only during an
+active rotation window. Outside the window:
+- `getGoogleRefreshToken` runs the same single-key path it always has
+  (no fallback exists to mis-route into).
+- `rotateBatch`'s SELECT still fires every cron tick. If it returns rows
+  (target was bumped but PREV was forgotten), the cron emits one warn
+  per tick and increments `summary.skipped_no_prev`. No `needs_reauth`
+  flip — see "Secret rotation impact" above for the rationale.
+
+**PII stance:** `aesGcmDecrypt` plaintext (the refresh token) is NEVER
+logged. AAD is `user:${userId}` where `userId` is a UUID (not PII; same
+convention as `watchRenewal.ts`'s per-row warns). Counters in
+`RotationSummary` are aggregate-only.
+
+Cross-references:
+- Operator runbook: "Secret rotation impact" above (the
+  `TOKEN_ENCRYPTION_KEY` bullet).
+- Cross-cutting invariant: `docs/architecture-guidelines.md`
+  "Token encryption rotation invariant".
+- Cron mapping: `wrangler.toml` `[env.dev.triggers].crons` —
+  `0 3 * * *` must stay in lockstep with `TOKEN_ROTATION_CRON` in
+  `src/index.ts`. Drift means the dispatcher's "unknown cron" warn
+  fires and the job silently no-ops.
 
 ## Environments
 

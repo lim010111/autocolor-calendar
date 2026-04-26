@@ -51,7 +51,14 @@ export const oauthTokens = pgTable(
     needsReauth: boolean("needs_reauth").notNull().default(false),
     needsReauthReason: text("needs_reauth_reason"),
   },
-  (t) => [unique("oauth_tokens_user_provider_uq").on(t.userId, t.provider)],
+  (t) => [
+    unique("oauth_tokens_user_provider_uq").on(t.userId, t.provider),
+    // §3 후속 — supports the rotation cron's `WHERE token_version != target`
+    // SELECT in `src/services/tokenRotation.ts`. Unconditional btree (not
+    // partial) so it stays useful across rotation cycles without requiring
+    // a fresh migration each time `TARGET_TOKEN_VERSION` is bumped.
+    index("oauth_tokens_token_version_idx").on(t.tokenVersion),
+  ],
 );
 
 export const sessions = pgTable(

@@ -17,7 +17,16 @@ import { oauthRoutes } from "./routes/oauth";
 import { statsRoutes } from "./routes/stats";
 import { syncRoutes } from "./routes/sync";
 import { webhookRoutes } from "./routes/webhooks";
+import { rotateBatch } from "./services/tokenRotation";
 import { renewExpiringWatches } from "./services/watchRenewal";
+
+// §3 후속 — cron strings MUST stay in lockstep with `wrangler.toml`
+// `[env.dev.triggers].crons`. The dispatcher in `scheduled()` routes by
+// exact-string equality on `event.cron`; renaming or re-ordering these
+// without touching `wrangler.toml` (or vice versa) lands us in the
+// "unknown cron schedule" warn branch and the job silently no-ops.
+const WATCH_RENEWAL_CRON = "0 */6 * * *";
+const TOKEN_ROTATION_CRON = "0 3 * * *";
 
 const app = new Hono<HonoEnv>();
 
@@ -51,30 +60,77 @@ export default {
     }
   },
   async scheduled(
-    _event: ScheduledEvent,
+    event: ScheduledEvent,
     env: Bindings,
     ctx: ExecutionContext,
   ): Promise<void> {
-    // Single cron trigger today (`watch-renewal` via [env.dev.triggers] in
-    // wrangler.toml). If more crons are added, branch on _event.cron.
-    //
-    // Skip before getDb when WEBHOOK_BASE_URL is unset — dev shells without
-    // a verified custom domain would otherwise pay a Hyperdrive handshake
-    // every 6h for a guaranteed no-op. renewExpiringWatches keeps the same
-    // check as defense-in-depth for direct callers (tests, future scripts).
-    if (!env.WEBHOOK_BASE_URL) {
-      console.log(
+    // §3 후속 — cron dispatch by `event.cron`. Two schedules registered in
+    // `wrangler.toml` `[env.dev.triggers].crons`:
+    //   - WATCH_RENEWAL_CRON ("0 */6 * * *") → renewExpiringWatches
+    //   - TOKEN_ROTATION_CRON ("0 3 * * *")   → rotateBatch (TOKEN_ENCRYPTION_KEY)
+    // Cloudflare delivers each schedule as a separate `scheduled()`
+    // invocation with a distinct `event.cron`, so we never need to handle
+    // both within a single call. We defer `getDb` until AFTER the dispatch
+    // decision so no-op branches (renewal-skip on dev shells without
+    // WEBHOOK_BASE_URL, unknown-cron warn) don't pay a Hyperdrive
+    // handshake. Each branch owns its own DB lifetime via
+    // `.finally(() => close())`.
+    if (event.cron === WATCH_RENEWAL_CRON) {
+      if (!env.WEBHOOK_BASE_URL) {
+        // Dev shell w/o verified custom domain — Watch API rejects
+        // workers.dev origins, so skip before paying the handshake. The
+        // service keeps the same check as defense-in-depth.
+        console.log(
+          JSON.stringify({
+            level: "info",
+            msg: "watch renewal skipped — WEBHOOK_BASE_URL not configured",
+          }),
+        );
+        return;
+      }
+      const { db, close } = getDb(env);
+      ctx.waitUntil(
+        renewExpiringWatches(db, env)
+          .catch((err: unknown) => {
+            console.warn(
+              JSON.stringify({
+                level: "warn",
+                msg: "watch renewal failed at top level",
+                error: err instanceof Error ? err.message : String(err),
+              }),
+            );
+          })
+          .finally(() => close()),
+      );
+    } else if (event.cron === TOKEN_ROTATION_CRON) {
+      // Rotation is independent of WEBHOOK_BASE_URL — runs in dev shells.
+      const { db, close } = getDb(env);
+      ctx.waitUntil(
+        rotateBatch({ db, env })
+          .catch((err: unknown) => {
+            console.warn(
+              JSON.stringify({
+                level: "warn",
+                msg: "token rotation failed at top level",
+                error: err instanceof Error ? err.message : String(err),
+              }),
+            );
+          })
+          .finally(() => close()),
+      );
+    } else {
+      // A schedule landed that the dispatcher doesn't recognise — usually
+      // means `wrangler.toml` and the cron-string constants above drifted
+      // apart. Stay below the Hyperdrive handshake — no DB needed for a
+      // warn line.
+      console.warn(
         JSON.stringify({
-          level: "info",
-          msg: "watch renewal skipped — WEBHOOK_BASE_URL not configured",
+          level: "warn",
+          msg: "scheduled() received unknown cron — check wrangler.toml ↔ src/index.ts cron constants",
+          cron: event.cron,
         }),
       );
-      return;
     }
-    const { db, close } = getDb(env);
-    ctx.waitUntil(
-      renewExpiringWatches(db, env).finally(() => close()),
-    );
   },
 };
 export { app };

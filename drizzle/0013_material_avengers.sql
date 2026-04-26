@@ -1,0 +1,23 @@
+-- §3 후속 — TOKEN_ENCRYPTION_KEY rotation index.
+--
+-- Supports the rotation cron's `WHERE token_version != $target` SELECT in
+-- `src/services/tokenRotation.ts`. Without this index, every cron tick
+-- inside an active rotation window would seq-scan the entire `oauth_tokens`
+-- table; outside the window the table converges to a single modal
+-- `token_version` value, and the index lets the planner short-circuit.
+--
+-- UNCONDITIONAL btree (not a partial index `WHERE token_version != <literal>`)
+-- because a partial would hardcode the literal target, requiring a new
+-- migration each rotation cycle (every `TARGET_TOKEN_VERSION` bump). Storage
+-- cost is one int per user — negligible at our scale; revisit if
+-- `oauth_tokens` grows past hundreds of thousands of rows.
+--
+-- RLS: no policy edits required. The rotation cron runs through Hyperdrive
+-- → Supabase pooler as the `postgres` role, which has BYPASSRLS, so the
+-- cross-user `WHERE token_version != target` SELECT is permitted. This is
+-- the documented exception to the "Tenant isolation" rule in
+-- `src/CLAUDE.md` — every other `oauth_tokens` query MUST keep its
+-- `where(eq(oauth_tokens.user_id, ...))` predicate. See
+-- `src/CLAUDE.md` "Token rotation (§3 후속)" for the full contract.
+
+CREATE INDEX "oauth_tokens_token_version_idx" ON "oauth_tokens" USING btree ("token_version");
