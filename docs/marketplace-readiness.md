@@ -216,7 +216,7 @@ directory; this section is the index.
 | Install + first-time OAuth | `openid` / `email` / `calendar` / `calendar.events` | `docs/assets/marketplace/reviewer-demo/01-install.md` | 초안 |
 | Create rule → color applied | `calendar.events` | `docs/assets/marketplace/reviewer-demo/02-rule-to-color.md` | 초안 |
 | Event-open preview (rule hit) | `calendar.addons.current.event.read` | `docs/assets/marketplace/reviewer-demo/03-event-preview-rule-hit.md` | 초안 |
-| Event-open AI fallback preview | `calendar.addons.current.event.read` + backend LLM | `docs/add-on-ui-plan.md` Screen 3 + `TODO.md:97` | 미작성 |
+| Event-open AI fallback preview | `calendar.addons.current.event.read` + backend LLM | `docs/assets/marketplace/reviewer-demo/04-event-preview-ai-fallback.md` | 초안 |
 | Rule deletion → color rollback | `calendar.events` | `src/services/colorRollback.ts` | 미작성 |
 | Re-auth on `invalid_grant` | `calendar` | `gas/authError.html` | 미작성 |
 | Service disconnect / account deletion | all | TBD | 미작성 |
@@ -257,7 +257,7 @@ a gate, edit the owning source first and then the status here.
 | Restricted-scope demo video | OAuth verification | Product | 미작성 | §2 |
 | Data handling / Admin answers drafted | Marketplace submission | Eng + Ops | 초안 | §3 |
 | Account-deletion endpoint live | Marketplace submission | Eng | 미작성 | §3 |
-| Reviewer demo bundle | OAuth verification | Product + Eng | 미작성 | §4 |
+| Reviewer demo bundle | OAuth verification | Product + Eng | 초안 | §4 |
 | CI/CD pipeline | Quality gate | Eng | 미작성 | `TODO.md:129` |
 | Backup / recovery policy | Admin review | Eng | 미작성 | `TODO.md:130` |
 | Security principles index current | Reviewer spot-checks | Eng | 완료 | `docs/security-principles.md` |
