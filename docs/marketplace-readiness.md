@@ -214,7 +214,7 @@ directory; this section is the index.
 | Scenario | Scope(s) exercised | Source of truth | Status |
 |---|---|---|---|
 | Install + first-time OAuth | `openid` / `email` / `calendar` / `calendar.events` | `docs/assets/marketplace/reviewer-demo/01-install.md` | 초안 |
-| Create rule → color applied | `calendar.events` | `docs/add-on-ui-plan.md` Screen 4 | 미작성 |
+| Create rule → color applied | `calendar.events` | `docs/assets/marketplace/reviewer-demo/02-rule-to-color.md` | 초안 |
 | Event-open preview (rule hit) | `calendar.addons.current.event.read` | `docs/add-on-ui-plan.md` Screen 3 | 미작성 |
 | Event-open AI fallback preview | `calendar.addons.current.event.read` + backend LLM | `docs/add-on-ui-plan.md` Screen 3 + `TODO.md:97` | 미작성 |
 | Rule deletion → color rollback | `calendar.events` | `src/services/colorRollback.ts` | 미작성 |
