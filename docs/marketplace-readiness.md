@@ -220,7 +220,7 @@ directory; this section is the index.
 | Rule deletion → color rollback | `calendar.events` | `docs/assets/marketplace/reviewer-demo/05-rule-deletion-rollback.md` | 초안 |
 | Re-auth on `invalid_grant` | `calendar` | `docs/assets/marketplace/reviewer-demo/06-reauth-invalid-grant.md` | 초안 |
 | Service disconnect / account deletion | all | `docs/assets/marketplace/reviewer-demo/07-account-deletion.md` | 초안 |
-| Test account credentials | — | TBD (shared secure note) | 미작성 |
+| Test account credentials | — | `docs/assets/marketplace/reviewer-demo/08-test-account.md` | 초안 |
 
 ## 5. Launch Gate Checklist
 
