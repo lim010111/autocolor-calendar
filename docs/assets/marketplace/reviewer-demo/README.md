@@ -45,15 +45,12 @@ surface in motion.
 
 ## Test account credentials
 
-TBD — shared via secure note at submission time.
-
-Rationale: secrets out of git. This section exists so
-`docs/marketplace-readiness.md` §4 "Status" row "Test account credentials"
-has a concrete pointer; the actual credentials are conveyed out-of-band
-when the verification submission is filed. Owner / submission-time
-checklist: `docs/marketplace-readiness.md` §5 "Launch Gate Checklist"
-row "Reviewer demo bundle" — the credentials placeholder graduates
-to a live secure-note pointer the moment that gate flips to `초안`.
+See `docs/assets/marketplace/reviewer-demo/08-test-account.md` — the
+placeholder doc covering rationale (secrets out of git), delivery
+protocol (out-of-band secure note at submission time), the
+submission-time checklist for graduating the §5 "Reviewer demo
+bundle" Launch Gate, and cleanup posture between reviewer sessions.
+Status mirror: `docs/marketplace-readiness.md` §4 row 8.
 
 ## Sample fixtures
 
@@ -86,7 +83,7 @@ paragraph) extends to committed documentation: synthetic strings only.
 | Rule deletion → color rollback | `calendar.events` | `05-rule-deletion-rollback.md` | 초안 |
 | Re-auth on `invalid_grant` | `calendar` | `06-reauth-invalid-grant.md` | 초안 |
 | Service disconnect / account deletion | all | `07-account-deletion.md` | 초안 |
-| Test account credentials | — | `08-test-account.md` | 미작성 |
+| Test account credentials | — | `08-test-account.md` | 초안 |
 
 Source of truth: `docs/marketplace-readiness.md` §4 "Status" table. This
 table is a mirror; on drift, edit `docs/marketplace-readiness.md` first

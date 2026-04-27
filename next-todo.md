@@ -2,23 +2,24 @@
 
 > 이 파일은 `/next-todo` 스킬이 관리합니다. 한 번에 한 개의 "다음 실행할 작업"만 유지하고, 완료 직후 문서 갱신과 함께 다음 작업으로 rotate됩니다. 홈 섹션(§1~§7)의 체크박스 상태는 계속 `TODO.md`가 정본입니다.
 
-- **§7 / Reviewer Demo Scenarios — 슬라이스 8: `08-test-account.md` (Test account credentials)**
+- **§3 row 176 / §5 admin-disclosure consistency — `processing-region.md` placeholder + `sub-processors.md` staleness sync**
   - **선정 근거**:
-    - **Momentum**: HIGHEST — 직전 7번의 PR 사이클이 슬라이스 1~7을 정본화. 슬라이스 8은 시리즈 종결편이며 README:20 "Run scenarios in order" 흐름의 마지막 칸. 동일 골격(축소판) 위에서 8/8 매트릭스 완성.
-    - **Visibility**: MEDIUM-HIGH — `docs/marketplace-readiness.md` §4 행 8 (`Test account credentials`, 현재 `미작성` / Source of truth: `TBD (shared secure note)`)을 `초안`으로 flip. README "Scenario matrix" 행 8 mirror 동기화. Bundle 8/8 모든 슬라이스 `초안+` 도달 — `docs/marketplace-readiness.md:260` "Reviewer demo bundle" Launch Gate를 향한 추가 신호 (실제 자격증명은 여전히 submission-time TBD).
-    - **Independence**: 외부 결정 / 외부 시스템 의존 0. 실제 자격증명은 secure-note out-of-band 전달이므로 placeholder doc + delivery protocol explainer만 작성. README §46-56이 이미 inline으로 동일 콘텐츠를 정의 중이라 슬라이스 8은 이를 별도 파일로 분리·정본화하는 작업.
-  - **문제**: `docs/assets/marketplace/reviewer-demo/08-test-account.md`이 아직 `미작성`. README scenario matrix 행 8과 §4 행 8이 모두 `미작성`이며 `08-test-account.md` 파일을 클릭하는 reviewer는 404를 본다. 슬라이스 1~7이 모두 `초안`인 상태에서 8번 자리만 비어 있어 bundle 완성도 7/8에 머문다. README §46-56에 inline-defined된 delivery protocol(secrets out of git, secure-note out-of-band, submission-time 전달, install부터 시작하는 fresh account 요건)이 별도 reviewer-facing 파일로 노출되어야 한다.
-  - **해결**: `docs/assets/marketplace/reviewer-demo/08-test-account.md` 신규 — 슬라이스 1~7과 다른 thin doc 구조 (no scenario walkthrough — credentials 자체는 walkthrough 대상이 아님). 4-블록 구조: (a) Rationale ("왜 이 슬라이스는 placeholder인가" — secrets out of git + 자격증명은 submission-time secure-note로 out-of-band 전달), (b) Delivery protocol (어떤 Google account state로 전달 — Workspace Marketplace 미설치 / 슬라이스 1 install부터 시작 가능한 깨끗한 상태 / 캘린더에 fixture 가능한 권한), (c) Submission-time checklist (`docs/marketplace-readiness.md` §5 "Reviewer demo bundle" Launch Gate 행이 어느 시점에 어떤 secure-note pointer로 graduate되는지), (d) Cleanup posture (slice 7로 reviewer가 자체 검증 후 OPS-side cleanup 또는 next submission 사이의 account state 관리). README §46-56 inline 콘텐츠를 별도 파일로 옮기고 README는 "see `08-test-account.md`"로 짧게 포인터만 남김. 그리고 `docs/marketplace-readiness.md` §4 행 8 + README "Scenario matrix" 행 8 두 mirror status flip.
+    - **Independence**: HIGH — Cloudflare Workers의 global-edge 모델과 OpenAI의 published policy는 외부 사실 확인 없이 서술 가능. Supabase prod region은 §3 후속 "Prod 환경 활성화"에 gate되어 있어 그 부분은 placeholder 처리(슬라이스 8과 동일한 thin-doc 패턴). 외부 결정 0건.
+    - **Momentum**: HIGH — 직전 8 PR(reviewer-demo bundle 슬라이스 1~8)이 marketplace-artifact 문서 시리즈. 본 작업은 같은 `docs/assets/marketplace/` 표면의 다음 미작성 행(§3 row 176)을 초안 단계로 끌어올림. 슬라이스 8이 정착시킨 "thin placeholder for gated artifact" 패턴을 재사용.
+    - **Visibility**: MEDIUM-HIGH — Workspace admin 직접 조회 행. 또한 `sub-processors.md`의 3개 region cell이 §3 row 176을 정본으로 인용 중이라 자기 흐름 안에서 stale `미작성` 주석 4건을 동기화(region 행 3개 + 슬라이스 7 이월분 1개).
+  - **문제**: `docs/marketplace-readiness.md` §3 row 176 (`Processing region`)이 `미작성`이며 Source of truth가 추상 포인터(`docs/project-overview.md + wrangler.toml`)에 머물러 있다. 두 정본 모두 처리 region을 명시적으로 서술하지 않으며, `wrangler.toml`은 region을 carry하지 않는다(Workers는 region pin이 없음). 동시에 `docs/assets/marketplace/sub-processors.md`는 line 18-22에서 §3 row 176을 region 정본으로 명시 위임 중이고, 본문 lines 88 / 131 / 170 (3개 processor의 Region/location subsection)이 모두 "currently `미작성`"으로 stale 인용 중. 추가로 `sub-processors.md` line 49는 슬라이스 7 머지 후 §3 row 179가 `초안`으로 바뀐 시점에 동기화되지 못해 "currently `미작성`"인 채로 남아 있음.
+  - **해결**: 슬라이스 8과 동일한 thin-placeholder 패턴 — `docs/assets/marketplace/processing-region.md`를 ~70-100줄 신규 작성. 5-블록 구조: (a) Cloudflare Workers + Hyperdrive + Queues 처리 region 모델(global edge, region pinning 없음 — Cloudflare published model 인용), (b) Supabase Postgres region(`docs/marketplace-readiness.md` §3 후속 "Prod 환경 활성화"에 gate, 본 슬라이스가 초안 단계만 처리), (c) OpenAI `gpt-5.4-nano` 처리 region(vendor published policy, OPENAI_API_KEY 미설정 시 호출 0건), (d) Logs / observability(Cloudflare Workers per-request 스트리밍, 중앙 aggregation 없음 — `src/CLAUDE.md` "Log redaction contract" 표면), (e) Out-of-scope(사용자 디바이스 위치, Google Calendar API region — 본 disclosure 범위 밖). Cross-references는 `wrangler.toml`, `src/CLAUDE.md` "DB connectivity", `sub-processors.md`, `docs/marketplace-readiness.md` §3 row 176 / §5 row 252. 그리고 (i) `marketplace-readiness.md` row 176 Source of truth 포인터를 새 파일로 갱신 + Status `미작성` → `초안`, (ii) `sub-processors.md` 4개 stale 인용(lines 49, 88, 131, 170)을 모두 `초안`으로 동기화.
   - **주요 변경**:
-    1. `docs/assets/marketplace/reviewer-demo/08-test-account.md` 신규 — 짧은 thin doc (∼60-90줄): 4-블록 구조(Rationale / Delivery protocol / Submission-time checklist / Cleanup posture). 슬라이스 1~7과 달리 `## N.` numbered walkthrough · Failure modes · 두-consent-surface 콜아웃 없음 (scenario 아님). Cross-references는 유지(README + §4 행 8 + §5 Launch Gate "Reviewer demo bundle" 행). 모든 인용은 `docs/assets/marketplace/reviewer-demo/README.md:NN` / `docs/marketplace-readiness.md:NN` / `docs/assets/marketplace/reviewer-demo/01-install.md` 기반이며 드리프트 가드(`grep -n` 통과) 만족.
-    2. `docs/marketplace-readiness.md` §4 행 8 status `미작성` → `초안`, Source of truth `TBD (shared secure note)` → `docs/assets/marketplace/reviewer-demo/08-test-account.md`.
-    3. `docs/assets/marketplace/reviewer-demo/README.md` "Scenario matrix" 행 8 status `미작성` → `초안` (mirror 동기화) + §46-56 "Test account credentials" inline 본문을 짧은 포인터(`08-test-account.md`로의 see-also 1~3줄)로 축소 — 정본 분리 후 inline 본문이 같은 표면을 두 번 정의하면 drift hazard.
-    4. 테스트 변경 없음 (순수 문서; backend / GAS 코드 무변경).
+    1. `docs/assets/marketplace/processing-region.md` 신규 — ~70-100줄, 5-블록 구조(Cloudflare / Supabase / OpenAI / Logs / Out-of-scope) + Cross-references. 슬라이스 8과 동일한 thin-doc 톤. 코드/테스트 인용 없음(순수 disclosure 문서).
+    2. `docs/marketplace-readiness.md` row 176 — Source of truth `docs/project-overview.md + wrangler.toml` → `docs/assets/marketplace/processing-region.md`; Status `미작성` → `초안`; Notes는 그대로 또는 새 파일 위임 1줄로 축약.
+    3. `docs/assets/marketplace/sub-processors.md` — 4개 stale 인용 동기화: lines 88 / 131 / 170 ("Region/location" subsection의 "currently `미작성`")을 `초안`으로, line 49 ("Deletion on account revoke" 주석의 "currently `미작성`")를 `초안`으로(슬라이스 7 머지 후 §3 row 179 `초안` 전환 반영).
+    4. 테스트 변경 없음(순수 문서; backend / GAS 코드 무변경).
   - **문서**:
-    - `docs/marketplace-readiness.md` — 슬라이스 8 status flip + Source of truth pointer 갱신.
-    - `docs/assets/marketplace/reviewer-demo/README.md` — Scenario matrix 행 8 status flip + §46-56 본문 축소(see-also pointer로 대체).
+    - `docs/marketplace-readiness.md` — §3 row 176 status flip + Source of truth 갱신.
+    - `docs/assets/marketplace/processing-region.md` 신규.
+    - `docs/assets/marketplace/sub-processors.md` — 4개 stale 인용 동기화.
     - `docs/architecture-guidelines.md` — 변경 없음.
     - `src/CLAUDE.md` / `gas/CLAUDE.md` — 변경 없음.
-    - `TODO.md` — 슬라이스 시리즈는 §7 단일 행에 묶이지 않으므로 체크박스 flip 없음. 8/8 도달은 `docs/marketplace-readiness.md:260` "Reviewer demo bundle" Launch Gate 진척의 추가 신호일 뿐 자동 `완료`로 승급되진 않음 (실제 secure-note credentials는 여전히 submission-time TBD).
-  - **의존성**: 없음. (외부 의존 0, 코드 변경 0.)
+    - `TODO.md` — 슬라이스 시리즈는 §3 row 176 단일 행에 묶이지 않음(§7 line 131 marketplace 검수 묶음의 일부). `초안` 도달은 `docs/marketplace-readiness.md` §5 "Data handling / Admin answers drafted" Launch Gate(현 `초안`)와 §5 "Reviewer demo bundle"(현 `초안`) 어느 쪽도 graduate시키지 않음 — 두 gate 모두 §3 모든 행 `초안+` AND prod 활성화 등 추가 조건이 필요.
+  - **의존성**: 없음. (외부 의존 0, 코드 변경 0. Supabase prod region 사실 확인이 필요한 부분은 §3 후속 "Prod 환경 활성화"에 명시적으로 gate 처리 — 본 슬라이스는 placeholder 단계만 처리.)
   - **사이즈**: S.
