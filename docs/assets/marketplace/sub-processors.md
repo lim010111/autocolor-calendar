@@ -40,13 +40,14 @@ Out of scope (intentionally):
   (`docs/marketplace-readiness.md` §1 row).
 - Region statement for each processor — separate row in
   `docs/marketplace-readiness.md` §3 status table (`Processing region`,
-  currently `미작성`).
+  currently `초안`; substantive disclosure at
+  `docs/assets/marketplace/processing-region.md`).
 - Retention policy — separate row in `docs/marketplace-readiness.md` §3
   status table (`Retention policy`, currently `미작성`; depends on
   `pg_cron` session GC, see `TODO.md` §3 후속).
 - Account-deletion endpoint — separate row in
   `docs/marketplace-readiness.md` §3 status table (`Deletion on account
-  revoke`, currently `미작성`).
+  revoke`, currently `초안`).
 - Google itself (the data subject's own platform — Calendar API, OAuth
   IdP, Apps Script Add-on runtime). Google is the source of the data
   this app processes, not a downstream sub-processor in the Marketplace
@@ -85,7 +86,8 @@ the log stream by construction.
 ### Region / location
 
 See `Processing region` row in `docs/marketplace-readiness.md` §3 status
-table (currently `미작성`).
+table (currently `초안`); the substantive disclosure lives at
+`docs/assets/marketplace/processing-region.md`.
 
 ### Canonical pointers
 
@@ -128,7 +130,8 @@ isolation enforcer.
 ### Region / location
 
 See `Processing region` row in `docs/marketplace-readiness.md` §3 status
-table (currently `미작성`).
+table (currently `초안`); the substantive disclosure lives at
+`docs/assets/marketplace/processing-region.md`.
 
 ### Canonical pointers
 
@@ -167,7 +170,8 @@ collapse identically into `no_match`; per-outcome telemetry lands in
 ### Region / location
 
 See `Processing region` row in `docs/marketplace-readiness.md` §3 status
-table (currently `미작성`).
+table (currently `초안`); the substantive disclosure lives at
+`docs/assets/marketplace/processing-region.md`.
 
 ### Canonical pointers
 

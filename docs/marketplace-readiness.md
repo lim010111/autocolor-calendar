@@ -173,7 +173,7 @@ Admin-question shape without restating the underlying contracts.
 |---|---|---|---|
 | What user data is read? | Principles 1 + 2 | 초안 | Admin-voice phrasing 미작성 |
 | What user data is stored? | `src/CLAUDE.md` "Observability tables" | 초안 | Counters and error envelopes only; no event content |
-| Processing region | `docs/project-overview.md` + `wrangler.toml` | 미작성 | Needs explicit region statement |
+| Processing region | `docs/assets/marketplace/processing-region.md` | 초안 | Thin placeholder; concrete Supabase prod region gated to `TODO.md` §3 후속 |
 | Encryption at rest / in transit | Principle 5 + Hyperdrive TLS | 초안 | Refresh tokens encrypted per `TOKEN_ENCRYPTION_KEY` |
 | Retention policy | TBD + `TODO.md:38` | 미작성 | `pg_cron` session GC not yet landed |
 | Deletion on account revoke | POST /api/account/delete (`src/routes/account.ts`) | 초안 | FK cascade로 9개 테이블 정리 + Google revoke + 세션 무효화. `src/CLAUDE.md` "Account deletion (§3 row 179)" 참조 |
