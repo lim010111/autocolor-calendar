@@ -1,0 +1,1273 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>autocolor_for_calendar · AI-Readiness Map</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap"
+      rel="stylesheet"
+    />
+    <style>
+      :root {
+        --bg: #fafafa;
+        --surface: #ffffff;
+        --border: #e5e7eb;
+        --border-strong: #d1d5db;
+        --text: #0f172a;
+        --text-2: #475569;
+        --text-3: #94a3b8;
+        --accent: #2563eb;
+        --accent-soft: #eff6ff;
+        --green: #16a34a;
+        --green-soft: #dcfce7;
+        --amber: #d97706;
+        --amber-soft: #fef3c7;
+        --red: #dc2626;
+        --red-soft: #fee2e2;
+        --grid: #f1f5f9;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      html,
+      body {
+        margin: 0;
+        padding: 0;
+        background: var(--bg);
+        color: var(--text);
+        font-family:
+          "Inter",
+          -apple-system,
+          system-ui,
+          "Segoe UI",
+          sans-serif;
+        font-feature-settings: "cv11", "ss01";
+        -webkit-font-smoothing: antialiased;
+      }
+
+      .page {
+        max-width: 1280px;
+        margin: 0 auto;
+        padding: 48px 40px 64px;
+      }
+
+      .header {
+        display: flex;
+        justify-content: space-between;
+        align-items: flex-end;
+        padding-bottom: 24px;
+        border-bottom: 1px solid var(--border);
+        margin-bottom: 32px;
+      }
+
+      .header .eyebrow {
+        font-family: "JetBrains Mono", monospace;
+        font-size: 11px;
+        font-weight: 500;
+        color: var(--text-3);
+        letter-spacing: 0.12em;
+        text-transform: uppercase;
+        margin-bottom: 8px;
+      }
+
+      .header h1 {
+        font-size: 30px;
+        font-weight: 700;
+        margin: 0;
+        letter-spacing: -0.02em;
+      }
+
+      .header .sub {
+        font-size: 14px;
+        color: var(--text-2);
+        margin-top: 4px;
+      }
+
+      .header-meta {
+        text-align: right;
+        font-family: "JetBrains Mono", monospace;
+        font-size: 11px;
+        color: var(--text-3);
+        line-height: 1.7;
+      }
+
+      .header-meta strong {
+        color: var(--text);
+        font-weight: 500;
+      }
+
+      .delta {
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+        padding: 1px 6px;
+        border-radius: 3px;
+        background: var(--green-soft);
+        color: var(--green);
+        font-family: "JetBrains Mono", monospace;
+        font-size: 10.5px;
+        font-weight: 600;
+        margin-left: 6px;
+      }
+
+      .delta.neg {
+        background: var(--red-soft);
+        color: var(--red);
+      }
+
+      .score-strip {
+        display: grid;
+        grid-template-columns: 320px 1fr;
+        gap: 24px;
+        margin-bottom: 32px;
+      }
+
+      .score-hero {
+        background: var(--surface);
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        padding: 28px 28px 24px;
+      }
+
+      .score-hero .label {
+        font-size: 12px;
+        font-weight: 500;
+        color: var(--text-3);
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+      }
+
+      .score-hero .value {
+        display: flex;
+        align-items: baseline;
+        gap: 6px;
+        margin-top: 8px;
+      }
+
+      .score-hero .num {
+        font-size: 64px;
+        font-weight: 700;
+        letter-spacing: -0.04em;
+        line-height: 1;
+        color: var(--text);
+      }
+
+      .score-hero .denom {
+        font-size: 20px;
+        color: var(--text-3);
+        font-weight: 500;
+      }
+
+      .score-hero .grade-row {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        margin-top: 14px;
+      }
+
+      .grade-badge {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        padding: 4px 10px;
+        border-radius: 999px;
+        background: var(--amber-soft);
+        color: var(--amber);
+        font-size: 12px;
+        font-weight: 600;
+        font-family: "JetBrains Mono", monospace;
+      }
+
+      .grade-dot {
+        width: 6px;
+        height: 6px;
+        border-radius: 999px;
+        background: var(--amber);
+      }
+
+      .score-hero .desc {
+        font-size: 13px;
+        color: var(--text-2);
+        line-height: 1.5;
+        margin-top: 10px;
+      }
+
+      .score-hero hr {
+        border: 0;
+        border-top: 1px solid var(--border);
+        margin: 18px 0 14px;
+      }
+
+      .mini-stats {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 12px;
+      }
+
+      .mini-stat .k {
+        font-family: "JetBrains Mono", monospace;
+        font-size: 11px;
+        color: var(--text-3);
+        margin-bottom: 2px;
+      }
+
+      .mini-stat .v {
+        font-size: 18px;
+        font-weight: 600;
+        color: var(--text);
+      }
+
+      .rules {
+        background: var(--surface);
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        padding: 20px 24px 24px;
+      }
+
+      .rules .rules-head {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 16px;
+      }
+
+      .rules h2 {
+        font-size: 14px;
+        font-weight: 600;
+        margin: 0;
+      }
+
+      .legend-inline {
+        display: flex;
+        gap: 14px;
+        font-family: "JetBrains Mono", monospace;
+        font-size: 11px;
+        color: var(--text-2);
+      }
+
+      .legend-inline span {
+        display: inline-flex;
+        align-items: center;
+        gap: 5px;
+      }
+
+      .legend-inline i {
+        width: 8px;
+        height: 8px;
+        border-radius: 2px;
+      }
+
+      .rule-row {
+        display: grid;
+        grid-template-columns: 28px 1fr 220px 56px;
+        gap: 12px;
+        align-items: center;
+        padding: 9px 0;
+        font-size: 13px;
+      }
+
+      .rule-row + .rule-row {
+        border-top: 1px dashed var(--border);
+      }
+
+      .rule-row .idx {
+        font-family: "JetBrains Mono", monospace;
+        font-size: 12px;
+        color: var(--text-3);
+        font-weight: 600;
+      }
+
+      .rule-row .title {
+        color: var(--text);
+        font-weight: 500;
+      }
+
+      .rule-row .sub {
+        font-size: 11.5px;
+        color: var(--text-3);
+        margin-top: 1px;
+      }
+
+      .rule-row .bar {
+        height: 8px;
+        border-radius: 3px;
+        background: var(--grid);
+        overflow: hidden;
+      }
+
+      .rule-row .bar > span {
+        display: block;
+        height: 100%;
+        border-radius: 3px;
+      }
+
+      .bar-good > span {
+        background: var(--green);
+      }
+      .bar-warn > span {
+        background: var(--amber);
+      }
+      .bar-bad > span {
+        background: var(--red);
+      }
+
+      .rule-row .num {
+        font-family: "JetBrains Mono", monospace;
+        font-size: 13px;
+        font-weight: 600;
+        text-align: right;
+        color: var(--text);
+      }
+
+      .sub-scores {
+        display: grid;
+        grid-template-columns: repeat(5, 1fr);
+        gap: 6px;
+        padding: 8px 16px 12px 40px;
+        margin-top: -4px;
+        border-top: 1px dotted var(--border);
+        background: var(--bg);
+      }
+
+      .sub-scores.cols-4 {
+        grid-template-columns: repeat(4, 1fr);
+      }
+
+      .sub-scores .ss-cell {
+        font-family: "JetBrains Mono", monospace;
+        font-size: 10.5px;
+        color: var(--text-2);
+        line-height: 1.35;
+      }
+
+      .sub-scores .ss-cell .lbl {
+        color: var(--text-3);
+      }
+
+      .sub-scores .ss-cell .val {
+        color: var(--text);
+        font-weight: 600;
+      }
+
+      .sub-scores .ss-cell .val.bad {
+        color: var(--red);
+      }
+      .sub-scores .ss-cell .val.warn {
+        color: var(--amber);
+      }
+      .sub-scores .ss-cell .val.good {
+        color: var(--green);
+      }
+
+      .map-section {
+        background: var(--surface);
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        margin-bottom: 32px;
+        overflow: hidden;
+      }
+
+      .map-head {
+        padding: 18px 24px;
+        border-bottom: 1px solid var(--border);
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+      }
+
+      .map-head h2 {
+        font-size: 14px;
+        font-weight: 600;
+        margin: 0;
+      }
+
+      .map-head .sub {
+        font-size: 12px;
+        color: var(--text-2);
+        margin-top: 2px;
+      }
+
+      .map-legend {
+        display: flex;
+        gap: 18px;
+        font-family: "JetBrains Mono", monospace;
+        font-size: 11px;
+        color: var(--text-2);
+        align-items: center;
+      }
+
+      .map-legend > span {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+      }
+
+      .legend-dot {
+        width: 10px;
+        height: 10px;
+        border-radius: 999px;
+      }
+
+      .legend-square {
+        width: 10px;
+        height: 10px;
+        border-radius: 2px;
+      }
+
+      .legend-line {
+        width: 24px;
+        height: 0;
+        border-top: 1.5px solid;
+      }
+
+      .map-body {
+        padding: 28px 24px 32px;
+      }
+
+      .map-body svg {
+        display: block;
+        width: 100%;
+        height: auto;
+      }
+
+      .findings {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 24px;
+      }
+
+      .panel {
+        background: var(--surface);
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        overflow: hidden;
+      }
+
+      .panel-head {
+        padding: 16px 20px;
+        border-bottom: 1px solid var(--border);
+        display: flex;
+        align-items: center;
+        gap: 10px;
+      }
+
+      .panel-head h3 {
+        font-size: 13px;
+        font-weight: 600;
+        margin: 0;
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+      }
+
+      .panel-head .count {
+        font-family: "JetBrains Mono", monospace;
+        font-size: 11px;
+        color: var(--text-3);
+        margin-left: auto;
+      }
+
+      .panel-strength .panel-head {
+        background: var(--green-soft);
+      }
+      .panel-strength .panel-head h3 {
+        color: var(--green);
+      }
+
+      .panel-risk .panel-head {
+        background: var(--amber-soft);
+      }
+      .panel-risk .panel-head h3 {
+        color: var(--amber);
+      }
+
+      .panel-list {
+        list-style: none;
+        margin: 0;
+        padding: 0;
+      }
+
+      .panel-list li {
+        padding: 14px 20px;
+        border-top: 1px solid var(--border);
+        font-size: 13px;
+        line-height: 1.55;
+      }
+
+      .panel-list li:first-child {
+        border-top: 0;
+      }
+
+      .panel-list .head {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        font-weight: 500;
+        color: var(--text);
+      }
+
+      .panel-list .tag {
+        font-family: "JetBrains Mono", monospace;
+        font-size: 10.5px;
+        padding: 2px 7px;
+        border-radius: 3px;
+        font-weight: 500;
+        letter-spacing: 0.02em;
+      }
+
+      .tag-rule {
+        background: var(--accent-soft);
+        color: var(--accent);
+      }
+
+      .panel-list .note {
+        margin-top: 4px;
+        color: var(--text-2);
+        font-size: 12.5px;
+      }
+
+      .panel-list code {
+        font-family: "JetBrains Mono", monospace;
+        font-size: 11.5px;
+        background: var(--grid);
+        padding: 1px 5px;
+        border-radius: 3px;
+        color: var(--text);
+      }
+
+      footer {
+        margin-top: 48px;
+        font-family: "JetBrains Mono", monospace;
+        font-size: 11px;
+        color: var(--text-3);
+        text-align: center;
+      }
+
+      .grid-bg {
+        stroke: var(--grid);
+        stroke-width: 1;
+      }
+
+      .node-card {
+        fill: var(--surface);
+        stroke: var(--border-strong);
+        stroke-width: 1.2;
+      }
+
+      .node-card.accent {
+        stroke: var(--accent);
+      }
+
+      .node-card.new {
+        stroke: var(--green);
+      }
+
+      .node-title {
+        font-family: "Inter", sans-serif;
+        font-size: 12px;
+        font-weight: 600;
+        fill: var(--text);
+      }
+
+      .node-meta {
+        font-family: "JetBrains Mono", monospace;
+        font-size: 10px;
+        fill: var(--text-3);
+      }
+
+      .node-kpi {
+        font-family: "JetBrains Mono", monospace;
+        font-size: 11px;
+        font-weight: 600;
+      }
+
+      .edge {
+        fill: none;
+        stroke: var(--border-strong);
+        stroke-width: 1.3;
+      }
+
+      .edge-dash {
+        stroke-dasharray: 4 3;
+      }
+
+      .edge-warn {
+        stroke: var(--amber);
+      }
+
+      .edge-type {
+        stroke: var(--accent);
+        stroke-width: 1.5;
+      }
+
+      .claude-dot {
+        fill: var(--accent);
+      }
+      .claude-ring {
+        fill: var(--accent-soft);
+      }
+
+      .new-dot {
+        fill: var(--green);
+      }
+      .new-ring {
+        fill: var(--green-soft);
+      }
+
+      .test-dot {
+        fill: var(--green);
+      }
+
+      .hot {
+        fill: var(--red-soft);
+        stroke: var(--red);
+        stroke-width: 1;
+      }
+
+      .warm {
+        fill: var(--amber-soft);
+        stroke: var(--amber);
+        stroke-width: 1;
+      }
+
+      .new-badge {
+        font-family: "JetBrains Mono", monospace;
+        font-size: 9.5px;
+        font-weight: 600;
+        fill: var(--green);
+      }
+
+      @media (max-width: 960px) {
+        .score-strip,
+        .findings {
+          grid-template-columns: 1fr;
+        }
+        .rule-row {
+          grid-template-columns: 24px 1fr 140px 40px;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="page">
+      <header class="header">
+        <div>
+          <div class="eyebrow">레포지토리 감사 · AI 준비도 · v2 루브릭 · 2회차</div>
+          <h1>autocolor_for_calendar — AI 준비도 지도</h1>
+          <div class="sub">
+            7개 카테고리 채점 · 구조 지도 · ROI 우선순위 액션
+          </div>
+        </div>
+        <div class="header-meta">
+          <div>점수 측정 <strong>2026-05-02</strong> (1차 측정 동일 일자)</div>
+          <div>브랜치 <strong>feature/section-7-reviewer-demo-slice-8-test-account</strong></div>
+          <div>모듈 <strong>4</strong> · 컨텍스트 파일 <strong>9</strong> <span class="delta">+3</span></div>
+        </div>
+      </header>
+
+      <section class="score-strip">
+        <div class="score-hero">
+          <div class="label">AI 준비도 지수</div>
+          <div class="value">
+            <span class="num">59</span><span class="denom">/ 100</span>
+            <span class="delta">+29</span>
+          </div>
+          <div class="grade-row">
+            <span class="grade-badge">
+              <span class="grade-dot"></span> AI-Fragile · 부분 친화
+            </span>
+          </div>
+          <div class="desc">
+            1차 측정 (30/100, AI-Hostile) 대비 <strong>+29점, 등급 두 단계
+            상승</strong>. <strong>A 탐색 만점 (15/15)</strong>·<strong>C 암묵지
+            +12 (2→14)</strong>·<strong>D 의존도 진입 (0→8)</strong>이
+            상승의 핵심. 잔여 약점은 G 성과 측정 (0/5, 별건), B 컨텍스트
+            품질 (9/20, src/CLAUDE.md 532줄 압축이 별건), F 신선도
+            (6/10, 다음 PR 의 hook 인프라 도입으로 +3 회수 예정).
+          </div>
+          <hr />
+          <div class="mini-stats">
+            <div class="mini-stat">
+              <div class="k">컨텍스트 보유 모듈</div>
+              <div class="v">4 / 4 <span class="delta">+2</span></div>
+            </div>
+            <div class="mini-stat">
+              <div class="k">잘못된 경로 (참조)</div>
+              <div class="v" style="color: var(--amber)">1 / 50<span class="delta">stable</span></div>
+            </div>
+            <div class="mini-stat">
+              <div class="k">300줄 초과 파일</div>
+              <div class="v" style="color: var(--red)">16</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="rules">
+          <div class="rules-head">
+            <div>
+              <h2>7개 카테고리 — 카테고리별 점수 (1차 → 2차)</h2>
+            </div>
+            <div class="legend-inline">
+              <span><i style="background: var(--green)"></i> 75% 이상</span>
+              <span><i style="background: var(--amber)"></i> 50–74%</span>
+              <span><i style="background: var(--red)"></i> 50% 미만</span>
+            </div>
+          </div>
+
+          <div class="rule-row">
+            <div class="idx">A</div>
+            <div>
+              <div class="title">AI 탐색 &amp; 커버리지 <span class="delta">+7</span></div>
+              <div class="sub">
+                4 / 4 모듈 보유 (drizzle/, scripts/ CLAUDE.md 신규)
+              </div>
+            </div>
+            <div class="bar bar-good">
+              <span style="width: 100%"></span>
+            </div>
+            <div class="num">15/15</div>
+          </div>
+
+          <div class="rule-row">
+            <div class="idx">B</div>
+            <div>
+              <div class="title">컨텍스트 문서 품질 <span class="delta">+2</span></div>
+              <div class="sub">
+                <code>src/CLAUDE.md</code> 532줄 압축 (별건) 시 +5~7 추가 회수
+              </div>
+            </div>
+            <div class="bar bar-bad">
+              <span style="width: 45%"></span>
+            </div>
+            <div class="num">9/20</div>
+          </div>
+          <div class="sub-scores">
+            <div class="ss-cell"><span class="lbl">B1 간결성</span><br /><span class="val warn">3</span></div>
+            <div class="ss-cell"><span class="lbl">B2 명령</span><br /><span class="val bad">1</span></div>
+            <div class="ss-cell"><span class="lbl">B3 핵심파일</span><br /><span class="val warn">3</span></div>
+            <div class="ss-cell"><span class="lbl">B4 비자명</span><br /><span class="val bad">1</span></div>
+            <div class="ss-cell"><span class="lbl">B5 교차참조</span><br /><span class="val bad">1</span></div>
+          </div>
+
+          <div class="rule-row">
+            <div class="idx">C</div>
+            <div>
+              <div class="title">암묵지 외부화 <span class="delta">+12</span></div>
+              <div class="sub">
+                Q5 ADR scaffold 진입 · drizzle/scripts CLAUDE.md 가 Q1~Q4 라이프
+              </div>
+            </div>
+            <div class="bar bar-good">
+              <span style="width: 70%"></span>
+            </div>
+            <div class="num">14/20</div>
+          </div>
+          <div class="sub-scores">
+            <div class="ss-cell"><span class="lbl">Q1 소유</span><br /><span class="val good">3</span></div>
+            <div class="ss-cell"><span class="lbl">Q2 패턴</span><br /><span class="val warn">2</span></div>
+            <div class="ss-cell"><span class="lbl">Q3 비자명</span><br /><span class="val good">3</span></div>
+            <div class="ss-cell"><span class="lbl">Q4 의존성</span><br /><span class="val warn">2</span></div>
+            <div class="ss-cell"><span class="lbl">Q5 ADR/MEM</span><br /><span class="val good">4</span></div>
+          </div>
+
+          <div class="rule-row">
+            <div class="idx">D</div>
+            <div>
+              <div class="title">모듈 간 의존성 매핑 <span class="delta">+8</span></div>
+              <div class="sub">
+                ARCHITECTURE.md +6 · context_with_deps 2/9 +2 · mermaid 인식 X
+              </div>
+            </div>
+            <div class="bar bar-warn">
+              <span style="width: 53%"></span>
+            </div>
+            <div class="num">8/15</div>
+          </div>
+
+          <div class="rule-row">
+            <div class="idx">E</div>
+            <div>
+              <div class="title">검증 &amp; 품질 게이트</div>
+              <div class="sub">
+                참조 정확도 49 / 50 (98%) · CODEOWNERS / evals 부재
+              </div>
+            </div>
+            <div class="bar bar-bad">
+              <span style="width: 47%"></span>
+            </div>
+            <div class="num">7/15</div>
+          </div>
+          <div class="sub-scores cols-4">
+            <div class="ss-cell"><span class="lbl">E1 참조정확</span><br /><span class="val good">5</span></div>
+            <div class="ss-cell"><span class="lbl">E2 비평게이트</span><br /><span class="val bad">0</span></div>
+            <div class="ss-cell"><span class="lbl">E3 빌드/테스트</span><br /><span class="val warn">2</span></div>
+            <div class="ss-cell"><span class="lbl">E4 프롬프트테스트</span><br /><span class="val bad">0</span></div>
+          </div>
+
+          <div class="rule-row">
+            <div class="idx">F</div>
+            <div>
+              <div class="title">신선도 &amp; 자가 유지보수</div>
+              <div class="sub">
+                drift 0% 유지 · husky pre-push + path 검증은 다음 PR
+              </div>
+            </div>
+            <div class="bar bar-warn">
+              <span style="width: 60%"></span>
+            </div>
+            <div class="num">6/10</div>
+          </div>
+
+          <div class="rule-row">
+            <div class="idx">G</div>
+            <div>
+              <div class="title">에이전트 성과 측정</div>
+              <div class="sub">
+                evals/ benchmarks/ 부재 — 본 PR out-of-scope
+              </div>
+            </div>
+            <div class="bar bar-bad">
+              <span style="width: 0%"></span>
+            </div>
+            <div class="num">0/5</div>
+          </div>
+        </div>
+      </section>
+
+      <section class="map-section">
+        <div class="map-head">
+          <div>
+            <h2>구조 지도 — 2차 측정 후</h2>
+            <div class="sub">
+              녹색 테두리 노드 = 본 PR 신규 컨텍스트 · 파란 노드 = 기존 CLAUDE.md
+            </div>
+          </div>
+          <div class="map-legend">
+            <span
+              ><span class="legend-dot" style="background: var(--accent)"></span>
+              기존 CLAUDE.md
+            </span>
+            <span
+              ><span class="legend-dot" style="background: var(--green)"></span>
+              신규 컨텍스트 (본 PR)
+            </span>
+            <span
+              ><span class="legend-square" style="background: var(--red-soft); border: 1px solid var(--red)"></span>
+              500줄 초과
+            </span>
+            <span
+              ><span class="legend-square" style="background: var(--amber-soft); border: 1px solid var(--amber)"></span>
+              300–500줄
+            </span>
+            <span>
+              <span class="legend-line" style="border-color: var(--accent)"></span>
+              핵심 호출
+            </span>
+            <span>
+              <span class="legend-line" style="border-color: var(--border-strong); border-style: dashed"></span>
+              의존
+            </span>
+          </div>
+        </div>
+
+        <div class="map-body">
+          <svg viewBox="0 0 1180 700" xmlns="http://www.w3.org/2000/svg">
+            <g class="grid-bg">
+              <path d="M0,80 H1180" />
+              <path d="M0,160 H1180" />
+              <path d="M0,240 H1180" />
+              <path d="M0,320 H1180" />
+              <path d="M0,400 H1180" />
+              <path d="M0,480 H1180" />
+              <path d="M0,560 H1180" />
+              <path d="M0,640 H1180" />
+              <path d="M100,0 V700" />
+              <path d="M300,0 V700" />
+              <path d="M500,0 V700" />
+              <path d="M700,0 V700" />
+              <path d="M900,0 V700" />
+              <path d="M1100,0 V700" />
+            </g>
+
+            <text x="200" y="32" text-anchor="middle"
+              style="font-family:'JetBrains Mono',monospace; font-size:11px; fill: var(--text-2); font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase;">
+              GAS Add-on · gas/
+            </text>
+            <text x="590" y="32" text-anchor="middle"
+              style="font-family:'JetBrains Mono',monospace; font-size:11px; fill: var(--text-2); font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase;">
+              Cloudflare Workers · src/
+            </text>
+            <text x="980" y="32" text-anchor="middle"
+              style="font-family:'JetBrains Mono',monospace; font-size:11px; fill: var(--text-2); font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase;">
+              DB · drizzle/ · 운영 · scripts/
+            </text>
+
+            <g transform="translate(440,52)">
+              <rect class="node-card accent" width="300" height="74" rx="8" />
+              <circle cx="22" cy="22" r="14" class="claude-ring" />
+              <circle cx="22" cy="22" r="6" class="claude-dot" />
+              <text x="44" y="26" class="node-title">CLAUDE.md (root)</text>
+              <text x="44" y="42" class="node-meta">
+                @docs/project-overview · @docs/architecture-guidelines · @src/CLAUDE
+              </text>
+              <text x="44" y="58" class="node-meta" style="fill: var(--text-2)">
+                15 lines · compass-style
+              </text>
+              <text x="284" y="26" text-anchor="end" class="node-kpi" style="fill: var(--accent)">
+                루트
+              </text>
+            </g>
+
+            <g transform="translate(60,160)">
+              <rect class="node-card accent" width="280" height="64" rx="8" />
+              <circle cx="22" cy="22" r="12" class="claude-ring" />
+              <circle cx="22" cy="22" r="5" class="claude-dot" />
+              <text x="42" y="26" class="node-title">gas/CLAUDE.md</text>
+              <text x="42" y="42" class="node-meta">
+                CardService · onboarding · 기존 deployment 갱신 규칙
+              </text>
+              <text x="264" y="26" text-anchor="end" class="node-kpi">존재</text>
+            </g>
+
+            <g transform="translate(60,250)">
+              <rect class="node-card" width="280" height="160" rx="8" />
+              <text x="16" y="24" class="node-title">gas/ — Add-on UI</text>
+              <text x="16" y="40" class="node-meta">
+                Apps Script · CardService · backend OAuth bridge
+              </text>
+
+              <g transform="translate(16,52)">
+                <rect class="hot" width="248" height="18" rx="3" />
+                <text x="8" y="13" class="node-meta" style="fill: var(--red); font-weight:600">addon.js</text>
+                <text x="240" y="13" text-anchor="end" class="node-meta" style="fill: var(--red); font-weight:600">1150</text>
+              </g>
+              <g transform="translate(16,74)">
+                <rect fill="var(--grid)" width="248" height="18" rx="3" />
+                <text x="8" y="13" class="node-meta" style="fill: var(--text-2)">appsscript.json · scopes manifest</text>
+              </g>
+              <g transform="translate(16,96)">
+                <rect fill="var(--grid)" width="248" height="18" rx="3" />
+                <text x="8" y="13" class="node-meta" style="fill: var(--text-2)">backend.js · auth bridge</text>
+              </g>
+              <g transform="translate(16,118)">
+                <rect fill="var(--grid)" width="248" height="18" rx="3" />
+                <text x="8" y="13" class="node-meta" style="fill: var(--text-2)">5 module 구성</text>
+              </g>
+            </g>
+
+            <g transform="translate(450,160)">
+              <rect class="node-card accent" width="280" height="64" rx="8" />
+              <circle cx="22" cy="22" r="12" class="claude-ring" />
+              <circle cx="22" cy="22" r="5" class="claude-dot" />
+              <text x="42" y="26" class="node-title">src/CLAUDE.md</text>
+              <text x="42" y="42" class="node-meta">
+                tenant isolation · color marker · 관측 표 · 토큰 로테이션
+              </text>
+              <text x="264" y="26" text-anchor="end" class="node-kpi" style="fill: var(--amber)">532 ln · 무수정</text>
+            </g>
+
+            <g transform="translate(450,250)">
+              <rect class="node-card" width="280" height="180" rx="8" />
+              <text x="16" y="24" class="node-title">src/services &amp; queues</text>
+              <text x="16" y="40" class="node-meta">
+                calendarSync · syncConsumer · llmClassifier · oauth
+              </text>
+
+              <g transform="translate(16,52)">
+                <rect class="warm" width="248" height="18" rx="3" />
+                <text x="8" y="13" class="node-meta" style="fill: var(--amber); font-weight:600">services/calendarSync.ts</text>
+                <text x="240" y="13" text-anchor="end" class="node-meta" style="fill: var(--amber); font-weight:600">458</text>
+              </g>
+              <g transform="translate(16,74)">
+                <rect class="warm" width="248" height="18" rx="3" />
+                <text x="8" y="13" class="node-meta" style="fill: var(--amber); font-weight:600">queues/syncConsumer.ts</text>
+                <text x="240" y="13" text-anchor="end" class="node-meta" style="fill: var(--amber); font-weight:600">423</text>
+              </g>
+              <g transform="translate(16,96)">
+                <rect class="warm" width="248" height="18" rx="3" />
+                <text x="8" y="13" class="node-meta" style="fill: var(--amber); font-weight:600">db/schema.ts</text>
+                <text x="240" y="13" text-anchor="end" class="node-meta" style="fill: var(--amber); font-weight:600">365</text>
+              </g>
+              <g transform="translate(16,118)">
+                <rect class="warm" width="248" height="18" rx="3" />
+                <text x="8" y="13" class="node-meta" style="fill: var(--amber); font-weight:600">services/llmClassifier.ts</text>
+                <text x="240" y="13" text-anchor="end" class="node-meta" style="fill: var(--amber); font-weight:600">352</text>
+              </g>
+              <g transform="translate(16,140)">
+                <rect fill="var(--grid)" width="248" height="18" rx="3" />
+                <text x="8" y="13" class="node-meta" style="fill: var(--text-2)">routes/* · middleware · 74 ts files</text>
+              </g>
+            </g>
+
+            <g transform="translate(450,452)">
+              <rect class="node-card" width="280" height="74" rx="8" />
+              <circle cx="22" cy="22" r="10" fill="var(--red-soft)" />
+              <circle cx="22" cy="22" r="5" style="fill: var(--red)" />
+              <text x="42" y="26" class="node-title">src/__tests__/ — vitest</text>
+              <text x="42" y="42" class="node-meta">
+                12개 god-tests · 7개 &gt; 300 ln · top: calendarSync 1190
+              </text>
+              <text x="264" y="26" text-anchor="end" class="node-kpi" style="fill: var(--red)">1190</text>
+            </g>
+
+            <g transform="translate(840,160)">
+              <rect class="node-card new" width="280" height="64" rx="8" />
+              <circle cx="22" cy="22" r="12" class="new-ring" />
+              <circle cx="22" cy="22" r="5" class="new-dot" />
+              <text x="42" y="26" class="node-title">drizzle/CLAUDE.md</text>
+              <text x="42" y="42" class="node-meta">
+                14 마이그레이션 · drizzle.config · 0001_rls 정책
+              </text>
+              <text x="264" y="26" text-anchor="end" class="new-badge">신규 67ln</text>
+            </g>
+
+            <g transform="translate(840,250)">
+              <rect class="node-card new" width="280" height="64" rx="8" />
+              <circle cx="22" cy="22" r="12" class="new-ring" />
+              <circle cx="22" cy="22" r="5" class="new-dot" />
+              <text x="42" y="26" class="node-title">scripts/CLAUDE.md</text>
+              <text x="42" y="42" class="node-meta">
+                gen-secrets · sync-secrets · sim-failure 인터페이스
+              </text>
+              <text x="264" y="26" text-anchor="end" class="new-badge">신규 70ln</text>
+            </g>
+
+            <g transform="translate(840,340)">
+              <rect class="node-card new" width="280" height="64" rx="8" />
+              <circle cx="22" cy="22" r="12" class="new-ring" />
+              <circle cx="22" cy="22" r="5" class="new-dot" />
+              <text x="42" y="26" class="node-title">docs/ARCHITECTURE.md</text>
+              <text x="42" y="42" class="node-meta">
+                4-모듈 map · mermaid · cross-module deps
+              </text>
+              <text x="264" y="26" text-anchor="end" class="new-badge">신규 64ln</text>
+            </g>
+
+            <g transform="translate(840,430)">
+              <rect class="node-card new" width="280" height="64" rx="8" />
+              <circle cx="22" cy="22" r="12" class="new-ring" />
+              <circle cx="22" cy="22" r="5" class="new-dot" />
+              <text x="42" y="26" class="node-title">docs/decisions/README.md</text>
+              <text x="42" y="42" class="node-meta">
+                ADR scaffold · src/CLAUDE.md 권위 명시 · 본문 ADR 없음
+              </text>
+              <text x="264" y="26" text-anchor="end" class="new-badge">신규</text>
+            </g>
+
+            <g transform="translate(840,520)">
+              <rect class="node-card" width="280" height="100" rx="8" />
+              <text x="16" y="24" class="node-title">docs/ — design &amp; runbook</text>
+              <text x="16" y="40" class="node-meta">
+                기존: project-overview · architecture-guidelines · marketplace-readiness
+              </text>
+
+              <g transform="translate(16,52)">
+                <rect fill="var(--accent-soft)" width="248" height="18" rx="3" />
+                <text x="8" y="13" class="node-meta" style="fill: var(--accent); font-weight:600">architecture-diagram.md (sync flow · raw mermaid)</text>
+              </g>
+              <g transform="translate(16,74)">
+                <rect fill="var(--accent-soft)" width="248" height="18" rx="3" />
+                <text x="8" y="13" class="node-meta" style="fill: var(--accent); font-weight:600">security-principles.md · architecture-guidelines.md</text>
+              </g>
+            </g>
+
+            <g transform="translate(60,564)">
+              <rect class="node-card" width="280" height="64" rx="8" />
+              <text x="16" y="26" class="node-title">wrangler.toml · 환경 게이트</text>
+              <text x="16" y="44" class="node-meta">
+                env.dev / env.prod · cron 0 3 * * * · queue bindings
+              </text>
+            </g>
+
+            <g transform="translate(450,564)">
+              <rect class="node-card" width="280" height="64" rx="8" />
+              <text x="16" y="26" class="node-title">Hyperdrive → Supabase</text>
+              <text x="16" y="44" class="node-meta">
+                postgres.js · prepare:false · max:1 · BYPASSRLS as postgres
+              </text>
+            </g>
+
+            <path class="edge edge-dash" d="M500,126 C 500,144 200,144 200,160" />
+            <path class="edge edge-dash" d="M590,126 C 590,144 590,144 590,160" />
+            <path class="edge edge-dash" d="M680,126 C 680,144 980,144 980,160" />
+
+            <path class="edge edge-type" d="M340,332 C 400,332 400,332 450,332" />
+            <text x="395" y="324" text-anchor="middle" class="node-meta" style="fill: var(--accent); font-weight: 600">
+              OAuth · /me · /sync/run
+            </text>
+
+            <path class="edge edge-dash" d="M730,196 C 800,196 800,560 730,592" />
+
+            <path class="edge edge-dash" d="M730,282 C 800,282 800,200 840,200" />
+            <text x="795" y="240" text-anchor="middle" class="node-meta" style="fill: var(--text-2)">
+              schema · migrate
+            </text>
+          </svg>
+        </div>
+      </section>
+
+      <div class="findings">
+        <section class="panel panel-strength">
+          <div class="panel-head">
+            <h3>강점 (1차 → 2차 변화)</h3>
+            <span class="count">유지할 것</span>
+          </div>
+          <ul class="panel-list">
+            <li>
+              <div class="head">
+                <span class="tag tag-rule" style="background: var(--green-soft); color: var(--green)">Cat A · 만점</span>
+                4 / 4 모듈 컨텍스트 보유 (8 → 15)
+              </div>
+              <div class="note">
+                drizzle/ · scripts/ 에 67줄 / 70줄 모듈 CLAUDE.md 신규.
+                기존 src/CLAUDE.md (532ln) 와 gas/CLAUDE.md 는 무수정. 신규
+                두 파일 모두 사실관계 인용만 (정책 진술은 src/CLAUDE.md 에 위임).
+              </div>
+            </li>
+            <li>
+              <div class="head">
+                <span class="tag tag-rule" style="background: var(--green-soft); color: var(--green)">Cat C · +12</span>
+                암묵지 외부화 2 → 14
+              </div>
+              <div class="note">
+                <code>docs/decisions/README.md</code> ADR scaffold 진입 (Q5 +4).
+                drizzle/scripts CLAUDE.md 가 Q1 (Owns) +2, Q2 (Patterns) +2,
+                Q3 (Non-obvious) +2, Q4 (Cross-module) +2 동시 라이프.
+              </div>
+            </li>
+            <li>
+              <div class="head">
+                <span class="tag tag-rule" style="background: var(--green-soft); color: var(--green)">Cat D · +8</span>
+                의존성 매핑 0 → 8
+              </div>
+              <div class="note">
+                <code>docs/ARCHITECTURE.md</code> (≤64ln) 신규 — 8 노드 mermaid
+                + 4 모듈 cross-module deps. edge label 은 안정 어휘만
+                (`-->`, `-.->`, "reads") — 코드 변경 시 drift 위험 최소화.
+              </div>
+            </li>
+            <li>
+              <div class="head">
+                <span class="tag tag-rule">Cat E1</span>
+                참조 정확도 49 / 50 (98%) 유지
+              </div>
+              <div class="note">
+                신규 4개 파일에 line-range 참조 0건 — score.py 의 정규식 한계
+                (`gas/appsscript.json:5-13` → `gas/appsscript.js` 변환)를 회피.
+                남은 1건은 본 PR 이전부터 존재한 글로벌 false positive.
+              </div>
+            </li>
+            <li>
+              <div class="head">
+                <span class="tag tag-rule">Cat F</span>
+                drift 0% 유지 (4 / 4 측정 가능 모듈)
+              </div>
+              <div class="note">
+                신규 두 모듈 CLAUDE.md 의 mtime 이 최신. src/CLAUDE.md 는
+                무수정으로 git diff stat 0 lines.
+              </div>
+            </li>
+          </ul>
+        </section>
+
+        <section class="panel panel-risk">
+          <div class="panel-head">
+            <h3>다음 PR 후보 ROI 액션</h3>
+            <span class="count">우선순위 정렬</span>
+          </div>
+          <ul class="panel-list">
+            <li>
+              <div class="head">
+                <span class="tag tag-rule">Cat F · S</span>
+                pre-push hook + checkContextPaths.ts (분리됨)
+              </div>
+              <div class="note">
+                <strong>Effort 1.0 hr · Impact 8/10.</strong>
+                husky 도입 + scripts/checkContextPaths.ts (score.py 의
+                line-range false-positive 회피하는 로컬 검증). 사용자 결정으로
+                이번 PR 에서 분리. 적용 시 F 6 → 9, E3 +1.
+              </div>
+            </li>
+            <li>
+              <div class="head">
+                <span class="tag tag-rule">Cat B · M</span>
+                <code>src/CLAUDE.md</code> 532줄 → 100줄 compass + 부록
+              </div>
+              <div class="note">
+                <strong>Effort 2.0 hr · Impact 7/10.</strong>
+                "compass-not-encyclopedia". invariant 정확도 검토 위해 별건.
+                B 9 → 14 예상 (B1 conciseness +3, B5 cross-refs +1).
+              </div>
+            </li>
+            <li>
+              <div class="head">
+                <span class="tag tag-rule">Cat D · S</span>
+                drizzle/ scripts/ CLAUDE.md 에 mermaid 1개씩 추가
+              </div>
+              <div class="note">
+                <strong>Effort 1.0 hr · Impact 5/10.</strong>
+                score.py 의 has_mermaid 검사는 context_files 만 봄
+                (ARCHITECTURE.md 가 context_files 에 안 잡힘). 모듈 CLAUDE.md
+                안에 작은 mermaid 추가 시 D +3.
+              </div>
+            </li>
+            <li>
+              <div class="head">
+                <span class="tag tag-rule">Cat G · L</span>
+                <code>evals/</code> + 대표 task pass-rate 측정
+              </div>
+              <div class="note">
+                <strong>Effort 6.0 hr · Impact 6/10.</strong>
+                "color rollback PR 추가", "watch renewal claim 신규 컬럼", "OAuth
+                라우트 신설" 등 invariant-touching task 의 agent run pass-rate.
+                G 0 → 4 + 다른 액션 ROI 정량화.
+              </div>
+            </li>
+            <li>
+              <div class="head">
+                <span class="tag tag-rule">Cat E2 · S</span>
+                CODEOWNERS / PR template 추가
+              </div>
+              <div class="note">
+                <strong>Effort 0.5 hr · Impact 4/10.</strong>
+                <code>.github/CODEOWNERS</code> + <code>.github/PULL_REQUEST_TEMPLATE.md</code>.
+                단순 파일 추가로 E2 0 → 4. CI workflow 본격 구축 전 워밍업.
+              </div>
+            </li>
+            <li>
+              <div class="head">
+                <span class="tag tag-rule" style="background: var(--amber-soft); color: var(--amber)">Cat E1 · 글로벌</span>
+                score.py 정규식 한계 (잔여 1건의 진실)
+              </div>
+              <div class="note">
+                <strong>레포 변경 0건.</strong>
+                <code>~/.claude/skills/ai-readiness-cartography/scripts/score.py</code>
+                의 RE_PATH_REF 가 <code>:line-range</code> 후미를 strip 하지
+                못함. 실레포 broken path 0건 — "잘못된 경로 1건" 표기는
+                글로벌 툴 한계. 글로벌 패치는 사용자 결정.
+              </div>
+            </li>
+            <li>
+              <div class="head">
+                <span class="tag tag-rule">Cat B · L</span>
+                god file 분할 (test 파일 1190 / 740 / 673줄)
+              </div>
+              <div class="note">
+                <strong>Effort 10.0 hr · Impact 6/10.</strong>
+                테스트 회귀 위험으로 본 PR 외. 분할 시 token cost ↓ + 편집 정확도 ↑.
+              </div>
+            </li>
+          </ul>
+        </section>
+      </div>
+
+      <footer>
+        autocolor_for_calendar · AI 준비도 감사 · v2 루브릭 (7 카테고리 / 100점) · 2차 측정 2026-05-02 · 1차 30 → 2차 59 (+29)
+      </footer>
+    </div>
+  </body>
+</html>
