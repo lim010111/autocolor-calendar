@@ -118,8 +118,8 @@ and is not adjudicated here.
 | Item | Source of truth | Status | Owner | Notes |
 |---|---|---|---|---|
 | App home page URL | TBD (owned domain) | 미작성 | Ops | Blocked on `TODO.md:8` |
-| Privacy Policy URL | TBD | 미작성 | Legal | Body is a separate artifact |
-| Terms of Service URL | TBD | 미작성 | Legal | Body is a separate artifact |
+| Privacy Policy URL | `docs/legal/privacy-policy.md` | 초안 | Legal | Body drafted in repo; legal counsel review + hosting pending |
+| Terms of Service URL | `docs/legal/terms-of-service.md` | 초안 | Legal | Body drafted in repo; legal counsel review + hosting pending |
 | Authorized domain(s) | TBD | 미작성 | Ops | Must match home / privacy / ToS |
 | Scope list (backend) | `src/config/constants.ts:1-8` | 완료 | Eng | Matches `OAUTH_SCOPES` |
 | Scope list (GAS manifest) | `gas/appsscript.json:5-12` | 완료 | Eng | |
@@ -248,11 +248,11 @@ a gate, edit the owning source first and then the status here.
 
 | Gate | Blocks | Owner | Status | Detail pointer |
 |---|---|---|---|---|
-| Owned domain + Search Console verification | Prod Watch API, support URL, privacy URL, home URL | Ops | 미작성 | `TODO.md:8` |
-| Prod Supabase + Worker activated | OAuth verification (prod client), Marketplace listing | Eng | 미작성 | `TODO.md:35` |
+| Owned domain + Search Console verification | Prod Watch API, support URL, privacy URL, home URL | Ops | 진행중 | `TODO.md:8` + `docs/runbooks/01-domain-and-search-console.md` |
+| Prod Supabase + Worker activated | OAuth verification (prod client), Marketplace listing | Eng | 진행중 | `TODO.md:35` + `docs/runbooks/02-prod-environment-activation.md` |
 | Listing assets bundle | Marketplace submission | Product + Design | 미작성 | §1 |
-| Privacy Policy published | Consent screen, listing | Legal | 미작성 | §2 |
-| Terms of Service published | Consent screen, listing | Legal | 미작성 | §2 |
+| Privacy Policy published | Consent screen, listing | Legal | 초안 | §2 → `docs/legal/privacy-policy.md` |
+| Terms of Service published | Consent screen, listing | Legal | 초안 | §2 → `docs/legal/terms-of-service.md` |
 | Scope justifications written | OAuth verification | Eng + Product | 초안 | §2 → `docs/assets/marketplace/scope-justifications.md` |
 | Restricted-scope demo video | OAuth verification | Product | 미작성 | §2 |
 | Data handling / Admin answers drafted | Marketplace submission | Eng + Ops | 초안 | §3 |
