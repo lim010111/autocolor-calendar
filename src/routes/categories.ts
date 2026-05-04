@@ -7,8 +7,51 @@ import { categories, syncState } from "../db/schema";
 import type { HonoEnv } from "../env";
 import { authMiddleware } from "../middleware/auth";
 import { enqueueSync } from "../queues/syncProducer";
+import type { Bindings } from "../env";
 
 export const categoriesRoutes = new Hono<HonoEnv>();
+
+// Rule create / mutate fan-out. Webhook-driven incremental sync only sees
+// events that were *just changed*, so a freshly-added rule never reaches the
+// existing un-mutated events on a user's calendar. Full resync re-evaluates
+// every event in the +365d/-30d window and lets `processEvent` apply the new
+// rule (and re-color app-owned events when a rule's colorId changed). Same
+// failure model as the §5 후속 B color_rollback fan-out: partial failures land
+// in `console.error`, the user request still succeeds, recovery is a manual
+// re-sync.
+function fanOutFullResync(
+  env: Bindings,
+  userId: string,
+  calendarIds: string[],
+): Promise<void> {
+  return Promise.allSettled(
+    calendarIds.map((calendarId) =>
+      enqueueSync(env, {
+        type: "full_resync",
+        userId,
+        calendarId,
+        reason: "manual",
+        enqueuedAt: Date.now(),
+      }),
+    ),
+  ).then((results) => {
+    for (let i = 0; i < results.length; i++) {
+      const r = results[i]!;
+      if (r.status === "rejected") {
+        console.error(
+          JSON.stringify({
+            level: "error",
+            msg: "full_resync enqueue failed (rule change)",
+            userId,
+            calendarId: calendarIds[i],
+            error:
+              r.reason instanceof Error ? r.reason.message : String(r.reason),
+          }),
+        );
+      }
+    }
+  });
+}
 
 categoriesRoutes.use("*", authMiddleware);
 
@@ -98,6 +141,21 @@ categoriesRoutes.post("/", async (c) => {
           : {}),
       })
       .returning(SELECT_FIELDS);
+
+    const calendars = await db
+      .select({ calendarId: syncState.calendarId })
+      .from(syncState)
+      .where(eq(syncState.userId, userId));
+    if (calendars.length > 0) {
+      c.executionCtx.waitUntil(
+        fanOutFullResync(
+          c.env,
+          userId,
+          calendars.map((r) => r.calendarId),
+        ),
+      );
+    }
+
     return c.json({ category: row }, 201);
   } catch (err) {
     if (isDuplicateNameError(err)) {
@@ -146,6 +204,32 @@ categoriesRoutes.patch("/:id", async (c) => {
       .where(and(eq(categories.userId, userId), eq(categories.id, idParse.data)))
       .returning(SELECT_FIELDS);
     if (updated.length === 0) return c.json({ error: "not_found" }, 404);
+
+    // Classification-affecting fields only. `name` change is metadata and
+    // does not alter the rule-keyword match or the per-event PATCH target,
+    // so a typo-fix rename should not spend Google API quota on a full
+    // calendar re-evaluation. `priority` is included because it is the
+    // tiebreaker among multiple matching rules.
+    const triggerSync =
+      parsed.data.colorId !== undefined ||
+      parsed.data.keywords !== undefined ||
+      parsed.data.priority !== undefined;
+    if (triggerSync) {
+      const calendars = await db
+        .select({ calendarId: syncState.calendarId })
+        .from(syncState)
+        .where(eq(syncState.userId, userId));
+      if (calendars.length > 0) {
+        c.executionCtx.waitUntil(
+          fanOutFullResync(
+            c.env,
+            userId,
+            calendars.map((r) => r.calendarId),
+          ),
+        );
+      }
+    }
+
     return c.json({ category: updated[0] });
   } catch (err) {
     if (isDuplicateNameError(err)) {

@@ -386,7 +386,9 @@ function fetchCategoriesOrError() {
     var rules = (body.categories || []).map(function (c) {
       return {
         id: c.id,
-        keyword: (c.keywords && c.keywords[0]) ? c.keywords[0] : c.name,
+        // 다중 키워드 규칙도 사용자가 입력한 원문 라벨(name)을 그대로 보여주도록.
+        // 과거에는 keywords[0]만 사용해서 "프로젝트, 개발" 입력이 "프로젝트"로만 표시됐음.
+        keyword: c.name || (c.keywords && c.keywords[0]) || "",
         colorId: c.colorId,
       };
     });
@@ -557,10 +559,23 @@ function onEventOpen(e) {
 }
 
 function actionSelectColor(e) {
-  var selectedColorId = e.parameters.selectedColorId || (e.commonEventObject && e.commonEventObject.parameters ? e.commonEventObject.parameters.selectedColorId : null) || e.parameters.id;
+  // See actionSelectColorForRule comment for why `grid_item_identifier`
+  // is the documented-by-empiricism key for GAS Grid click callbacks.
+  var p1 = (e && e.parameters) || {};
+  var p2 = (e && e.commonEventObject && e.commonEventObject.parameters) || {};
+
+  var selectedColorId =
+    p1.grid_item_identifier || p2.grid_item_identifier ||
+    p1.selectedColorId || p2.selectedColorId ||
+    null;
+
+  if (!selectedColorId) {
+    return CardService.newActionResponseBuilder()
+      .setNotification(CardService.newNotification().setText("색상을 인식하지 못했습니다. 다시 시도해주세요."))
+      .build();
+  }
 
   var colors = getCalendarColors();
-
   var selectedLabel = "색상";
   for (var i = 0; i < colors.length; i++) {
     if (colors[i].id === selectedColorId) {
@@ -571,7 +586,7 @@ function actionSelectColor(e) {
 
   if (!e.parameters) e.parameters = {};
   e.parameters.selectedColorId = selectedColorId;
-  
+
   return CardService.newActionResponseBuilder()
     .setNavigation(CardService.newNavigation().updateCard(onEventOpen(e)))
     .setNotification(CardService.newNotification().setText(selectedLabel + " 색상이 선택되었습니다."))
@@ -717,9 +732,22 @@ function buildRuleManagementCard(e) {
   var addSection = CardService.newCardSection()
     .setHeader("새 규칙 추가");
     
+  var priorKeyword = "";
+  if (e && e.formInput && e.formInput.rule_keyword) {
+    priorKeyword = e.formInput.rule_keyword;
+  } else if (e && e.commonEventObject && e.commonEventObject.formInputs &&
+             e.commonEventObject.formInputs.rule_keyword &&
+             e.commonEventObject.formInputs.rule_keyword.stringInputs &&
+             e.commonEventObject.formInputs.rule_keyword.stringInputs.value &&
+             e.commonEventObject.formInputs.rule_keyword.stringInputs.value.length > 0) {
+    priorKeyword = e.commonEventObject.formInputs.rule_keyword.stringInputs.value[0];
+  }
+
   addSection.addWidget(CardService.newTextInput()
     .setFieldName("rule_keyword")
-    .setTitle("키워드 (예: 주간회의)"));
+    .setTitle("키워드 (예: 회의, 미팅)")
+    .setHint("콤마(,)로 여러 개 입력 가능")
+    .setValue(priorKeyword));
 
   addSection.addWidget(CardService.newTextParagraph()
     .setText("<font color=\"#B06000\">⚠️ 2자 이하 키워드는 의도치 않은 이벤트까지 매칭될 수 있습니다.</font>"));
@@ -738,10 +766,12 @@ function buildRuleManagementCard(e) {
     selectedColorId = e.commonEventObject.parameters.selectedColorIdForRule;
   }
 
+  var selectedColorLabel = null;
   colors.forEach(function(c) {
     var url = c.url;
     if (c.id === selectedColorId) {
       url = url.replace("text=%20", "text=%E2%9C%93");
+      selectedColorLabel = c.label;
     }
     colorGrid.addItem(CardService.newGridItem()
       .setIdentifier(c.id)
@@ -749,13 +779,22 @@ function buildRuleManagementCard(e) {
         .setImageUrl(url)
         .setCropStyle(CardService.newImageCropStyle().setImageCropType(CardService.ImageCropType.CIRCLE))));
   });
-  
+
+  if (selectedColorLabel) {
+    addSection.addWidget(CardService.newTextParagraph()
+      .setText("선택된 색상: <b>" + selectedColorLabel + "</b>"));
+  }
+
   addSection.addWidget(colorGrid);
-  
+
+  var addAction = CardService.newAction().setFunctionName("actionAddRule");
+  if (selectedColorId) {
+    addAction = addAction.setParameters({ selectedColorIdForRule: selectedColorId });
+  }
   addSection.addWidget(CardService.newTextButton()
     .setText("규칙 추가")
     .setTextButtonStyle(CardService.TextButtonStyle.FILLED)
-    .setOnClickAction(CardService.newAction().setFunctionName("actionAddRule")));
+    .setOnClickAction(addAction));
 
   addSection.addWidget(CardService.newDecoratedText()
     .setText("💡 키워드가 제목·설명에 부분 일치하면 색상이 적용됩니다. 수동으로 바꾼 색상은 보존됩니다.")
@@ -813,10 +852,25 @@ function buildRuleManagementCard(e) {
 }
 
 function actionSelectColorForRule(e) {
-  var selectedColorId = e.parameters.selectedColorId || (e.commonEventObject && e.commonEventObject.parameters ? e.commonEventObject.parameters.selectedColorId : null) || e.parameters.id;
+  // GAS CardService Grid clicks deliver the GridItem.setIdentifier() value
+  // under the key `grid_item_identifier` (verified empirically — the docs
+  // do not name the key). `selectedColorIdForRule` is also accepted for
+  // forward-compat with any future setParameters-based path.
+  var p1 = (e && e.parameters) || {};
+  var p2 = (e && e.commonEventObject && e.commonEventObject.parameters) || {};
+
+  var selectedColorId =
+    p1.grid_item_identifier || p2.grid_item_identifier ||
+    p1.selectedColorIdForRule || p2.selectedColorIdForRule ||
+    null;
+
+  if (!selectedColorId) {
+    return CardService.newActionResponseBuilder()
+      .setNotification(CardService.newNotification().setText("색상을 인식하지 못했습니다. 다시 시도해주세요."))
+      .build();
+  }
 
   var colors = getCalendarColors();
-
   var selectedLabel = "색상";
   for (var i = 0; i < colors.length; i++) {
     if (colors[i].id === selectedColorId) {
@@ -825,30 +879,40 @@ function actionSelectColorForRule(e) {
     }
   }
 
-  // Update properties to save the selected color for this rule
-  if (selectedColorId) {
-      try {
-        var userProps = PropertiesService.getUserProperties();
-        userProps.setProperty("selectedColorIdForRule", selectedColorId);
-      } catch (err) {}
-  }
-  
+  if (!e.parameters) e.parameters = {};
+  e.parameters.selectedColorIdForRule = selectedColorId;
+
   return CardService.newActionResponseBuilder()
-    .setNavigation(CardService.newNavigation().updateCard(buildRuleManagementCard()))
+    .setNavigation(CardService.newNavigation().updateCard(buildRuleManagementCard(e)))
     .setNotification(CardService.newNotification().setText(selectedLabel + " 색상이 선택되었습니다."))
     .build();
 }
 
 function actionAddRule(e) {
-  var keyword = e.formInput && e.formInput.rule_keyword;
-  if (!keyword) {
+  var keywordRaw = e.formInput && e.formInput.rule_keyword;
+  if (!keywordRaw || !keywordRaw.trim()) {
     return CardService.newActionResponseBuilder()
       .setNotification(CardService.newNotification().setText("키워드를 입력해주세요."))
       .build();
   }
 
-  var userProps = PropertiesService.getUserProperties();
-  var selectedColorId = userProps.getProperty("selectedColorIdForRule");
+  // 콤마(,)로 구분된 입력을 개별 키워드 배열로 split. backend `classifier.ts`는
+  // `keywords[]` 각 원소를 substring 매칭하므로, 단일 문자열로 보내면
+  // "프로젝트, 개발" 전체가 needle이 되어 어떤 이벤트에도 매칭되지 않음.
+  var keywords = keywordRaw
+    .split(',')
+    .map(function (k) { return k.trim(); })
+    .filter(function (k) { return k.length > 0; });
+  if (keywords.length === 0) {
+    return CardService.newActionResponseBuilder()
+      .setNotification(CardService.newNotification().setText("키워드를 입력해주세요."))
+      .build();
+  }
+
+  var selectedColorId = (e.parameters && e.parameters.selectedColorIdForRule)
+    || (e.commonEventObject && e.commonEventObject.parameters
+        ? e.commonEventObject.parameters.selectedColorIdForRule
+        : null);
   if (!selectedColorId) {
     return CardService.newActionResponseBuilder()
       .setNotification(CardService.newNotification().setText("색상을 먼저 선택해주세요."))
@@ -860,12 +924,11 @@ function actionAddRule(e) {
       method: 'post',
       contentType: 'application/json',
       payload: JSON.stringify({
-        name: keyword,
+        name: keywordRaw.trim(),
         colorId: selectedColorId,
-        keywords: [keyword]
+        keywords: keywords
       })
     });
-    userProps.deleteProperty("selectedColorIdForRule");
     return CardService.newActionResponseBuilder()
       .setNavigation(CardService.newNavigation().updateCard(buildRuleManagementCard()))
       .setNotification(CardService.newNotification().setText("새 규칙이 저장되었습니다."))
