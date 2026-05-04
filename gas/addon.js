@@ -717,9 +717,21 @@ function buildRuleManagementCard(e) {
   var addSection = CardService.newCardSection()
     .setHeader("새 규칙 추가");
     
+  var priorKeyword = "";
+  if (e && e.formInput && e.formInput.rule_keyword) {
+    priorKeyword = e.formInput.rule_keyword;
+  } else if (e && e.commonEventObject && e.commonEventObject.formInputs &&
+             e.commonEventObject.formInputs.rule_keyword &&
+             e.commonEventObject.formInputs.rule_keyword.stringInputs &&
+             e.commonEventObject.formInputs.rule_keyword.stringInputs.value &&
+             e.commonEventObject.formInputs.rule_keyword.stringInputs.value.length > 0) {
+    priorKeyword = e.commonEventObject.formInputs.rule_keyword.stringInputs.value[0];
+  }
+
   addSection.addWidget(CardService.newTextInput()
     .setFieldName("rule_keyword")
-    .setTitle("키워드 (예: 주간회의)"));
+    .setTitle("키워드 (예: 주간회의)")
+    .setValue(priorKeyword));
 
   addSection.addWidget(CardService.newTextParagraph()
     .setText("<font color=\"#B06000\">⚠️ 2자 이하 키워드는 의도치 않은 이벤트까지 매칭될 수 있습니다.</font>"));
@@ -738,10 +750,12 @@ function buildRuleManagementCard(e) {
     selectedColorId = e.commonEventObject.parameters.selectedColorIdForRule;
   }
 
+  var selectedColorLabel = null;
   colors.forEach(function(c) {
     var url = c.url;
     if (c.id === selectedColorId) {
       url = url.replace("text=%20", "text=%E2%9C%93");
+      selectedColorLabel = c.label;
     }
     colorGrid.addItem(CardService.newGridItem()
       .setIdentifier(c.id)
@@ -749,13 +763,22 @@ function buildRuleManagementCard(e) {
         .setImageUrl(url)
         .setCropStyle(CardService.newImageCropStyle().setImageCropType(CardService.ImageCropType.CIRCLE))));
   });
-  
+
+  if (selectedColorLabel) {
+    addSection.addWidget(CardService.newTextParagraph()
+      .setText("선택된 색상: <b>" + selectedColorLabel + "</b>"));
+  }
+
   addSection.addWidget(colorGrid);
-  
+
+  var addAction = CardService.newAction().setFunctionName("actionAddRule");
+  if (selectedColorId) {
+    addAction = addAction.setParameters({ selectedColorIdForRule: selectedColorId });
+  }
   addSection.addWidget(CardService.newTextButton()
     .setText("규칙 추가")
     .setTextButtonStyle(CardService.TextButtonStyle.FILLED)
-    .setOnClickAction(CardService.newAction().setFunctionName("actionAddRule")));
+    .setOnClickAction(addAction));
 
   addSection.addWidget(CardService.newDecoratedText()
     .setText("💡 키워드가 제목·설명에 부분 일치하면 색상이 적용됩니다. 수동으로 바꾼 색상은 보존됩니다.")
@@ -813,7 +836,10 @@ function buildRuleManagementCard(e) {
 }
 
 function actionSelectColorForRule(e) {
-  var selectedColorId = e.parameters.selectedColorId || (e.commonEventObject && e.commonEventObject.parameters ? e.commonEventObject.parameters.selectedColorId : null) || e.parameters.id;
+  var selectedColorId = (e.parameters && (e.parameters.selectedColorId || e.parameters.id))
+    || (e.commonEventObject && e.commonEventObject.parameters
+        ? (e.commonEventObject.parameters.selectedColorId || e.commonEventObject.parameters.id)
+        : null);
 
   var colors = getCalendarColors();
 
@@ -825,16 +851,13 @@ function actionSelectColorForRule(e) {
     }
   }
 
-  // Update properties to save the selected color for this rule
+  if (!e.parameters) e.parameters = {};
   if (selectedColorId) {
-      try {
-        var userProps = PropertiesService.getUserProperties();
-        userProps.setProperty("selectedColorIdForRule", selectedColorId);
-      } catch (err) {}
+    e.parameters.selectedColorIdForRule = selectedColorId;
   }
-  
+
   return CardService.newActionResponseBuilder()
-    .setNavigation(CardService.newNavigation().updateCard(buildRuleManagementCard()))
+    .setNavigation(CardService.newNavigation().updateCard(buildRuleManagementCard(e)))
     .setNotification(CardService.newNotification().setText(selectedLabel + " 색상이 선택되었습니다."))
     .build();
 }
@@ -847,8 +870,10 @@ function actionAddRule(e) {
       .build();
   }
 
-  var userProps = PropertiesService.getUserProperties();
-  var selectedColorId = userProps.getProperty("selectedColorIdForRule");
+  var selectedColorId = (e.parameters && e.parameters.selectedColorIdForRule)
+    || (e.commonEventObject && e.commonEventObject.parameters
+        ? e.commonEventObject.parameters.selectedColorIdForRule
+        : null);
   if (!selectedColorId) {
     return CardService.newActionResponseBuilder()
       .setNotification(CardService.newNotification().setText("색상을 먼저 선택해주세요."))
@@ -865,7 +890,6 @@ function actionAddRule(e) {
         keywords: [keyword]
       })
     });
-    userProps.deleteProperty("selectedColorIdForRule");
     return CardService.newActionResponseBuilder()
       .setNavigation(CardService.newNavigation().updateCard(buildRuleManagementCard()))
       .setNotification(CardService.newNotification().setText("새 규칙이 저장되었습니다."))
