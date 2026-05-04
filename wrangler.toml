@@ -66,10 +66,10 @@ name = "autocolor-prod"
 
 [env.prod.vars]
 ENV = "prod"
-GOOGLE_OAUTH_REDIRECT_URI = "https://autocolor-prod.autocolor-lim.workers.dev/oauth/google/callback"
-# ↑ Custom-domain 전환 시 verified 도메인 기반 URL로 교체.
-# 절차: docs/runbooks/01-domain-and-search-console.md Step 7.
-# WEBHOOK_BASE_URL은 prod custom domain GSC verified 후 시크릿으로 추가
+GOOGLE_OAUTH_REDIRECT_URI = "https://autocolorcal.app/oauth/google/callback"
+# ↑ G1 verified 도메인. GCP prod Web Client의 Authorized redirect URIs 등록은
+# G2 runbook Step 4에서 client 생성 시 같이 처리된다.
+# WEBHOOK_BASE_URL은 G2 runbook Step 14에서 시크릿으로 주입한다
 # (TODO.md:52 "Prod Watch API 활성화"). 이 vars 블록에 평문 작성하지 않는다.
 
 # prod 활성화 시 아래 placeholder 블록을 채워 commit한다.

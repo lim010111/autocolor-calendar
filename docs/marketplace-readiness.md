@@ -248,7 +248,7 @@ a gate, edit the owning source first and then the status here.
 
 | Gate | Blocks | Owner | Status | Detail pointer |
 |---|---|---|---|---|
-| Owned domain + Search Console verification | Prod Watch API, support URL, privacy URL, home URL | Ops | 진행중 | `TODO.md:8` + `docs/runbooks/01-domain-and-search-console.md` |
+| Owned domain + Search Console verification | Prod Watch API, support URL, privacy URL, home URL | Ops | 완료 | `TODO.md:8` + `docs/runbooks/01-domain-and-search-console.md` (`autocolorcal.app` GSC verified 2026-05-04, GCP Consent Screen Authorized domains 등록 완료) |
 | Prod Supabase + Worker activated | OAuth verification (prod client), Marketplace listing | Eng | 진행중 | `TODO.md:35` + `docs/runbooks/02-prod-environment-activation.md` |
 | Listing assets bundle | Marketplace submission | Product + Design | 미작성 | §1 |
 | Privacy Policy published | Consent screen, listing | Legal | 초안 | §2 → `docs/legal/privacy-policy.md` |

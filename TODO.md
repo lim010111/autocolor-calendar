@@ -5,7 +5,7 @@
 - [x] PRD 및 시스템 아키텍처(SaaS 확장 모델) 최종 리뷰 (Cloudflare Workers + Supabase 하이브리드 모델로 확정)
 - [ ] UI/UX 와이어프레임 작성 (Add-on Card UI, 설정 페이지)
 - [x] 데이터 저장 최소화, PII 마스킹, 권한(Scope) 최소화 등 보안/컴플라이언스 원칙 수립 — `docs/security-principles.md` 신규 인덱스 문서 (6개 원칙 × 정본 포인터 anchored reference; 본문 중복 없이 기존 CLAUDE.md / architecture-guidelines.md로 포인팅).
-- [ ] 운영용 도메인 확보 및 Google Search Console 소유권 인증 (Webhook용) — §4 후속 "Prod Watch API 활성화"의 `WEBHOOK_BASE_URL` 설정을 gate함
+- [x] 운영용 도메인 확보 및 Google Search Console 소유권 인증 (Webhook용) — `autocolorcal.app` Cloudflare Registrar 등록 → Worker `autocolor-prod` Custom Domain 연결(`/healthz` 200) → GSC Domain property TXT verified(2026-05-04) → GCP OAuth Consent Screen Authorized domains 등록 + App home/Privacy/Terms URL placeholder 등록. `wrangler.toml` `[env.prod.vars] GOOGLE_OAUTH_REDIRECT_URI`도 verified 도메인으로 교체. GCP prod Web Client redirect URI 등록과 `WEBHOOK_BASE_URL` 시크릿 주입은 §3 후속 "Prod 환경 활성화" / §4 후속 "Prod Watch API 활성화"로 이월.
 - [x] Google Workspace Marketplace 퍼블리싱 정책 및 제약사항, 심사 대비 시나리오 검토 — `docs/marketplace-readiness.md` 신규 인덱스 (5개 섹션 × 상태 테이블; 본문은 `docs/security-principles.md`·`src/CLAUDE.md`로 포인팅).
 
 ## 2. Google Apps Script (Add-on 클라이언트) 개발

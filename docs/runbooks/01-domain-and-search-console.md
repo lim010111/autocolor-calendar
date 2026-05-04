@@ -67,9 +67,10 @@ dig +short ns <chosen>.app
 **Routes 방식 (대안 — 본 프로젝트는 비추천)**:
 
 기존 zone에 다른 트래픽이 있어 path별 분기가 필요한 경우. 예: `<chosen>.app/oauth/*`
-+ `<chosen>.app/webhooks/*` + `<chosen>.app/api/*` + `<chosen>.app/healthz`.
-URL 패턴 분기가 필요해 운영 복잡도 증가. 본 프로젝트는 prod Worker가 전체
-트래픽 처리이므로 Custom Domains 방식만 사용.
+
+- `<chosen>.app/webhooks/*` + `<chosen>.app/api/*` + `<chosen>.app/healthz`.
+  URL 패턴 분기가 필요해 운영 복잡도 증가. 본 프로젝트는 prod Worker가 전체
+  트래픽 처리이므로 Custom Domains 방식만 사용.
 
 확인:
 
@@ -141,6 +142,7 @@ pnpm wrangler secret put WEBHOOK_BASE_URL --env prod
 ```
 
 GCP OAuth Web Client 측의 redirect URI 등록도 동일 URL로 갱신:
+
 - GCP Console → APIs & Services → Credentials → prod Web Client → Edit
   → Authorized redirect URIs → `https://<chosen>.app/oauth/google/callback`
   추가 (기존 `*.workers.dev` URI는 잠시 유지하다가 검증 완료 후 제거).
