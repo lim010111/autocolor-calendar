@@ -836,10 +836,17 @@ function buildRuleManagementCard(e) {
 }
 
 function actionSelectColorForRule(e) {
-  var selectedColorId = (e.parameters && (e.parameters.selectedColorId || e.parameters.id))
-    || (e.commonEventObject && e.commonEventObject.parameters
-        ? (e.commonEventObject.parameters.selectedColorId || e.commonEventObject.parameters.id)
-        : null);
+  var p1 = (e && e.parameters) || {};
+  var p2 = (e && e.commonEventObject && e.commonEventObject.parameters) || {};
+  try {
+    console.log('[actionSelectColorForRule] e.parameters=' + JSON.stringify(p1)
+      + ' commonEvent.parameters=' + JSON.stringify(p2));
+  } catch (_logErr) {}
+
+  var selectedColorId =
+    p1.selectedColorIdForRule || p1.selectedColorId || p1.id || p1.identifier ||
+    p2.selectedColorIdForRule || p2.selectedColorId || p2.id || p2.identifier ||
+    null;
 
   var colors = getCalendarColors();
 
@@ -854,6 +861,13 @@ function actionSelectColorForRule(e) {
   if (!e.parameters) e.parameters = {};
   if (selectedColorId) {
     e.parameters.selectedColorIdForRule = selectedColorId;
+  }
+
+  if (!selectedColorId) {
+    return CardService.newActionResponseBuilder()
+      .setNotification(CardService.newNotification().setText(
+        "DEBUG: 색상 ID 누락. p1=" + JSON.stringify(p1) + " p2=" + JSON.stringify(p2)))
+      .build();
   }
 
   return CardService.newActionResponseBuilder()
