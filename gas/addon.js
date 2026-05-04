@@ -386,7 +386,9 @@ function fetchCategoriesOrError() {
     var rules = (body.categories || []).map(function (c) {
       return {
         id: c.id,
-        keyword: (c.keywords && c.keywords[0]) ? c.keywords[0] : c.name,
+        // 다중 키워드 규칙도 사용자가 입력한 원문 라벨(name)을 그대로 보여주도록.
+        // 과거에는 keywords[0]만 사용해서 "프로젝트, 개발" 입력이 "프로젝트"로만 표시됐음.
+        keyword: c.name || (c.keywords && c.keywords[0]) || "",
         colorId: c.colorId,
       };
     });
@@ -743,7 +745,8 @@ function buildRuleManagementCard(e) {
 
   addSection.addWidget(CardService.newTextInput()
     .setFieldName("rule_keyword")
-    .setTitle("키워드 (예: 주간회의)")
+    .setTitle("키워드 (예: 회의, 미팅)")
+    .setHint("콤마(,)로 여러 개 입력 가능")
     .setValue(priorKeyword));
 
   addSection.addWidget(CardService.newTextParagraph()
@@ -886,8 +889,21 @@ function actionSelectColorForRule(e) {
 }
 
 function actionAddRule(e) {
-  var keyword = e.formInput && e.formInput.rule_keyword;
-  if (!keyword) {
+  var keywordRaw = e.formInput && e.formInput.rule_keyword;
+  if (!keywordRaw || !keywordRaw.trim()) {
+    return CardService.newActionResponseBuilder()
+      .setNotification(CardService.newNotification().setText("키워드를 입력해주세요."))
+      .build();
+  }
+
+  // 콤마(,)로 구분된 입력을 개별 키워드 배열로 split. backend `classifier.ts`는
+  // `keywords[]` 각 원소를 substring 매칭하므로, 단일 문자열로 보내면
+  // "프로젝트, 개발" 전체가 needle이 되어 어떤 이벤트에도 매칭되지 않음.
+  var keywords = keywordRaw
+    .split(',')
+    .map(function (k) { return k.trim(); })
+    .filter(function (k) { return k.length > 0; });
+  if (keywords.length === 0) {
     return CardService.newActionResponseBuilder()
       .setNotification(CardService.newNotification().setText("키워드를 입력해주세요."))
       .build();
@@ -908,9 +924,9 @@ function actionAddRule(e) {
       method: 'post',
       contentType: 'application/json',
       payload: JSON.stringify({
-        name: keyword,
+        name: keywordRaw.trim(),
         colorId: selectedColorId,
-        keywords: [keyword]
+        keywords: keywords
       })
     });
     return CardService.newActionResponseBuilder()
