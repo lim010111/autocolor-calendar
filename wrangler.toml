@@ -72,32 +72,30 @@ GOOGLE_OAUTH_REDIRECT_URI = "https://autocolorcal.app/oauth/google/callback"
 # WEBHOOK_BASE_URL은 G2 runbook Step 14에서 시크릿으로 주입한다
 # (TODO.md:52 "Prod Watch API 활성화"). 이 vars 블록에 평문 작성하지 않는다.
 
-# prod 활성화 시 아래 placeholder 블록을 채워 commit한다.
-# 절차: docs/runbooks/02-prod-environment-activation.md Step 7.
-# 실제 Hyperdrive UUID / Queue 이름 / cron은 사용자가 콘솔에서 받아 채우는
-# 자리이며, 이 PR에는 placeholder 주석만 들어간다 (가짜 값 주입 시 prod 배포
-# 실패로 silent failure 가능).
-#
-# [[env.prod.hyperdrive]]
-# binding = "HYPERDRIVE"
-# id = "<pnpm wrangler hyperdrive create autocolor-prod-db 출력 UUID>"
-#
-# [[env.prod.queues.producers]]
-# binding = "SYNC_QUEUE"
-# queue = "autocolor-sync-prod"
-#
-# [[env.prod.queues.consumers]]
-# queue = "autocolor-sync-prod"
-# max_batch_size = 10
-# max_batch_timeout = 5
-# max_concurrency = 5
-# max_retries = 5
-# dead_letter_queue = "autocolor-sync-dlq-prod"
-#
-# [[env.prod.queues.consumers]]
-# queue = "autocolor-sync-dlq-prod"
-# max_batch_size = 10
-# max_retries = 0
-#
-# [env.prod.triggers]
-# crons = ["0 */6 * * *", "0 3 * * *"]
+# prod Hyperdrive / Queue / cron 활성화 (G2 runbook Step 6-9 결과).
+# Hyperdrive UUID / Queue 이름은 Cloudflare Dashboard에서 생성 후 캡처한 값.
+# dev 블록과 동일한 패턴 — env scoping만 다름.
+
+[[env.prod.hyperdrive]]
+binding = "HYPERDRIVE"
+id = "fc99980ace44497da83cfa99906f3bcb"
+
+[[env.prod.queues.producers]]
+binding = "SYNC_QUEUE"
+queue = "autocolor-sync-prod"
+
+[[env.prod.queues.consumers]]
+queue = "autocolor-sync-prod"
+max_batch_size = 10
+max_batch_timeout = 5
+max_concurrency = 5
+max_retries = 5
+dead_letter_queue = "autocolor-sync-dlq-prod"
+
+[[env.prod.queues.consumers]]
+queue = "autocolor-sync-dlq-prod"
+max_batch_size = 10
+max_retries = 0
+
+[env.prod.triggers]
+crons = ["0 */6 * * *", "0 3 * * *"]
