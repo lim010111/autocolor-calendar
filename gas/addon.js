@@ -557,10 +557,23 @@ function onEventOpen(e) {
 }
 
 function actionSelectColor(e) {
-  var selectedColorId = e.parameters.selectedColorId || (e.commonEventObject && e.commonEventObject.parameters ? e.commonEventObject.parameters.selectedColorId : null) || e.parameters.id;
+  // See actionSelectColorForRule comment for why `grid_item_identifier`
+  // is the documented-by-empiricism key for GAS Grid click callbacks.
+  var p1 = (e && e.parameters) || {};
+  var p2 = (e && e.commonEventObject && e.commonEventObject.parameters) || {};
+
+  var selectedColorId =
+    p1.grid_item_identifier || p2.grid_item_identifier ||
+    p1.selectedColorId || p2.selectedColorId ||
+    null;
+
+  if (!selectedColorId) {
+    return CardService.newActionResponseBuilder()
+      .setNotification(CardService.newNotification().setText("색상을 인식하지 못했습니다. 다시 시도해주세요."))
+      .build();
+  }
 
   var colors = getCalendarColors();
-
   var selectedLabel = "색상";
   for (var i = 0; i < colors.length; i++) {
     if (colors[i].id === selectedColorId) {
@@ -571,7 +584,7 @@ function actionSelectColor(e) {
 
   if (!e.parameters) e.parameters = {};
   e.parameters.selectedColorId = selectedColorId;
-  
+
   return CardService.newActionResponseBuilder()
     .setNavigation(CardService.newNavigation().updateCard(onEventOpen(e)))
     .setNotification(CardService.newNotification().setText(selectedLabel + " 색상이 선택되었습니다."))
@@ -836,20 +849,25 @@ function buildRuleManagementCard(e) {
 }
 
 function actionSelectColorForRule(e) {
+  // GAS CardService Grid clicks deliver the GridItem.setIdentifier() value
+  // under the key `grid_item_identifier` (verified empirically — the docs
+  // do not name the key). `selectedColorIdForRule` is also accepted for
+  // forward-compat with any future setParameters-based path.
   var p1 = (e && e.parameters) || {};
   var p2 = (e && e.commonEventObject && e.commonEventObject.parameters) || {};
-  try {
-    console.log('[actionSelectColorForRule] e.parameters=' + JSON.stringify(p1)
-      + ' commonEvent.parameters=' + JSON.stringify(p2));
-  } catch (_logErr) {}
 
   var selectedColorId =
-    p1.selectedColorIdForRule || p1.selectedColorId || p1.id || p1.identifier ||
-    p2.selectedColorIdForRule || p2.selectedColorId || p2.id || p2.identifier ||
+    p1.grid_item_identifier || p2.grid_item_identifier ||
+    p1.selectedColorIdForRule || p2.selectedColorIdForRule ||
     null;
 
-  var colors = getCalendarColors();
+  if (!selectedColorId) {
+    return CardService.newActionResponseBuilder()
+      .setNotification(CardService.newNotification().setText("색상을 인식하지 못했습니다. 다시 시도해주세요."))
+      .build();
+  }
 
+  var colors = getCalendarColors();
   var selectedLabel = "색상";
   for (var i = 0; i < colors.length; i++) {
     if (colors[i].id === selectedColorId) {
@@ -859,16 +877,7 @@ function actionSelectColorForRule(e) {
   }
 
   if (!e.parameters) e.parameters = {};
-  if (selectedColorId) {
-    e.parameters.selectedColorIdForRule = selectedColorId;
-  }
-
-  if (!selectedColorId) {
-    return CardService.newActionResponseBuilder()
-      .setNotification(CardService.newNotification().setText(
-        "DEBUG: 색상 ID 누락. p1=" + JSON.stringify(p1) + " p2=" + JSON.stringify(p2)))
-      .build();
-  }
+  e.parameters.selectedColorIdForRule = selectedColorId;
 
   return CardService.newActionResponseBuilder()
     .setNavigation(CardService.newNavigation().updateCard(buildRuleManagementCard(e)))
