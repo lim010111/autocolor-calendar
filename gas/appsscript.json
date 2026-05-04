@@ -11,6 +11,11 @@
     "https://www.googleapis.com/auth/calendar.addons.current.event.write",
     "https://www.googleapis.com/auth/userinfo.email"
   ],
+  "urlFetchWhitelist": [
+    "https://autocolor-dev.autocolor-lim.workers.dev/",
+    "https://autocolor-prod.autocolor-lim.workers.dev/",
+    "https://autocolorcal.app/"
+  ],
   "addOns": {
     "common": {
       "name": "AutoColor",
@@ -19,6 +24,7 @@
       "openLinkUrlPrefixes": [
         "https://autocolor-dev.autocolor-lim.workers.dev",
         "https://autocolor-prod.autocolor-lim.workers.dev",
+        "https://autocolorcal.app",
         "https://accounts.google.com/o/oauth2/"
       ],
       "homepageTrigger": {
