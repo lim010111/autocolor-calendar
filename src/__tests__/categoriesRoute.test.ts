@@ -467,6 +467,65 @@ describe("/api/categories — create (POST)", () => {
     });
     expect(res.status).toBe(201);
   });
+
+  it("enqueues one full_resync job per calendar in sync_state", async () => {
+    // Webhook-driven incremental sync only sees changed events. Without this
+    // fan-out, a freshly added rule never reaches existing un-mutated events
+    // until something else perturbs them.
+    currentDb.state.syncStateRows.push(
+      { userId: USER_A, calendarId: "primary" },
+      { userId: USER_A, calendarId: "secondary@group.calendar.google.com" },
+      { userId: USER_B, calendarId: "other-user-cal" },
+    );
+    const res = await post({
+      name: "주간회의",
+      colorId: "9",
+      keywords: ["주간회의"],
+    });
+    expect(res.status).toBe(201);
+    const calls = vi.mocked(enqueueSync).mock.calls;
+    // Exactly two — user A's two calendars only. User B's row must not leak.
+    expect(calls).toHaveLength(2);
+    const jobs = calls.map((c) => c[1]);
+    expect(jobs.every((j) => j.type === "full_resync")).toBe(true);
+    expect(
+      jobs
+        .map((j) => (j as { calendarId: string }).calendarId)
+        .sort(),
+    ).toEqual(["primary", "secondary@group.calendar.google.com"]);
+    expect(
+      jobs.every(
+        (j) => (j as { reason: string }).reason === "manual",
+      ),
+    ).toBe(true);
+  });
+
+  it("enqueues nothing when user has no sync_state rows", async () => {
+    const res = await post({
+      name: "주간회의",
+      colorId: "9",
+      keywords: ["주간회의"],
+    });
+    expect(res.status).toBe(201);
+    expect(vi.mocked(enqueueSync)).not.toHaveBeenCalled();
+  });
+
+  it("does NOT enqueue when create fails (409 duplicate_name)", async () => {
+    currentDb.state.rows.push(
+      row({ id: CAT_A_ID, userId: USER_A, name: "주간회의" }),
+    );
+    currentDb.state.syncStateRows.push({
+      userId: USER_A,
+      calendarId: "primary",
+    });
+    const res = await post({
+      name: "주간회의",
+      colorId: "3",
+      keywords: ["x"],
+    });
+    expect(res.status).toBe(409);
+    expect(vi.mocked(enqueueSync)).not.toHaveBeenCalled();
+  });
 });
 
 describe("/api/categories — patch (PATCH)", () => {
@@ -538,6 +597,87 @@ describe("/api/categories — patch (PATCH)", () => {
       body: JSON.stringify({ name: "점심 약속" }),
     });
     expect(res.status).toBe(409);
+  });
+
+  it("enqueues full_resync per calendar when colorId changes", async () => {
+    currentDb.state.rows.push(row({ id: CAT_A_ID, userId: USER_A }));
+    currentDb.state.syncStateRows.push(
+      { userId: USER_A, calendarId: "primary" },
+      { userId: USER_A, calendarId: "work@group.calendar.google.com" },
+    );
+    const res = await invoke(`/api/categories/${CAT_A_ID}`, {
+      method: "PATCH",
+      userToken: "token-a",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ colorId: "3" }),
+    });
+    expect(res.status).toBe(200);
+    const jobs = vi.mocked(enqueueSync).mock.calls.map((c) => c[1]);
+    expect(jobs).toHaveLength(2);
+    expect(jobs.every((j) => j.type === "full_resync")).toBe(true);
+  });
+
+  it("enqueues full_resync when keywords change", async () => {
+    currentDb.state.rows.push(row({ id: CAT_A_ID, userId: USER_A }));
+    currentDb.state.syncStateRows.push({
+      userId: USER_A,
+      calendarId: "primary",
+    });
+    const res = await invoke(`/api/categories/${CAT_A_ID}`, {
+      method: "PATCH",
+      userToken: "token-a",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ keywords: ["새키워드"] }),
+    });
+    expect(res.status).toBe(200);
+    expect(vi.mocked(enqueueSync)).toHaveBeenCalledTimes(1);
+  });
+
+  it("enqueues full_resync when priority changes (tiebreaker reordering)", async () => {
+    currentDb.state.rows.push(row({ id: CAT_A_ID, userId: USER_A }));
+    currentDb.state.syncStateRows.push({
+      userId: USER_A,
+      calendarId: "primary",
+    });
+    const res = await invoke(`/api/categories/${CAT_A_ID}`, {
+      method: "PATCH",
+      userToken: "token-a",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ priority: 50 }),
+    });
+    expect(res.status).toBe(200);
+    expect(vi.mocked(enqueueSync)).toHaveBeenCalledTimes(1);
+  });
+
+  it("does NOT enqueue when only name changes (metadata, no classification impact)", async () => {
+    currentDb.state.rows.push(row({ id: CAT_A_ID, userId: USER_A }));
+    currentDb.state.syncStateRows.push({
+      userId: USER_A,
+      calendarId: "primary",
+    });
+    const res = await invoke(`/api/categories/${CAT_A_ID}`, {
+      method: "PATCH",
+      userToken: "token-a",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ name: "rename only" }),
+    });
+    expect(res.status).toBe(200);
+    expect(vi.mocked(enqueueSync)).not.toHaveBeenCalled();
+  });
+
+  it("does NOT enqueue when PATCH fails (404 not found)", async () => {
+    currentDb.state.syncStateRows.push({
+      userId: USER_A,
+      calendarId: "primary",
+    });
+    const res = await invoke(`/api/categories/${CAT_A_ID}`, {
+      method: "PATCH",
+      userToken: "token-a",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ colorId: "3" }),
+    });
+    expect(res.status).toBe(404);
+    expect(vi.mocked(enqueueSync)).not.toHaveBeenCalled();
   });
 });
 
