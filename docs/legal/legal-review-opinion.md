@@ -343,7 +343,7 @@ EU 아동, 회원국별 13–16세 자유 설정).
 |---|---|---|
 | **B-1 사업자 법인격·CPO·EU 대리인** | (1) 회사 형태는 "개인 운영자(자연인)" 으로 보수 표기, 사업자 등록 후 §10·§12 의 사업자 정보 갱신. (2) CPO 는 운영자 본인 겸임(PIPA §31 ①항 + 안전성 확보조치 기준 별표 의 사업주 겸임 허용). (3) EU 대리인은 GDPR Art. 27(2)(a) 의 occasional + low risk + no special categories 요건을 본 서비스가 충족한다고 판단, 별도 미지정. EU 활성 사용자 100명 초과·EU 회원국 감독기관 진정 접수·EU 정기 타게팅 시작 trigger 발동 시 정식 EU 대리인 지정 또는 EU 사용자 차단 정책으로 전환. (4) DPO·DPIA 의무는 본 서비스의 처리 성격(자동화 결정·민감 카테고리·정기적·체계적 모니터링 모두 부재) 으로 미해당 판단. | privacy-policy.md 도입부 + §10 + §10.1 + §10.2 + §10.3, terms-of-service.md 도입부 + §0.1 + §12 |
 | **B-2 K-12 도메인 자동 차단 미구현** | (1) §9.1 진술을 사전 차단 → "사후 처리(즉시 회원거절·해지·파기)" + 능동 모니터링으로 약화. (2) 본 정책 시행일로부터 **90일 이내** OAuth 콜백 K-12 도메인 자동 차단(`hd` 클레임 + Workspace Admin SDK) 구현 commitment 명시. (3) 구현 완료 시 §9.1 본문을 사전 차단 진술로 갱신 + §12 절차로 통지. | privacy-policy.md §9.1 + §9.2 + §9.3 (각 미성년자 카테고리에 §9.1 사후 절차 준용 명시) |
-| **B-3 국외이전 분리 동의** | (1) 옵션 B(포괄 동의 — Cloudflare/OpenAI 미국 + Supabase Seoul) 채택. (2) Supabase prod region 을 Seoul `ap-northeast-2` 로 본문에서 확정 — 한국 거주자에 대한 국외이전 자체를 회피하여 PIPA §28의8 위험 표면을 가장 안전한 형태로 좁힘. (3) GAS Add-on onboarding 카드에 §4.1 의 국외이전 안내 문구 ("본 서비스는 미국·캐나다·아일랜드 등에 데이터를 이전합니다. 회원가입 진행 시 본 처리방침 §4.1 의 국외이전 조건에 별도로 동의한 것으로 간주됩니다.") 추가를 README publish 체크리스트 5번에 못박았다. (4) LLM 분류(OpenAI 위탁) 만 §4.2 의 거부 가능 옵션으로 분리 유지. | privacy-policy.md §3 (Region 확정) + §4 표 + §4.1 본문 (포괄 동의 + GAS onboarding 명시 문구) + §4.2, README.md publish 체크리스트 5번 |
+| **B-3 국외이전 분리 동의** | (1) 옵션 B(포괄 동의 — Cloudflare/OpenAI 미국 + Supabase 일본) 채택. (2) Supabase prod region 을 Tokyo `ap-northeast-1` 로 본문에서 확정 (운영자가 이미 `autocolor-prod` DB 를 일본 region 에 생성). 한국 거주자에 대해서도 한국 → 일본 국외이전이 발생하므로 §4.1 의 포괄 동의 + Supabase 표준 DPA + SCCs 가 이전 근거가 된다. 일본은 PIPA §28의8 ②항 적정성 인정 국가는 아니나 GDPR Art. 45 의 EU-Japan 양국 상호 적정성 결정(2019) 으로 EU 거주자 이전 근거는 충족. (3) GAS Add-on onboarding 카드에 §4.1 의 국외이전 안내 문구 ("본 서비스는 미국·일본·캐나다·아일랜드 등에 데이터를 이전합니다. 회원가입 진행 시 본 처리방침 §4.1 의 국외이전 조건에 별도로 동의한 것으로 간주됩니다.") 추가를 README publish 체크리스트 5번에 못박았다. (4) LLM 분류(OpenAI 위탁) 만 §4.2 의 거부 가능 옵션으로 분리 유지. | privacy-policy.md §3 (Region 확정) + §4 표 + §4.1 본문 (포괄 동의 + GAS onboarding 명시 문구) + §4.2, README.md publish 체크리스트 5번 |
 
 ### Round 1 잔존 자문 9건 처리 결과 (§4.1–§4.9)
 
@@ -351,7 +351,7 @@ EU 아동, 회원국별 13–16세 자유 설정).
 |---|---|---|
 | **§4.1 사업자 법인격·CPO·EU 대리인** | B-1 처리로 흡수. | (위 B-1) |
 | **§4.2 미성년자 차단 구현 일정** | B-2 처리로 흡수 — publish 후 90일 내 사전 차단 commitment 박힘. | (위 B-2) |
-| **§4.3 국외이전 분리 동의 옵션** | B-3 처리로 흡수 — 옵션 B + Supabase Seoul + GAS onboarding 안내 문구. | (위 B-3) |
+| **§4.3 국외이전 분리 동의 옵션** | B-3 처리로 흡수 — 옵션 B + Supabase Tokyo + GAS onboarding 안내 문구. | (위 B-3) |
 | **§4.4 책임 한도 정량화** | 무료 서비스 단계에서는 정량적 cap 미도입 결정 박힘. 회사 책임은 민법 §393 ①항 통상의 손해 + 동조 ②항 특별손해(예측 가능성 요건) 로 한정. 유료 전환 시 §9 의 약관 개정 절차에 따라 별도 정량적 cap (예: 직전 12개월 결제액 또는 통상의 손해 중 적은 금액) 도입을 약관 본문에 미리 예고. | terms-of-service.md §5.5.2 |
 | **§4.5 분쟁 해결 — 중재 vs 소송, 집단소송 포기** | 한국 단독 준거법 + 민사소송법 일반 관할 + 거주국 강행 소비자보호 우선 정책. 집단소송 포기 미도입 + 강제 중재 미도입 결정 박힘. 이용자 자발적 KCAB 중재 합의는 별도 가능. | terms-of-service.md §11.1 + §11.3 + §11.4 (전면 결정문화) |
 | **§4.6 EU 대리인 / DPO 와 정합한 권리 행사 채널** | EU 거주 정보주체는 §10 의 운영자 연락처 사용 / §10.1 trigger 발동 시 EU 대리인 연락처도 동등 채널로 추가. | privacy-policy.md §7.2 (제목을 "권리 행사의 대리인 및 EU 거주자 채널" 로 확장) + §10.1 |
@@ -397,10 +397,16 @@ GDPR + CCPA + COPPA 의 publish-ready 요건이 본문 차원에서 충족된다
    100명 초과 등) 발동 여부를 운영자가 정기 모니터링해야 한다. 자동
    알림 시스템이 부재한 동안에는 운영자가 분기 1회 sync_runs / users
    테이블의 EU 거주자 카운트를 확인할 것을 권고한다.
-4. Supabase prod region 약속 (Seoul `ap-northeast-2`) — 본 region 설정
-   은 본 정책 §3·§4 표·§4.1 표의 핵심 사실 진술이다. region 변경 시
-   본 정책 §12 의 절차에 따라 사전 통지가 필수이며, region 약속 위반은
-   본 정책 본문 자체의 misrepresentation 으로 직결된다.
+4. Supabase prod region 약속 (Tokyo `ap-northeast-1`) — 본 region 설정
+   은 본 정책 §3·§4 표·§4.1 표의 핵심 사실 진술이며, 운영자가 이미
+   `autocolor-prod` DB 를 일본 region 에 생성한 사실에 기반한다. region
+   변경 시 본 정책 §12 의 절차에 따라 사전 통지가 필수이며, region
+   약속 위반은 본 정책 본문 자체의 misrepresentation 으로 직결된다.
+   특히 한국 거주 정보주체에 대해서도 한국 → 일본 국외이전이 발생
+   하므로, §4.1 의 포괄 동의(GAS onboarding 안내 문구 포함) 가 publish
+   시점에 이행되지 않으면 PIPA §28의8 ①항의 동의 요건 자체가
+   미충족된다. 운영자는 publish 전 onboarding 안내 문구 추가
+   (`gas/addon.js`) 를 반드시 완료해야 한다.
 
 ### 운영자가 publish 직전 반드시 채워야 할 placeholder 목록
 
