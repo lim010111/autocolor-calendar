@@ -116,7 +116,7 @@ function buildWelcomeCard() {
 
   var authSection = CardService.newCardSection();
   authSection.addWidget(CardService.newDecoratedText()
-    .setText("시작하려면 Google 계정 연동이 필요합니다. 진행하면 <a href=\"https://autocolorcal.app/privacy\">개인정보처리방침</a> 및 <a href=\"https://autocolorcal.app/terms\">서비스 이용약관</a>에 동의하는 것으로 간주됩니다.")
+    .setText("시작하려면 Google 계정 연동이 필요합니다. 진행하면 <a href=\"https://legal.autocolorcal.app/privacy\">개인정보처리방침</a> 및 <a href=\"https://legal.autocolorcal.app/terms\">서비스 이용약관</a>에 동의하는 것으로 간주됩니다.")
     .setWrapText(true));
   authSection.addWidget(CardService.newDecoratedText()
     .setText("본 서비스는 데이터 처리 위탁을 위해 미국·일본·캐나다·아일랜드 등에 개인정보를 국외이전합니다. 회원가입을 진행하면 개인정보처리방침 §4.1 의 국외이전 조건에 별도로 동의한 것으로 간주됩니다.")
