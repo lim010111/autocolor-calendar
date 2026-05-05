@@ -249,16 +249,16 @@ a gate, edit the owning source first and then the status here.
 | Gate | Blocks | Owner | Status | Detail pointer |
 |---|---|---|---|---|
 | Owned domain + Search Console verification | Prod Watch API, support URL, privacy URL, home URL | Ops | 완료 | `TODO.md:8` + `docs/runbooks/01-domain-and-search-console.md` (`autocolorcal.app` GSC verified 2026-05-04, GCP Consent Screen Authorized domains 등록 완료) |
-| Prod Supabase + Worker activated | OAuth verification (prod client), Marketplace listing | Eng | 진행중 | `TODO.md:35` + `docs/runbooks/02-prod-environment-activation.md` |
+| Prod Supabase + Worker activated | OAuth verification (prod client), Marketplace listing | Eng | 완료 | `TODO.md:35` + `docs/runbooks/02-prod-environment-activation.md` (PR #43 `a01bde7` — Hyperdrive / Queue / cron bindings 활성화 완료) |
 | Listing assets bundle | Marketplace submission | Product + Design | 미작성 | §1 + `docs/runbooks/05-marketplace-listing-assets.md` |
 | Privacy Policy published | Consent screen, listing | Legal | 초안 | §2 → `docs/legal/privacy-policy.md` + `docs/runbooks/04-legal-hosting.md` |
 | Terms of Service published | Consent screen, listing | Legal | 초안 | §2 → `docs/legal/terms-of-service.md` + `docs/runbooks/04-legal-hosting.md` |
 | Scope justifications written | OAuth verification | Eng + Product | 완료 | §2 → `docs/assets/marketplace/scope-justifications.md` (final 2026-05-04) + `docs/runbooks/06-oauth-verification.md` |
 | Restricted-scope demo video | OAuth verification | Product | 미작성 | §2 + `docs/runbooks/06-oauth-verification.md` |
 | Data handling / Admin answers drafted | Marketplace submission | Eng + Ops | 초안 | §3 |
-| Account-deletion endpoint live | Marketplace submission | Eng | 미작성 | §3 |
+| Account-deletion endpoint live | Marketplace submission | Eng | 완료 | §3 → `POST /api/account/delete` (`src/routes/account.ts`) — FK cascade로 9개 user-scoped 테이블 정리 + Google revoke + watch-stop. 계약은 `src/CLAUDE.md` "Account deletion (§3 row 179)" |
 | Reviewer demo bundle | OAuth verification | Product + Eng | 초안 | §4 |
-| CI/CD pipeline | Quality gate | Eng | 진행중 | `TODO.md:129` + `docs/runbooks/03-cicd-pipeline.md` (`.github/workflows/ci.yml` 작성 완료 — Step 3 보호 브랜치 정책 / Step 4 검증 PR 잔존) |
+| CI/CD pipeline | Quality gate | Eng | 완료 | `TODO.md:129` + `docs/runbooks/03-cicd-pipeline.md` (`.github/workflows/ci.yml` 4-job + `main` 보호 룰셋 활성화. Step 5 자동 deploy job은 의도적 미룸 — G6 통과 후) |
 | Backup / recovery policy | Admin review | Eng | 미작성 | `TODO.md:130` + `docs/runbooks/07-backup-and-recovery.md` |
 | Security principles index current | Reviewer spot-checks | Eng | 완료 | `docs/security-principles.md` |
 | Marketplace submission (publish 단계) | — | Product + Eng | 미작성 | `docs/runbooks/08-marketplace-submission.md` (G1·G2·G4·G5·G6·G7 충족 후 publish) |
