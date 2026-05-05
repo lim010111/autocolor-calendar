@@ -11,10 +11,11 @@ Workers·Supabase·GCP·GAS Editor)이 단계 단위로 정리되어 있다. 코
 
 - **사용자 (혹은 launch owner)**: 먼저 `00-user-action-checklist.md`. G1·G2·
   G4 동시 착수의 통합 진입점이며, 각 게이트의 작업을 체크박스 단위로 한 화면
-  에 정리한다.
-- **운영 작업 시작 시**: 도메인 작업이면 `01-…md`, prod 활성화 작업이면
-  `02-…md` 순서로. 각 runbook은 step 단위 명령어 / SQL / 콘솔 메뉴 경로를
-  포함한다.
+  에 정리한다. 추가 게이트 G3·G5·G6·G7·G8은 `03`-`08` runbook 단독으로 진행
+  (각 runbook header에 실행 시점·prerequisite 명시).
+- **운영 작업 시작 시**: 게이트 번호 = runbook 번호 매핑이 1:1 (G1→01, G2→02,
+  G3→03, G4→04, G5→05, G6→06, G7→07, G8→08). 각 runbook은 step 단위 명령어 /
+  SQL / 콘솔 메뉴 경로를 포함한다.
 
 ## Index
 
@@ -26,6 +27,29 @@ Workers·Supabase·GCP·GAS Editor)이 단계 단위로 정리되어 있다. 코
 - [02 — Prod environment activation](./02-prod-environment-activation.md)
   — Supabase prod 프로젝트·GCP prod OAuth client·시크릿·Hyperdrive·Queues·
   cron·GAS prod 배포·검증 시퀀스·세션 GC pg_cron·Watch 등록·롤백 시나리오.
+- [03 — CI/CD pipeline](./03-cicd-pipeline.md)
+  — GitHub Actions PR gate(`pnpm test` / `pnpm typecheck` / `pnpm lint` +
+  선택적 drizzle migration drift 가드)·보호 브랜치 정책·자동 deploy job
+  활성화 시점(G6 통과 후로 미룸).
+- [04 — Legal hosting (Privacy + ToS)](./04-legal-hosting.md)
+  — `docs/legal/` 1차 초안의 자문 검토·Cloudflare Pages 호스팅·custom
+  domain 매핑·GAS 카드 placeholder 교체·Consent Screen URL 갱신.
+- [05 — Marketplace listing assets](./05-marketplace-listing-assets.md)
+  — Description (KR/EN)·아이콘 (자체 호스팅)·prod env 스크린샷·홍보 영상
+  ·Category / Support email/URL / Developer identity·Marketplace SDK
+  Configuration 입력 절차.
+- [06 — OAuth Consent Screen + Restricted Scope verification](./06-oauth-verification.md)
+  — `scope-justifications.md` final 확정·Restricted scope 데모 영상 촬영·
+  Consent Screen 입력값 final 점검·"Submit for verification"·통과/거절
+  대응·CASA 평가 트리거.
+- [07 — Backup and recovery](./07-backup-and-recovery.md)
+  — Supabase plan 결정·Point-in-Time Recovery 활성화·RPO/RTO 정의·복구
+  리허설 + Disaster recovery 시나리오 (단일 row / 전면 손실 / Hyperdrive
+  장애)·정기 운영 트리거.
+- [08 — Marketplace submission](./08-marketplace-submission.md)
+  — 모든 게이트 prerequisite 사전 점검·App Configuration final 점검·
+  Distribution (Unlisted → Public 전환) 결정·publish + 검수 1-3주 대기·
+  출시 직후 모니터링·분기/연 1회 정기 운영 트리거.
 
 ## 글로벌 컨벤션
 

@@ -1,5 +1,15 @@
 # OAuth Scope Justifications
 
+> **Status:** Final — reviewed against
+> [`docs/runbooks/06-oauth-verification.md`](../../runbooks/06-oauth-verification.md)
+> Step 1 checklist on 2026-05-04 (§1·§2·§3 each carry the four required
+> elements: *Why we request* / *Data minimum* / *Why narrower scopes don't
+> suffice* / *PII protection* — the third element is folded into "Why we
+> request" for §1, where the alternative `calendar.events` is named
+> explicitly, and the fourth element points at §4 below + `docs/security-principles.md`
+> Principle 2). Body changes after this date require a fresh Step 1 review
+> and a status-line refresh on the same commit.
+>
 > This document is the per-scope justification artifact required by Google's
 > OAuth Consent Screen verification (and by `docs/marketplace-readiness.md`
 > §2 status table). Each scope below states the function it enables, the

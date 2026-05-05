@@ -16,8 +16,8 @@
 - [ ] 복잡한 규칙 설정을 위한 별도 Web UI (HTML Service 또는 외부 링크) 개발(Addon UI로 충분히 기능 수행 가능하다고 판단되어, 추후에 필요 시 개발 예정)
 - [x] 최초 온보딩, 권한 부족/토큰 만료 시 재연결 UI, 서비스 해지 플로우 구현
 - [x] 사용자 OAuth 인증 및 백엔드 API 통신(URL Fetch App) 연동 모듈 작성
-- [ ] **[출시 차단]** 규칙 추가 카드 폼 상태 유실 버그 — 키워드 입력 후 색상 선택 시 키워드가 초기화됨, 색상 먼저 선택 후 키워드 입력하면 "색상을 선택하세요" 에러. CardService 액션 콜백마다 카드 재빌드되는 구조에서 `formInputs` 미보존이 원인. `gas/addon.js` 규칙 추가 카드 빌더 + 색상 선택 액션 핸들러 수정 필요. 다음 세션에서 fresh 컨텍스트로 진행 (G1/G2/G4 PR과 분리). Marketplace 심사 제출 전 반드시 fix.
-  - 같이 처리: **현재 선택된 캘린더 색상 시각 표시(체크 표시 등)** — 색상 버튼 11개 중 어느 게 선택됐는지 사용자가 한눈에 알 수 있어야 함. CardService에서는 새 카드 빌드 시 선택된 색상 버튼만 라벨에 ✓ 추가하거나 별도 "선택됨: ●" 텍스트 라인을 카드 상단에 노출하는 식으로 구현. 상태 유실 버그 fix 시 선택 색상이 카드에 carry 되므로 동일 핸들러 안에서 처리 가능.
+- [x] **[출시 차단]** 규칙 추가 카드 폼 상태 유실 버그 — 키워드 입력 후 색상 선택 시 키워드가 초기화됨, 색상 먼저 선택 후 키워드 입력하면 "색상을 선택하세요" 에러. CardService 액션 콜백마다 카드 재빌드되는 구조에서 `formInputs` 미보존이 원인. `gas/addon.js` 규칙 추가 카드 빌더 + 색상 선택 액션 핸들러 수정 — `5aee099` (PR #44, merge `a8ac839`)에서 `buildRuleManagementCard`가 `e.formInput.rule_keyword`/`e.commonEventObject.formInputs`로 직전 키워드 복원 + `setParameters({selectedColorIdForRule})`로 선택 색상 결박, `actionSelectColorForRule`이 UserProperties 영속 저장 제거하고 `e.parameters` stash 후 카드 재빌드.
+  - [x] 같이 처리: **현재 선택된 캘린더 색상 시각 표시(체크 표시 등)** — 색상 버튼 11개 중 어느 게 선택됐는지 사용자가 한눈에 알 수 있어야 함. 같은 PR `5aee099`에서 (a) 그리드 아이템의 `text=%20` → `text=%E2%9C%93` 치환으로 선택 색상에 ✓ 표시 + (b) 그리드 위에 "선택된 색상: <b>...</b>" 라벨 위젯 추가로 이중 시각 표시 적용.
 
 ## 3. 백엔드 (Cloudflare Workers + Supabase) 인프라 및 기반 구축
 
