@@ -122,7 +122,7 @@ function template(title: string, bodyHtml: string, slug: string): string {
 ${bodyHtml}
 </main>
 <footer class="site">
-  <a href="${SITE_HOME}/${otherSlug}">${otherLabel}</a>
+  <a href="/${otherSlug}">${otherLabel}</a>
   &nbsp;·&nbsp;
   <a href="${SITE_HOME}">홈</a>
 </footer>

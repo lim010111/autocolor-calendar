@@ -19,7 +19,7 @@
 | G1 — 도메인 + Search Console | ✅ 완료          | `autocolorcal.app` GSC verified 2026-05-04              |
 | G2 — Prod 환경 활성화        | ✅ 완료          | PR #43 머지 (Hyperdrive / Queue / cron 바인딩)          |
 | G3 — CI/CD 파이프라인        | ⚠️ 거의 완료     | PR #45 머지 — `main` 보호 브랜치 룰 1건만 잔존 (작업 ①) |
-| G4 — Privacy/ToS 호스팅      | ⏳ 대기          | 본문 초안 OK, 법무 검토 + 호스팅 미완                   |
+| G4 — Privacy/ToS 호스팅      | ✅ 완료          | `legal.autocolorcal.app/{privacy,terms}` publish 2026-05-05 + GCP Consent Screen 갱신 (③ 완료 / ⑥ self-publish 채택) |
 | G5 — Listing assets          | ⏳ 대기          | description 정본 OK, 아이콘·스크린샷 미완               |
 | G6 — OAuth 검수              | ⏳ critical path | scope 정당화 final, 데모 영상·Submit 미완               |
 | G7 — 백업/복구               | ⏳ 대기          | Supabase Pro 업그레이드 + PITR 활성화                   |
@@ -57,19 +57,20 @@
 
 ## 📅 이번 주 (반나절~하루)
 
-### ③ Cloudflare Pages로 `/privacy` `/terms` 호스팅 (1시간)
+### ③ Cloudflare Pages로 `/privacy` `/terms` 호스팅 (1시간) — ✅ 2026-05-05 완료
 
 - **어디서**: dash.cloudflare.com → Pages → **Create project** → Connect to Git
 - **설정**:
-  - GitHub repo 선택 → Build output: `docs/legal/`
-  - Custom domain: `autocolorcal.app/privacy`, `/terms`
-- **검증**: `curl -I https://autocolorcal.app/privacy` → 200, body가 `docs/legal/privacy-policy.md`와 일치
+  - GitHub repo 선택 → Build output: `dist/legal/`
+  - Custom domain: `legal.autocolorcal.app/privacy`, `/terms`
+    (apex `autocolorcal.app` 은 prod Worker 가 점유 중이라 path 충돌 회피 위해 `legal.` subdomain 분리 — `04-legal-hosting.md` Step 4)
+- **검증**: `curl -I https://legal.autocolorcal.app/privacy` → 200, body가 `docs/legal/privacy-policy.md`와 일치
 - **왜 사용자만**: Cloudflare 계정 + GitHub OAuth 인증
 - **Claude 도움**: 빌드 스크립트 작성, Markdown→HTML 변환 설정, redirect 규칙
 - **상세**: `docs/runbooks/04-legal-hosting.md`
-- [ ] Cloudflare Pages 프로젝트 생성
-- [ ] custom domain 매핑 + 200 응답 확인
-- [ ] `gas/addon.js:119` placeholder URL을 실제 URL로 교체 (별도 PR — GAS 새 version 배포)
+- [x] Cloudflare Pages 프로젝트 생성
+- [x] custom domain 매핑 + 200 응답 확인
+- [x] `gas/addon.js:119` placeholder URL을 실제 URL로 교체 (commit `ae85980` — GAS 새 version 배포는 운영자 수동 단계로 잔존)
 
 ### ④ 스크린샷 4장 촬영 (1시간)
 
@@ -109,23 +110,16 @@
 
 ## 🔄 외부 회신 대기 (1-2주, 일찍 시작)
 
-### ⑥ 법무 검토 의뢰
+### ⑥ 법무 검토 의뢰 — ✅ self-publish 경로 채택 2026-05-05 (외부 변호사 발주 미진행)
 
-- **무엇**: `docs/legal/privacy-policy.md` + `docs/legal/terms-of-service.md` 변호사 검토
-- **어떻게**: 한국 변호사 / 로앤컴퍼니 / 로톡 등 유료 자문
-- **점검 항목**:
+- **결정**: 외부 변호사 발주 대신 sub-agent self-review (`docs/legal/legal-review-opinion.md`) + Round 2 self-publish 보완 (commit `6080763`) 으로 publish-ready 판단. publish 자체는 ③에서 완료.
+- **재사용 가능성**: 향후 본문 변경 시 (privacy-policy §9.1 후속 K-12 OAuth 차단 90일 약속, sub-processor 추가 등) 외부 자문 path 가 다시 검토될 가능성이 있어 절차서로 본 섹션 유지. 동일 변호사 path 재가동 시 아래 기존 점검 항목을 그대로 활용한다.
+- **점검 항목 (절차서, 외부 자문 재가동 시 활용)**:
   - 한국 PIPA (개인정보보호법)
   - GDPR (EU 사용자 받을 시)
   - CCPA (캘리포니아 사용자 받을 시)
   - 본문 끝 `자문 검토 시 우선 확인 항목` H3 그대로 첨부
-- **회신 기간**: 통상 1-2주
-- **회신 후**: 본문 반영 → 별도 PR (호스팅 publish는 ③에서 처리)
-- **왜 사용자만**: 변호사 컨택, 비용 결정, 사업자 정보
-- **Claude 도움**: 변호사 전달용 체크리스트, 본문 사전 정비
-- **상세**: `docs/runbooks/04-legal-hosting.md` Step 1
-- [ ] 변호사 컨택 + 견적
-- [ ] 의뢰 발송 (1-2주 시계 가동)
-- [ ] 회신 본문 반영 PR
+- **상세**: `docs/runbooks/04-legal-hosting.md` Step 1 (banner 참조 — Step 1 미채택, Step 2-6 완료)
 
 ---
 
@@ -160,9 +154,9 @@
 - **어디서**: console.cloud.google.com → APIs & Services → **OAuth consent screen** → Edit App
 - **입력**:
   - App home URL → `https://autocolorcal.app`
-  - Privacy URL → `https://autocolorcal.app/privacy` (③ 완료 필수)
-  - ToS URL → `https://autocolorcal.app/terms` (③ 완료 필수)
-  - Authorized domains → `autocolorcal.app`
+  - Privacy URL → `https://legal.autocolorcal.app/privacy` (③ 완료 — 2026-05-05)
+  - ToS URL → `https://legal.autocolorcal.app/terms` (③ 완료 — 2026-05-05)
+  - Authorized domains → `autocolorcal.app` (subdomain `legal.` 자동 포함)
   - Scopes → 4개 + per-scope 정당화 텍스트 (`docs/assets/marketplace/scope-justifications.md` 본문 복붙)
   - Demo video URL → ⑦에서 받은 URL
 - **클릭**: **Submit for verification**

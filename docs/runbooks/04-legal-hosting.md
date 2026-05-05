@@ -16,6 +16,15 @@
 > [`docs/legal/terms-of-service.md`](../legal/terms-of-service.md)에 이미
 > 커밋 (`15ea4ba`). 본 runbook은 검토 → 호스팅 → 정합성 갱신만 다룬다.
 
+> **상태 (2026-05-05)**: Step 2-6 (Cloudflare Pages publish + custom
+> domain 매핑 + Consent Screen URL 갱신 + GAS 카드 anchor href 갱신) 완료.
+> Step 1 (외부 변호사 자문) 은 채택하지 않음 — `docs/legal/legal-review-opinion.md`
+> 의 sub-agent self-review + Round 2 self-publish 보완 (`6080763`) 으로
+> publish-ready 판단을 자체 결론지었으며, 향후 본문 변경 시 동일 self-publish
+> 경로 또는 외부 자문 경로 중 선택하여 진행. publish URL =
+> `https://legal.autocolorcal.app/{privacy,terms}` (apex 와 path 충돌 회피
+> 위해 `legal.` subdomain 분리 — Step 4 참조).
+
 - **Pre-conditions**:
   - [01 runbook](./01-domain-and-search-console.md) 완료 (verified
     `<prod-domain>` + Cloudflare DNS 위임).

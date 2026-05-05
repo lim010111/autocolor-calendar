@@ -19,8 +19,11 @@
 ## Step 1 — 도메인 선택 기준
 
 prod Worker · Privacy URL · Terms URL · Support URL을 **같은 도메인 하위**
-에 두는 것을 권장한다. consent 화면 / Marketplace listing의 시각적 일관성
-때문이다.
+에 두는 것을 권장한다 (consent 화면 / Marketplace listing의 시각적 일관성).
+단, 정적 호스팅 (Cloudflare Pages 등) 과 동적 Worker 의 라우팅 충돌
+을 피하기 위해 **Privacy/ToS 만 별도 subdomain (예: `legal.<chosen>.app`)
+으로 분리하는 것도 동등한 권장**이다 — 본 프로젝트는 이 분리 운영 채택
+(G4 publish 2026-05-05).
 
 권장 패턴:
 

@@ -44,7 +44,7 @@ grep -E "^\| (Owned domain|Prod Supabase|Privacy Policy|Terms of Service|Scope j
 |---|---|
 | Domain + GSC verified | `dig +short TXT <prod-domain>`에 google-site-verification 라인 존재 |
 | Prod Worker 활성 | `curl https://<prod-domain>/healthz` → 200 |
-| Privacy / ToS URL | `curl -I https://<prod-domain>/privacy` → 200 + content-type |
+| Privacy / ToS URL | `curl -I https://legal.<prod-domain>/privacy` → 200 + content-type (G4 결정: legal subdomain) |
 | OAuth verification | GCP Console → OAuth consent screen → Verification status: Verified |
 | Listing assets | Marketplace SDK 콘솔 → App Configuration 모든 빨간 ! 사라짐 |
 | Backup policy | Supabase Dashboard → Backups → PITR 토글 ON |
@@ -69,8 +69,8 @@ GCP Console → APIs & Services → Marketplace SDK → "App Configuration"
 | Category | Productivity 또는 적절한 sub-category. |
 | Support contact | `support@<prod-domain>` — Step 1 cross-check. |
 | Support URL | GitHub Issues 또는 dedicated support page. |
-| Privacy Policy URL | `<prod-domain>/privacy` 200 응답. |
-| Terms of Service URL | `<prod-domain>/terms` 200 응답. |
+| Privacy Policy URL | `legal.<prod-domain>/privacy` 200 응답. |
+| Terms of Service URL | `legal.<prod-domain>/terms` 200 응답. |
 | OAuth scopes 4개 | `src/config/constants.ts` + `gas/appsscript.json` 일치. |
 | Distribution | Step 3에서 결정. |
 | Pricing model | "Free". |

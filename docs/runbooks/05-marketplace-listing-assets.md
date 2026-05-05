@@ -243,8 +243,8 @@ GCP Console → APIs & Services → Marketplace SDK → "App Configuration"
 | Category | Productivity (Step 5 결정) | 본 runbook |
 | Support contact email | `support@<prod-domain>` | 본 runbook Step 5 |
 | Support URL | GitHub Issues URL | 본 runbook Step 5 |
-| Privacy Policy URL | `<prod-domain>/privacy` | [04 runbook] |
-| Terms of Service URL | `<prod-domain>/terms` | [04 runbook] |
+| Privacy Policy URL | `legal.<prod-domain>/privacy` | [04 runbook] (G4 결정: legal subdomain 분리) |
+| Terms of Service URL | `legal.<prod-domain>/terms` | [04 runbook] (G4 결정: legal subdomain 분리) |
 | Distribution | Public / Domain Internal | 결정 보류 — [08 runbook] Step 3 |
 | Pricing model | Free | (현재) |
 | Listed regions | Worldwide 권장 | 결정 |

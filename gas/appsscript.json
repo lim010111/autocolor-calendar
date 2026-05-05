@@ -25,6 +25,7 @@
         "https://autocolor-dev.autocolor-lim.workers.dev",
         "https://autocolor-prod.autocolor-lim.workers.dev",
         "https://autocolorcal.app",
+        "https://legal.autocolorcal.app",
         "https://accounts.google.com/o/oauth2/"
       ],
       "homepageTrigger": {

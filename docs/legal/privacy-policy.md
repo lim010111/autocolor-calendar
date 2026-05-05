@@ -657,7 +657,7 @@ Attorney General) 또는 California Privacy Protection Agency 에 CCPA/CPRA
 ## 12. 개정 및 통지
 
 본 정책의 내용 추가·삭제 및 수정이 있을 경우 시행 30일 전부터 GAS Add-on
-공지사항 및 본 처리방침 게시 페이지(`https://autocolorcal.app/privacy`) 를
+공지사항 및 본 처리방침 게시 페이지(`https://legal.autocolorcal.app/privacy`) 를
 통해 사전 통지한다.
 
 본 정책에서 "정보주체의 권리에 중대한 영향을 미치는 변경"(이하 "중대한
