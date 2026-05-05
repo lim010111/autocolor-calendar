@@ -1,210 +1,254 @@
-# 00 — 사용자 액션 체크리스트 (G1 / G2 / G4 동시 착수)
+# 00 — 사용자 액션 체크리스트 (출시까지)
 
-> 이 문서는 **사용자 진입점**이다. AutoColor for Calendar를 Workspace
-> Marketplace public listing 활성 상태까지 끌어올리려면 외부 작업(도메인 등록,
-> prod 콘솔, Legal 자문)이 필요한데, 그 작업들의 owner / 대기 시간 / 결과
-> 확인 방법이 게이트별 runbook에 흩어져 있다. 이 파일은 한 화면에서 "지금
-> 내가 어떤 외부 작업을 해야 하나"를 보고 바로 실행할 수 있도록 G1·G2·G4
-> 모든 사용자 액션을 통합 체크박스로 정리한다.
+> 이 파일은 **AutoColor for Calendar를 Marketplace public 출시까지 끌어
+> 올리려면 사용자가 직접 클릭 / 녹화 / 결제 / 제출해야 하는 모든 외부
+> 작업의 정본 hub**다. 코드 변경은 모두 끝났고, 남은 것은 외부 콘솔 작업
+> 과 Google 검수 대기뿐.
 >
-> 게이트 분류 / 의존성 그래프의 정본은 [`docs/completion-roadmap.md`](../completion-roadmap.md).
-> 절차 상세는 [`01-domain-and-search-console.md`](./01-domain-and-search-console.md)
-> · [`02-prod-environment-activation.md`](./02-prod-environment-activation.md).
-> 본 파일은 무엇을 체크할지의 박스만, 본문 runbook은 어떻게 할지의 명령어.
+> 절차 상세는 게이트별 runbook (`01-08`)에 있고, 본 파일은 **무엇을 언제
+> 체크할지의 박스**만 담는다. Claude가 자동화/대신할 수 있는 항목은
+> "Claude 도움" 라인에 명시 — 콘솔 작업 들어가기 전에 그 산출물을 받아
+> 둘 수 있다.
 
-## 왜 동시 착수인가
+---
 
-외부 의존성이 각각 며칠~몇 주 단위라 직렬화하면 시간 낭비다.
+## 게이트 진행 상황 (2026-05-05 기준)
 
-- **G1 (도메인 + GSC)**: 도메인 구매·DNS propagation 24-48h, GSC 인증 즉시
-  ~24h. owner = Ops.
-- **G2 (Prod 활성화)**: Supabase 프로비저닝·콘솔 작업 2-3시간, 외부 대기 거의
-  없음. owner = Eng.
-- **G4 (Privacy + ToS)**: 자문 의뢰 즉시, 검토 회신 1-3주. owner = Legal.
+| 게이트                       | 상태             | 비고                                                    |
+| ---------------------------- | ---------------- | ------------------------------------------------------- |
+| G1 — 도메인 + Search Console | ✅ 완료          | `autocolorcal.app` GSC verified 2026-05-04              |
+| G2 — Prod 환경 활성화        | ✅ 완료          | PR #43 머지 (Hyperdrive / Queue / cron 바인딩)          |
+| G3 — CI/CD 파이프라인        | ⚠️ 거의 완료     | PR #45 머지 — `main` 보호 브랜치 룰 1건만 잔존 (작업 ①) |
+| G4 — Privacy/ToS 호스팅      | ⏳ 대기          | 본문 초안 OK, 법무 검토 + 호스팅 미완                   |
+| G5 — Listing assets          | ⏳ 대기          | description 정본 OK, 아이콘·스크린샷 미완               |
+| G6 — OAuth 검수              | ⏳ critical path | scope 정당화 final, 데모 영상·Submit 미완               |
+| G7 — 백업/복구               | ⏳ 대기          | Supabase Pro 업그레이드 + PITR 활성화                   |
+| G8 — Marketplace publish     | ⏳ G6 의존       | 마지막 단계, 검수 1-3주                                 |
 
-세 게이트의 owner가 다르고 외부 시스템이 충돌하지 않는다. **자문 검토 1-3주
-대기 윈도**가 가장 길어, 이 윈도 안에 G1·G2와 비-critical 항목(테스트 보강
-§6.1·§6.2)을 동시 진행하는 것이 효율적이다.
+---
 
-## 예산 / 시간 추정
+## ⏱️ 오늘 30분이면 끝나는 것
 
-| 게이트 | 외부 비용 | 작업 시간 | 외부 대기 시간 |
-|---|---|---|---|
-| G1 도메인 + GSC | 도메인 1-3만원/년 (`*.app` 류) | DNS 설정 ~1시간 + Custom Domain 연결 ~30분 + Authorized domains 갱신 ~10분 | DNS propagation 24-48h, GSC 인증 즉시~24h |
-| G2 Prod 활성화 | Supabase Free tier 가능 / Pro $25월 (사용자 증가 후) | 콘솔 작업 + 시크릿 ~2-3시간 (체계적으로) | 거의 없음 (Hyperdrive/Queue 즉시) |
-| G4 Privacy + ToS | 자문비 (사무소별 견적) | 의뢰서 작성 ~1시간 + 회신 검토 후 본문 반영 | 자문 회신 1-3주 |
+### ① GitHub `main` 보호 브랜치 룰 (5분)
 
-총 cash 비용 (최소): 도메인 1-3만원 + Supabase Free + 자문비 (별도 견적).
-도메인은 즉시 결제, 자문비는 사무소별 견적 후 결제.
+- **어디서**: GitHub repo → ⚙️ Settings → Branches → `Add branch ruleset`
+- **설정**:
+  - Rule name: `protect-main`
+  - Target branches: `main` (Default branch)
+  - ✅ Restrict deletions
+  - ✅ Require a pull request before merging (Required approvals: 0)
+  - ✅ Require status checks to pass — `test` / `typecheck` / `lint` / `migration-drift` 4개 추가
+  - ✅ Require branches to be up to date before merging
+  - ✅ Block force pushes
+- **왜 사용자만**: repo Settings 접근 권한
+- **Claude 도움**: 절차서 `docs/runbooks/03-cicd-pipeline.md` Step 3 참조
+- [ ] 룰 추가 완료 + 일부러 깨진 PR 1회로 게이트 동작 확인
 
-## 진행 권장 순서
+### ② Supabase Pro 업그레이드 + PITR (15분, $25/월)
 
-이 PR(`feature/gates-1-2-4-kickoff`)이 머지된 직후 시작:
+- **어디서**: supabase.com → 프로젝트 → Settings → Billing → **Upgrade to Pro**
+- **그 다음**: Database → Backups → **Point in Time Recovery 토글 ON**
+- **왜 사용자만**: 결제 카드 + Supabase 계정 owner
+- **Claude 도움**: `docs/runbooks/07-backup-and-recovery.md` Step 1-2
+- [ ] Pro plan 결제
+- [ ] PITR 활성화 확인 (Backups 탭에 PITR 옵션 표시)
 
-- **Day 1 (병렬 시작)**:
-  - G1: 도메인 후보 결정 + 구매 → DNS를 Cloudflare로 위임 (대기 시작).
-  - G4: 자문 의뢰서 초안 작성 (`docs/legal/privacy-policy.md` /
-    `terms-of-service.md`의 `자문 검토 시 우선 확인 항목` H3 그대로 첨부)
-    → 사무소 발송 (대기 시작).
-  - G2: Supabase prod 프로젝트 생성 + `pgcrypto` 활성화 + 마이그레이션 (즉시
-    실행 가능).
-- **Day 2-3 (G1 대기 동안 G2 진행)**:
-  - GSC 인증 / DNS propagation 대기 동안 G2 Step 5-12 (시크릿 / Hyperdrive /
-    Queue / cron / GAS prod 배포 / 검증) 진행. prod Watch API는 도메인 verified
-    까지 OFF.
-- **Day 7-21 (자문 회신 대기)**:
-  - 이 윈도에 [`docs/completion-roadmap.md`](../completion-roadmap.md) 비-
-    critical path (§6.1 테스트 보강 / §6.2 통합 테스트 하네스) 진행 가능.
-- **자문 회신 후**:
-  - Privacy / ToS 본문 반영 (별도 PR) → 호스팅 publish → URL 캡처 → §1 rows
-    121-122 status `초안` → `완료` (별도 commit).
-  - `gas/addon.js:119` "정식 링크는 출시 시점에 제공됩니다" placeholder를 실제
-    URL로 교체 (별도 PR — GAS는 새 version 배포).
+---
 
-## G1 — 도메인 + Search Console
+## 📅 이번 주 (반나절~하루)
 
-**외부 시스템**: 도메인 등록사 (가비아 / Cloudflare Registrar / Google
-Domains 등) + Cloudflare Dashboard + Google Search Console + GCP Console.
+### ③ Cloudflare Pages로 `/privacy` `/terms` 호스팅 (1시간)
 
-**선결 조건**: Cloudflare 계정 보유 (`backend-infrastructure-handoff.md` 라이브
-리소스 카탈로그 참조), GCP 콘솔 접근 권한, 도메인 구매 예산.
+- **어디서**: dash.cloudflare.com → Pages → **Create project** → Connect to Git
+- **설정**:
+  - GitHub repo 선택 → Build output: `docs/legal/`
+  - Custom domain: `autocolorcal.app/privacy`, `/terms`
+- **검증**: `curl -I https://autocolorcal.app/privacy` → 200, body가 `docs/legal/privacy-policy.md`와 일치
+- **왜 사용자만**: Cloudflare 계정 + GitHub OAuth 인증
+- **Claude 도움**: 빌드 스크립트 작성, Markdown→HTML 변환 설정, redirect 규칙
+- **상세**: `docs/runbooks/04-legal-hosting.md`
+- [ ] Cloudflare Pages 프로젝트 생성
+- [ ] custom domain 매핑 + 200 응답 확인
+- [ ] `gas/addon.js:119` placeholder URL을 실제 URL로 교체 (별도 PR — GAS 새 version 배포)
 
-**작업 단위 체크박스** (절차 상세는 [`01-domain-and-search-console.md`](./01-domain-and-search-console.md)):
+### ④ 스크린샷 4장 촬영 (1시간)
 
-- [ ] 도메인 후보 결정 + 구매 (예: `<chosen>.app`)
-- [ ] 도메인 DNS를 Cloudflare로 위임 (네임서버 변경)
-- [ ] Cloudflare Dashboard → Workers & Pages → `autocolor-prod` →
-      Custom Domains에 도메인 연결
-- [ ] Google Search Console 속성 추가 ("Domain" property) → DNS TXT 인증
-- [ ] GCP OAuth Consent Screen → Authorized domains에 새 도메인 추가
-- [ ] (Verified 후) `wrangler.toml` `[env.prod.vars].GOOGLE_OAUTH_REDIRECT_URI`
-      를 새 도메인으로 변경 + commit
-- [ ] 새 도메인의 redirect URI를 GCP OAuth Web Client에 등록
-- [ ] `WEBHOOK_BASE_URL` 시크릿을 prod에 추가
-      (`pnpm wrangler secret put WEBHOOK_BASE_URL --env prod`)
+실제 Google Calendar에서 Add-on 패널 캡처:
 
-**결과 확인**:
-- `curl https://<prod-domain>/healthz` → 200
-- GSC 콘솔이 "Verified" 표시
-- `wrangler tail --env prod`에서 OAuth 플로우 1회 시 `/oauth/google/callback`
-  200 응답
+| #   | 장면           | 어떻게                                   |
+| --- | -------------- | ---------------------------------------- |
+| 1   | Welcome 카드   | OAuth 미연결 상태로 Add-on 첫 진입       |
+| 2   | Home 카드      | 카테고리 2-3개 추가된 상태               |
+| 3   | 규칙 추가 카드 | 키워드 + 색상 입력 중 화면               |
+| 4   | 색칠된 일정    | 캘린더 메인 뷰에서 자동 색상 적용된 일정 |
 
-**Unblock**: prod Watch API (`TODO.md:52`), §1 Support URL (row 78-79) /
-§2 App home URL (row 120) / §2 Authorized domains (row 123) 채울 자리 확보.
+- **해상도**: 1280×800 권장 (Marketplace 스펙)
+- **저장**: `docs/assets/marketplace/screenshots/0X-name.png`
+- **왜 사용자만**: 본인 Google 계정 + prod 환경 캡처
+- **Claude 도움**: 사전 데이터 셋업 가이드 (어떤 카테고리·일정을 미리 만들어둘지), 촬영 후 리뷰
+- **상세**: `docs/runbooks/05-marketplace-listing-assets.md` Step 3
+- [ ] 사전 데이터 셋업 (카테고리 / 규칙 / 일정)
+- [ ] 4장 촬영 + 리사이즈
+- [ ] `docs/assets/marketplace/screenshots/`에 저장
 
-## G2 — Prod 환경 활성화
+### ⑤ 아이콘 디자인 (외주 1주 / 직접 2-3시간)
 
-**외부 시스템**: Supabase Dashboard + GCP Console + Cloudflare Dashboard
-(Hyperdrive + Queues + Workers + Secrets) + GAS Editor.
+- **사양**: 128×128 + 32×32 PNG, 투명 배경 또는 brand background
+- **저장**: `docs/assets/marketplace/icons/icon-128.png`, `icon-32.png`
+- **그 다음**: `gas/appsscript.json:17`의 `gstatic` placeholder URL 교체 → 자체 도메인(`autocolorcal.app/icon-128.png`) 또는 GAS 정적 자원
+- **옵션 A — 외주** ($30-150, 5-7일): 크몽 / Fiverr
+- **옵션 B — 직접** (Figma / Canva): 캘린더 + 색상 팔레트 모티프
+- **왜 사용자만**: 브랜드 미감 결정
+- **Claude 도움**: 디자인 브리프 (외주 전달용), 컨셉 스케치, 컬러 팔레트 제안
+- **상세**: `docs/runbooks/05-marketplace-listing-assets.md` Step 2
+- [ ] 옵션 결정 (외주 / 직접)
+- [ ] 아이콘 PNG 2종 생성
+- [ ] `gas/appsscript.json:17` URL 교체 + GAS 새 version 배포
 
-**선결 조건**: G1 도메인 verified 권장 (Watch API 즉시 활성화). 미완 시 prod도
-`WEBHOOK_BASE_URL` 미주입으로 시작 가능 — verified 후 갱신.
+---
 
-**작업 단위 체크박스** (절차 상세는 [`02-prod-environment-activation.md`](./02-prod-environment-activation.md)):
+## 🔄 외부 회신 대기 (1-2주, 일찍 시작)
 
-- [ ] Supabase prod 프로젝트 생성 (region 결정: `ap-northeast-2` Seoul 권장)
-- [ ] `pgcrypto` extension 활성화
-- [ ] `pnpm db:migrate` (prod `DIRECT_DATABASE_URL` 사용)
-- [ ] RLS 정책 적용 확인 (`SELECT * FROM pg_policies;`)
-- [ ] GCP prod OAuth Web Client 생성 + redirect URI 등록 (G1 verified 전
-      이라면 `*.workers.dev` URL로 임시 등록 → verified 후 교체)
-- [ ] `pnpm gen-secrets prod` 실행 + `.prod.vars` 작성
-      (DB / Hyperdrive / GCP / 3종 키 — `TOKEN_ENCRYPTION_KEY` /
-      `SESSION_HMAC_KEY` / `SESSION_PEPPER`)
-- [ ] `pnpm wrangler hyperdrive create autocolor-prod-db --connection-string=...`
-      + 출력 UUID 캡처
-- [ ] `wrangler.toml`의 prod placeholder 주석 위치에 실제 값 채움 + commit
-- [ ] `pnpm wrangler queues create autocolor-sync-prod` /
-      `pnpm wrangler queues create autocolor-sync-dlq-prod`
-- [ ] `pnpm sync-secrets prod` 실행 (시크릿 일괄 주입)
-- [ ] GAS 편집기에서 prod 배포 (Edit existing / New version,
-      **신규 배포 금지** — `src/CLAUDE.md` "GAS deployment URL must stay
-      stable")
-- [ ] prod /exec URL을 `GAS_REDIRECT_URL_PROD` 시크릿으로 등록
-- [ ] 검증 시퀀스 실행 (`/healthz` → OAuth → 카테고리 + sync → Watch →
-      account deletion 옵션 — 상세 02 runbook Step 12)
-- [ ] 세션 GC pg_cron 등록 (`SELECT cron.schedule('session-gc',
-      '0 4 * * *', $$DELETE FROM sessions WHERE expires_at < now() -
-      interval '7 days'$$);`)
-- [ ] (G1 verified 시) `WEBHOOK_BASE_URL` 시크릿 주입 + Watch 등록
-      (`POST /sync/bootstrap` 또는 6시간 cron 자동 갱신 대기)
+### ⑥ 법무 검토 의뢰
 
-**결과 확인**:
-- `curl https://<prod>/healthz` → 200
-- OAuth 플로우 성공 (test 계정 1회) + DB의 `users` / `sessions` /
-  `oauth_tokens` 행 1건씩
-- 카테고리 1개 추가 후 sync 트리거 → `sync_runs` 1행 (outcome=`ok`) +
-  `sync_state.last_run_summary` counters 채움 + Calendar에서 색상 변경 확인
+- **무엇**: `docs/legal/privacy-policy.md` + `docs/legal/terms-of-service.md` 변호사 검토
+- **어떻게**: 한국 변호사 / 로앤컴퍼니 / 로톡 등 유료 자문
+- **점검 항목**:
+  - 한국 PIPA (개인정보보호법)
+  - GDPR (EU 사용자 받을 시)
+  - CCPA (캘리포니아 사용자 받을 시)
+  - 본문 끝 `자문 검토 시 우선 확인 항목` H3 그대로 첨부
+- **회신 기간**: 통상 1-2주
+- **회신 후**: 본문 반영 → 별도 PR (호스팅 publish는 ③에서 처리)
+- **왜 사용자만**: 변호사 컨택, 비용 결정, 사업자 정보
+- **Claude 도움**: 변호사 전달용 체크리스트, 본문 사전 정비
+- **상세**: `docs/runbooks/04-legal-hosting.md` Step 1
+- [ ] 변호사 컨택 + 견적
+- [ ] 의뢰 발송 (1-2주 시계 가동)
+- [ ] 회신 본문 반영 PR
 
-**Unblock**: §5 row 252 graduate, §3 row 178 Retention 부분 (`초안`).
+---
 
-**롤백 시나리오** (실패 시): 02 runbook의 `롤백 시나리오` H2 섹션 참조 — dev
-환경은 모든 시점에서 영향 없음.
+## ⭐ critical path — 가장 먼저 시계 돌리기
 
-## G4 — Privacy Policy + Terms of Service
+### ⑦ 데모 영상 촬영 (반나절)
 
-**외부 시스템**: 법률 자문 사무소 + (호스팅 결정 후) Cloudflare Pages /
-GitHub Pages / 자체 정적 페이지.
+**Submit하는 순간 Google 검수 4-6주 시계가 시작됨** → ③④⑤⑥과 병행해도 무방.
+다른 작업 다 끝내고 영상 찍기 시작하면 출시가 4-6주 늦춰진다.
 
-**호스팅 옵션 비교**:
+- **사양**: 60-90초, 720p+, 영어 자막, prod 환경 (`autocolorcal.app`)
+- **시나리오** (5단계):
+  1. Marketplace에서 Install
+  2. OAuth 동의 화면 (4개 scope 표시)
+  3. Add-on 열기 → 카테고리 1개 추가 → 규칙 1개 추가
+  4. 캘린더에 색상 자동 적용된 일정 보여주기
+  5. **계정 삭제 흐름** (Privacy 검수 필수 항목)
+- **녹화 도구**: OBS Studio / QuickTime (Mac) / 클로바노트
+- **저장 후 업로드**: YouTube unlisted 또는 Google Drive shared link
+- **왜 사용자만**: 화면 녹화 + 본인 OAuth 계정
+- **Claude 도움**: 분 단위 콘티 + 영문 자막 스크립트, 사전 데이터 셋업 가이드
+- **상세**: `docs/runbooks/06-oauth-verification.md` Step 2
+- [ ] 사전 데이터 셋업 (test 계정 + 빈 캘린더)
+- [ ] 1차 촬영
+- [ ] 자막 입히기
+- [ ] YouTube/Drive 업로드 + URL 캡처
 
-| 옵션 | 장점 | 단점 |
-|---|---|---|
-| **Cloudflare Pages** (권장) | G1 도메인과 같은 Cloudflare 계정 → DNS / SSL / 도메인 매핑 단일 콘솔. 무료 plan 충분. | Cloudflare Pages 별도 프로젝트 1개 추가. |
-| GitHub Pages | repo와 직결 — Privacy 본문 변경 = git push. | Cloudflare 도메인을 GitHub Pages CNAME으로 연결 — 추가 콘솔 1개. |
-| 자체 정적 (prod Worker 라우트) | 인프라 추가 없음. | 코드 변경 발생 — `/privacy` / `/terms` 라우트 + 정적 HTML 응답. 후속 작업으로 분리 권장. |
+### ⑧ GCP OAuth Consent Screen Submit (30분)
 
-**작업 단위 체크박스**:
+영상 촬영 직후 바로 진행. 여기서부터 4-6주 외부 대기.
 
-- [ ] [`docs/legal/privacy-policy.md`](../legal/privacy-policy.md) /
-      [`terms-of-service.md`](../legal/terms-of-service.md) 1차 초안 검토
-      (이 PR에 포함된 본문)
-- [ ] 자문 의뢰서 작성 (적용 법 결정 / 자문 영역 명시 — Privacy / ToS의
-      `자문 검토 시 우선 확인 항목` H3 그대로 첨부 가능)
-- [ ] 자문 의뢰 발송 + 회신 대기 (1-3주)
-- [ ] 자문 회신 후 본문 반영 → **별도 PR** (이 PR과 분리)
-- [ ] 호스팅 옵션 결정 (Cloudflare Pages 권장)
-- [ ] 호스팅 publish + URL 캡처 (`https://<prod-domain>/privacy`,
-      `https://<prod-domain>/terms`)
-- [ ] `docs/marketplace-readiness.md` row 121-122 status `초안` → `완료` +
-      URL 추가 (별도 PR)
-- [ ] `gas/addon.js:119` "정식 링크는 출시 시점에 제공됩니다" placeholder를
-      실제 URL로 교체 (별도 PR — GAS는 새 version 배포로 publish)
-- [ ] GCP OAuth Consent Screen → App domain 섹션의 Privacy policy URL /
-      Terms of service URL을 실제 URL로 갱신
+- **어디서**: console.cloud.google.com → APIs & Services → **OAuth consent screen** → Edit App
+- **입력**:
+  - App home URL → `https://autocolorcal.app`
+  - Privacy URL → `https://autocolorcal.app/privacy` (③ 완료 필수)
+  - ToS URL → `https://autocolorcal.app/terms` (③ 완료 필수)
+  - Authorized domains → `autocolorcal.app`
+  - Scopes → 4개 + per-scope 정당화 텍스트 (`docs/assets/marketplace/scope-justifications.md` 본문 복붙)
+  - Demo video URL → ⑦에서 받은 URL
+- **클릭**: **Submit for verification**
+- **그 다음**: Google 응답 4-6주 대기. 추가 정보 요청 메일 오면 빠르게 응답 (지연 시 검수 큐 뒤로 밀림)
+- **왜 사용자만**: GCP 프로젝트 owner 권한
+- **상세**: `docs/runbooks/06-oauth-verification.md` Step 3-4
+- [ ] App Configuration 입력 완료
+- [ ] Submit 버튼 클릭 + 접수 메일 수신 확인
+- [ ] (회신 시) 추가 정보 요청 응답 / 재제출
 
-**법률 자문 영역 (의뢰 시 우선 확인 항목)**: `docs/legal/privacy-policy.md`
-및 `docs/legal/terms-of-service.md` 각 파일 끝의 `자문 검토 시 우선 확인 항목`
-H3에 정리되어 있다. 의뢰서에 그대로 첨부 가능.
+---
 
-**Unblock**: §5 row 254-255 graduate (자문 + 호스팅 후 `초안` → `완료`),
-§1 OAuth Consent Screen 검수 (`TODO.md:131`)의 prerequisite — 검수 신청에는
-Privacy / ToS URL이 등록되어 있어야 한다.
+## 🚀 마지막 — G6 검수 통과 후
 
-## 이 PR이 끝난 직후 사용자 시작점
+### ⑨ Marketplace Publish (30분 + 검수 1-3주)
 
-1. **이 PR을 먼저 머지**하여 runbook / 초안이 main에 안정적으로 들어와야
-   외부 작업 시작 시 reference 깨짐 없음.
-2. 진행 권장 1순위: G2 Step 1-4 (Supabase prod 생성 + 마이그레이션) — 즉시
-   실행 가능, 외부 대기 없음.
-3. 동시에 G1 Step 1-3 (도메인 구매 + DNS 설정 + GSC 인증 시작) 백그라운드.
-4. 동시에 G4 자문 의뢰서 발송.
+- **어디서**: GCP Console → APIs & Services → **Marketplace SDK** → App Configuration
+- **입력**: 모든 필드 (앱 이름·아이콘·description·screenshots·support URL·privacy URL·ToS URL·distribution)
+- **권장**: 처음에는 **Unlisted**(URL 아는 사람만) 며칠 운영 → 안정성 확인 후 **Public** 전환
+- **검수 기간**: 1-3주
+- **출시 직후 모니터링**: `wrangler tail --env prod`, `/api/stats`, `sync_failures` 테이블, 첫 공개 사용자 OAuth 흐름 30분 내 1건 직접 검증
+- **왜 사용자만**: GCP/Marketplace 콘솔 권한
+- **Claude 도움**: 사전 점검 체크리스트 (모든 게이트 status 일치 확인)
+- **상세**: `docs/runbooks/08-marketplace-submission.md`
+- [ ] 사전 점검 — `docs/marketplace-readiness.md` §5 표 모든 행이 `완료`
+- [ ] App Configuration 입력
+- [ ] Publish 클릭 (Unlisted 시작)
+- [ ] 검수 통과 후 Public 전환
+- [ ] 출시 직후 30분 모니터링
 
-진행 상황을 추적하려면 이 파일의 체크박스를 직접 fork / 별도 issue tracker로
-복사해 사용한다. 본 파일은 **무엇을 체크할지의 hub**일 뿐, 사용자별 진행
-상태는 별도 surface (issue tracker · 노션 · Linear)에서 관리하는 것이 깔끔
-하다.
+---
+
+## 권장 진행 순서
+
+```
+이번 주    ─┐ ① GitHub 보호 룰 (5분)
+            │ ② Supabase Pro + PITR (15분)
+            │ ③ Cloudflare Pages /privacy /terms (1시간)
+            │ ⑤ 아이콘 외주 의뢰 (외주 시계 시작)
+            │ ⑥ 법무 의뢰 메일 (회신 시계 시작)
+            ─┘
++1주        ⑦ 데모 영상 촬영 + ④ 스크린샷 동시 촬영
++1주 (이어) ⑧ GCP Submit ◄── 4-6주 시계 가동, 가장 중요
++1-2주      ⑥ 법무 회신 → 본문 반영 → ③ 호스팅 갱신
++1-2주      ⑤ 아이콘 회수 → ④ 스크린샷 finalize
++5-7주      ⑧ G6 검수 통과
++7-8주      ⑨ G8 Submit → 검수
++9-10주     정식 출시 🎉
+```
+
+**핵심 1건만 고른다면 → ⑦ 데모 영상 + ⑧ Submit**. 4-6주 시계가 가장 일찍
+시작되는 게 critical path 최단화의 전부.
+
+**병행 가능한 작업**: ①②③⑤⑥은 서로 독립이라 같은 날 다 시작해도 OK.
+④ 스크린샷은 ⑦ 데모 영상과 같은 prod 환경 셋업을 공유하니 같이 찍는 게
+효율적.
+
+---
+
+## Claude가 바로 만들어줄 수 있는 산출물 (콘솔 작업 들어가기 전 준비)
+
+콘솔 작업 시작하기 전에 손에 쥐고 있으면 시간 절약되는 것들:
+
+- 📋 **데모 영상 분 단위 콘티 + 영문 자막 스크립트** (작업 ⑦)
+- 📋 **스크린샷 촬영 체크리스트 + 사전 캘린더 데이터 가이드** (작업 ④)
+- 📋 **변호사 검토 의뢰 체크리스트** (작업 ⑥, 메일 첨부용)
+- 📋 **아이콘 디자인 브리프** (작업 ⑤, 외주 전달용)
+- 🔧 **Cloudflare Pages 빌드 설정 + Markdown→HTML 변환** (작업 ③)
+- 📊 **`marketplace-readiness.md` §5 표 status 갱신** (G2/G3=완료, account-deletion=완료)
+
+원하는 항목 말하면 그 즉시 작성해서 저장.
+
+---
 
 ## Cross-references
 
-- 게이트 분류 / 의존성 그래프: [`docs/completion-roadmap.md`](../completion-roadmap.md)
-- 사용자 진입점: 이 파일
-- 절차 상세: [`01-domain-and-search-console.md`](./01-domain-and-search-console.md)
-  · [`02-prod-environment-activation.md`](./02-prod-environment-activation.md)
-- 법률 초안: [`docs/legal/privacy-policy.md`](../legal/privacy-policy.md)
-  · [`docs/legal/terms-of-service.md`](../legal/terms-of-service.md)
-- 정본 작업 항목: [`TODO.md` §1 line 8](../../TODO.md) /
-  [§3 후속 line 35](../../TODO.md) / [§3 후속 line 38](../../TODO.md) /
-  [§7 line 132](../../TODO.md)
-- 라이브 리소스 카탈로그: [`docs/backend-infrastructure-handoff.md`](../backend-infrastructure-handoff.md)
+- 게이트 분류 / 의존성: [`docs/completion-roadmap.md`](../completion-roadmap.md)
+- 게이트별 절차서:
+  - [`01-domain-and-search-console.md`](./01-domain-and-search-console.md) — G1 (완료, 참고용)
+  - [`02-prod-environment-activation.md`](./02-prod-environment-activation.md) — G2 (완료, 참고용)
+  - [`03-cicd-pipeline.md`](./03-cicd-pipeline.md) — G3 (작업 ①)
+  - [`04-legal-hosting.md`](./04-legal-hosting.md) — G4 (작업 ③⑥)
+  - [`05-marketplace-listing-assets.md`](./05-marketplace-listing-assets.md) — G5 (작업 ④⑤)
+  - [`06-oauth-verification.md`](./06-oauth-verification.md) — G6 (작업 ⑦⑧)
+  - [`07-backup-and-recovery.md`](./07-backup-and-recovery.md) — G7 (작업 ②)
+  - [`08-marketplace-submission.md`](./08-marketplace-submission.md) — G8 (작업 ⑨)
 - 제출 자료 인덱스: [`docs/marketplace-readiness.md`](../marketplace-readiness.md)
+- 법률 초안: [`docs/legal/privacy-policy.md`](../legal/privacy-policy.md) · [`docs/legal/terms-of-service.md`](../legal/terms-of-service.md)
+- 정본 작업 항목: [`TODO.md`](../../TODO.md) §7
