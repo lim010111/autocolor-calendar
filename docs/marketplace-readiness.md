@@ -69,8 +69,8 @@ only the index.
 | Item | Source of truth | Status | Owner | Notes |
 |---|---|---|---|---|
 | App display name | `gas/appsscript.json:16` | 완료 | — | "AutoColor" confirmed |
-| Short description (KR / EN) | TBD `docs/assets/marketplace/description.md` | 미작성 | Product | Derive from `docs/add-on-ui-plan.md` |
-| Long description (KR / EN) | TBD (same file) | 미작성 | Product | |
+| Short description (KR / EN) | `docs/assets/marketplace/description.md` | 완료 | Product | KR 41자 / EN 65 chars; tone-review pending pre-publish |
+| Long description (KR / EN) | `docs/assets/marketplace/description.md` | 완료 | Product | Derived from `docs/add-on-ui-plan.md` Screen 1·2 + `gas/addon.js:95-115` 3-step copy |
 | App icon 128×128 / 32×32 | TBD `docs/assets/marketplace/icons/` | 미작성 | Design | Replace `gstatic` placeholder at `gas/appsscript.json:17` |
 | Promotional screenshots (≥ 3) | TBD `docs/assets/marketplace/screenshots/` | 미작성 | Design | Welcome / Home / Rules / Event preview |
 | Promotional video (optional) | TBD | 미작성 | Product | Reusable for the §2 restricted-scope demo |
@@ -123,9 +123,9 @@ and is not adjudicated here.
 | Authorized domain(s) | TBD | 미작성 | Ops | Must match home / privacy / ToS |
 | Scope list (backend) | `src/config/constants.ts:1-8` | 완료 | Eng | Matches `OAUTH_SCOPES` |
 | Scope list (GAS manifest) | `gas/appsscript.json:5-12` | 완료 | Eng | |
-| `calendar` (Restricted) justification | `docs/assets/marketplace/scope-justifications.md` | 초안 | Eng + Product | Cite Principle 3 |
-| `calendar.events` (Sensitive) justification | `docs/assets/marketplace/scope-justifications.md` | 초안 | Eng + Product | |
-| `userinfo.email` justification | `docs/assets/marketplace/scope-justifications.md` | 초안 | Eng | |
+| `calendar` (Restricted) justification | `docs/assets/marketplace/scope-justifications.md` | 완료 | Eng + Product | Final per `docs/runbooks/06-oauth-verification.md` Step 1 (2026-05-04) |
+| `calendar.events` (Sensitive) justification | `docs/assets/marketplace/scope-justifications.md` | 완료 | Eng + Product | Same final review |
+| `userinfo.email` justification | `docs/assets/marketplace/scope-justifications.md` | 완료 | Eng | Same final review |
 | Demo video (restricted-scope usage) | TBD `docs/assets/marketplace/oauth-verification-video.mp4` | 미작성 | Product | Required by Google's Restricted Scope policy |
 | CASA security assessment (if required) | TBD | 미작성 | Ops | Only if Google flags |
 | Onboarding-card copy refresh | `gas/addon.js:119` | 미작성 | Eng | Pending final Privacy / ToS URLs |
@@ -250,17 +250,18 @@ a gate, edit the owning source first and then the status here.
 |---|---|---|---|---|
 | Owned domain + Search Console verification | Prod Watch API, support URL, privacy URL, home URL | Ops | 완료 | `TODO.md:8` + `docs/runbooks/01-domain-and-search-console.md` (`autocolorcal.app` GSC verified 2026-05-04, GCP Consent Screen Authorized domains 등록 완료) |
 | Prod Supabase + Worker activated | OAuth verification (prod client), Marketplace listing | Eng | 진행중 | `TODO.md:35` + `docs/runbooks/02-prod-environment-activation.md` |
-| Listing assets bundle | Marketplace submission | Product + Design | 미작성 | §1 |
-| Privacy Policy published | Consent screen, listing | Legal | 초안 | §2 → `docs/legal/privacy-policy.md` |
-| Terms of Service published | Consent screen, listing | Legal | 초안 | §2 → `docs/legal/terms-of-service.md` |
-| Scope justifications written | OAuth verification | Eng + Product | 초안 | §2 → `docs/assets/marketplace/scope-justifications.md` |
-| Restricted-scope demo video | OAuth verification | Product | 미작성 | §2 |
+| Listing assets bundle | Marketplace submission | Product + Design | 미작성 | §1 + `docs/runbooks/05-marketplace-listing-assets.md` |
+| Privacy Policy published | Consent screen, listing | Legal | 초안 | §2 → `docs/legal/privacy-policy.md` + `docs/runbooks/04-legal-hosting.md` |
+| Terms of Service published | Consent screen, listing | Legal | 초안 | §2 → `docs/legal/terms-of-service.md` + `docs/runbooks/04-legal-hosting.md` |
+| Scope justifications written | OAuth verification | Eng + Product | 완료 | §2 → `docs/assets/marketplace/scope-justifications.md` (final 2026-05-04) + `docs/runbooks/06-oauth-verification.md` |
+| Restricted-scope demo video | OAuth verification | Product | 미작성 | §2 + `docs/runbooks/06-oauth-verification.md` |
 | Data handling / Admin answers drafted | Marketplace submission | Eng + Ops | 초안 | §3 |
 | Account-deletion endpoint live | Marketplace submission | Eng | 미작성 | §3 |
 | Reviewer demo bundle | OAuth verification | Product + Eng | 초안 | §4 |
-| CI/CD pipeline | Quality gate | Eng | 미작성 | `TODO.md:129` |
-| Backup / recovery policy | Admin review | Eng | 미작성 | `TODO.md:130` |
+| CI/CD pipeline | Quality gate | Eng | 진행중 | `TODO.md:129` + `docs/runbooks/03-cicd-pipeline.md` (`.github/workflows/ci.yml` 작성 완료 — Step 3 보호 브랜치 정책 / Step 4 검증 PR 잔존) |
+| Backup / recovery policy | Admin review | Eng | 미작성 | `TODO.md:130` + `docs/runbooks/07-backup-and-recovery.md` |
 | Security principles index current | Reviewer spot-checks | Eng | 완료 | `docs/security-principles.md` |
+| Marketplace submission (publish 단계) | — | Product + Eng | 미작성 | `docs/runbooks/08-marketplace-submission.md` (G1·G2·G4·G5·G6·G7 충족 후 publish) |
 
 ## How to use this document
 
