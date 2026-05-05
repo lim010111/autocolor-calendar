@@ -21,6 +21,7 @@
     "format": "prettier --write \"src/**/*.ts\" \"*.{json,md}\"",
     "gen-secrets": "tsx scripts/gen-secrets.ts",
     "sync-secrets": "tsx scripts/sync-secrets.ts",
+    "legal:build": "tsx scripts/build-legal.ts",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
@@ -46,6 +47,7 @@
     "drizzle-kit": "^0.30.1",
     "eslint": "^9.17.0",
     "eslint-config-prettier": "^9.1.0",
+    "marked": "^18.0.3",
     "prettier": "^3.4.2",
     "tsx": "^4.19.2",
     "typescript": "^5.7.2",
