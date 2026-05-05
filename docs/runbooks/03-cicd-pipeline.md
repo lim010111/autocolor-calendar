@@ -47,8 +47,6 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
-        with:
-          version: 10
       - uses: actions/setup-node@v4
         with:
           node-version: 20
@@ -61,8 +59,6 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
-        with:
-          version: 10
       - uses: actions/setup-node@v4
         with:
           node-version: 20
@@ -75,8 +71,6 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
-        with:
-          version: 10
       - uses: actions/setup-node@v4
         with:
           node-version: 20
@@ -90,7 +84,10 @@ jobs:
 - **3 job 분리** — `test` 실패 시에도 `typecheck`/`lint` 결과를 같이 보고
   싶다. 단일 job에 chaining하면 첫 실패에서 멈춘다.
 - **pnpm 10 + Node 20** — `package.json:8-10`의 `engines` / `packageManager`
-  와 일치. drift 시 lockfile 검증이 깨진다.
+  와 일치. drift 시 lockfile 검증이 깨진다. `pnpm/action-setup@v4`에
+  `version:` 인자를 **주지 않는다** — `package.json:packageManager` 필드
+  (`pnpm@10.33.0`)가 있으면 둘 다 명시 시 `ERR_PNPM_BAD_PM_VERSION` 등
+  버전 충돌로 install 자체가 fail (PR #45 첫 발화에서 검증됨).
 - **`--frozen-lockfile`** — `pnpm-lock.yaml` 변경분이 commit되지 않은
   상태로 PR이 올라오면 fail. lockfile drift 방지.
 - **`actions/setup-node@v4`의 `cache: pnpm`** — 두 번째 PR부터
@@ -112,8 +109,6 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
-        with:
-          version: 10
       - uses: actions/setup-node@v4
         with:
           node-version: 20
@@ -199,8 +194,6 @@ git push origin --delete test/ci-gate
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
-        with:
-          version: 10
       - uses: actions/setup-node@v4
         with:
           node-version: 20
