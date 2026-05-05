@@ -229,7 +229,7 @@ Principle 5는 secret 암호화 / 토큰 보호 영역이지만 백업 정책도
 한 axis. Principle 5 본문에 "백업 정책은 [07 runbook](docs/runbooks/07-backup-and-recovery.md)
 참조" 1줄 추가 권장.
 
-### 5C — `TODO.md:132` row 130 (백업/복구 정책)
+### 5C — `TODO.md:132` (Supabase 데이터베이스 백업/복구 정책 수립)
 
 체크박스 `[ ]` → `[x]`.
 
@@ -269,7 +269,7 @@ Principle 5는 secret 암호화 / 토큰 보호 영역이지만 백업 정책도
 - `docs/marketplace-readiness.md` §3 row 178 (Retention policy) `미작성` → `초안` 또는 `완료`.
 - `docs/marketplace-readiness.md` §5 row 262 (Backup / recovery policy)
   `미작성` → `완료`.
-- `TODO.md:132` row 130 체크박스 `[ ]` → `[x]`.
+- `TODO.md:132` 체크박스 `[ ]` → `[x]`.
 - 본 runbook 자체는 G8 (Marketplace 등록)을 unblock하지 않지만 admin 답변
   품질을 향상시켜 검수 통과 신뢰도 증가.
 

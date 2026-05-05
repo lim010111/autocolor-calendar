@@ -265,11 +265,11 @@ runbook이 정본임을 알리는 cross-reference만 추가.
   추가 또는 `/`에서 `<prod-domain>/privacy`로 redirect할지 결정. OAuth
   검수 직전 정리 권장).
 - §2 row 131 (Onboarding-card 카피 refresh) — 6B에서 처리.
-- `TODO.md:132` 부분 unblock — Marketplace 등록(08 runbook)이 정식 시점.
+- `TODO.md:134` 부분 unblock — Marketplace 등록(08 runbook)이 정식 시점.
 
 ## Cross-references
 
-- [`TODO.md` §7 line 132](../../TODO.md) — 작업 정본
+- [`TODO.md` §7 line 134](../../TODO.md) — 작업 정본
 - [`docs/completion-roadmap.md`](../completion-roadmap.md) — G4 절
 - [`docs/legal/README.md`](../legal/README.md) — 1차 초안 보관 정책
 - [`docs/legal/privacy-policy.md`](../legal/privacy-policy.md)

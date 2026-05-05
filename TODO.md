@@ -34,7 +34,7 @@
 ### 3 후속 작업 (§3 범위 밖 이월)
 
 - [x] **채팅 노출 자격증명 로테이션** — Supabase DB password와 `GOOGLE_CLIENT_SECRET` 재발급 + `.dev.vars` 갱신 + `pnpm wrangler hyperdrive update 0adfbd41c67e4225a63894c3768bb837 --connection-string=<session pooler URL>` + `pnpm sync-secrets dev`로 전체 6개 Worker secret 재주입 완료. 배포 dev Worker에서 `/healthz`·`/me`(DB 경로)·callback 재검증 성공.
-- [ ] **Prod 환경 활성화** — Supabase prod 프로젝트 생성 + 마이그레이션, GCP prod OAuth Web Client(별도 Consent Screen 또는 production 전환) + prod redirect URI 등록, `gen-secrets.ts`로 prod 3종 키 생성, `sync-secrets.ts prod`로 시크릿 일괄 주입, prod Hyperdrive config 생성 + 바인딩, GAS prod `/exec` URL로 `GAS_REDIRECT_URL` 설정. (§4 Watch API는 verified custom domain이 필요하므로 이 작업과 병행 권장.)
+- [x] **Prod 환경 활성화** — Supabase prod 프로젝트 생성 + 마이그레이션, GCP prod OAuth Web Client(별도 Consent Screen 또는 production 전환) + prod redirect URI 등록, `gen-secrets.ts`로 prod 3종 키 생성, `sync-secrets.ts prod`로 시크릿 일괄 주입, prod Hyperdrive config 생성 + 바인딩, GAS prod `/exec` URL로 `GAS_REDIRECT_URL` 설정 완료 (PR #43 `a01bde7` — Hyperdrive / Queue / cron bindings 활성화; 운영 절차는 `docs/runbooks/02-prod-environment-activation.md`).
 - [x] **GAS UX 개선** — `gas/authCallback.html`에 `history.replaceState`로 `?token=` 쿼리 제거 + 자동 창 닫힘; `gas/authError.html`에 `google.script.url.getLocation` 기반 `?error=<code>`별 한국어 메시지 분기 (state_invalid / consent_denied / provider_error / token_exchange_failed / invalid_grant / server_error) 완료 (`93bcf3d`).
 - [x] **`buildHomeCard` 사전 검증** — `buildAddOn` 진입점에 `missingBackendProperties()` gate 추가. `BACKEND_BASE_URL`·`OAUTH_AUTH_URL` 미설정 시 "백엔드 구성 필요" 카드 렌더 (`93bcf3d`).
 - [ ] **세션 GC** — Supabase `pg_cron` 활성화 후 주 1회 `DELETE FROM sessions WHERE expires_at < now() - interval '7 days'` 스케줄 (§6 관측성 범위).

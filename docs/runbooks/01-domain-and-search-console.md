@@ -108,7 +108,7 @@ dig +short TXT <chosen>.app
 - **Publishing status**:
   - dev는 "Testing" 모드 (test 사용자 추가) 가정.
   - prod 활성화 시점에 "In production"으로 publish — 단 Marketplace 상장 전
-    이라면 Restricted Scope 검수(`TODO.md:131`) 통과 후. **이 단계가 G6
+    이라면 Restricted Scope 검수(`TODO.md:133`) 통과 후. **이 단계가 G6
     (OAuth Consent Screen 검수) 신청의 prerequisite**, 검수 신청 자체는
     G4 (Privacy / ToS 호스팅) 완료 후 §7로.
 

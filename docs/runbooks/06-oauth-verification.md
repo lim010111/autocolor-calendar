@@ -23,8 +23,7 @@
   - [02 runbook](./02-prod-environment-activation.md) 완료 — 데모 영상
     촬영용 prod env 동작.
   - [`docs/assets/marketplace/scope-justifications.md`](../assets/marketplace/scope-justifications.md)
-    본문 1차 초안 commit 존재(이미 — `bc205bc`). 본 runbook Step 1에서
-    final 확정.
+    본문 final 확정됨 (Step 1 self-review 2026-05-04, status line 박혀있음).
   - GCP Console의 OAuth Consent Screen Edit 권한 보유.
 - **Acceptance**:
   - GCP Console → OAuth consent screen → Status 표시:
@@ -37,10 +36,12 @@
 
 ## Step 1 — `scope-justifications.md` final 확정
 
-`docs/assets/marketplace/scope-justifications.md` 본문은 1차 초안 상태.
-검수 제출 전에 다음 점검:
+**상태: 완료 (2026-05-04 self-review).** `docs/assets/marketplace/scope-justifications.md`
+본문 첫머리의 status line이 "Final — reviewed against runbook 06 Step 1
+checklist on 2026-05-04"로 박혀 있고, 아래 4 elements가 §1·§2·§3 본문에
+모두 포함되어 있음을 동일 self-review에서 확인.
 
-- [ ] §1 `calendar` (Restricted) — 정당화 본문에 다음 4개가 모두 명시:
+- [x] §1 `calendar` (Restricted) — 정당화 본문에 다음 4개가 모두 명시:
   1. **Why we request** — incremental sync + watch lifecycle 필수.
   2. **Data minimum** — `events.list` / `events.patch` / `calendars.list` /
      `channels.{watch,stop}` 호출 envelope만, 사용 필드 화이트리스트.
@@ -48,17 +49,18 @@
      `calendarList.list` 불가, push notification 미지원.
   4. **PII protection** — PII redactor 호출 위치 + observability 테이블의
      PII 배제 정책. `docs/security-principles.md` Principle 2 인용.
-- [ ] §2 `calendar.events` (Sensitive) — Restricted `calendar`로 cover되지만
+- [x] §2 `calendar.events` (Sensitive) — Restricted `calendar`로 cover되지만
   Google 콘솔이 별도 row로 열거하므로 별도 정당화. 본문은 `calendar`와
-  중복되지 않게 "events 자원 단위의 read+patch 한정"이라는 axis로 쓴다.
-- [ ] §3 `userinfo.email` — `sub` (사용자 식별자) + `email` (사용자 식별
+  중복되지 않게 "events 자원 단위의 read+patch 한정"이라는 axis로 작성됨.
+- [x] §3 `userinfo.email` — `sub` (사용자 식별자) + `email` (사용자 식별
   display) 한정. RLS / 사용자 격리의 source of truth임을 명시.
-- [ ] (참고) Apps Script Add-on framework scopes (`calendar.addons.*`,
+- [x] (참고) Apps Script Add-on framework scopes (`calendar.addons.*`,
   `script.external_request`, `script.locale`)는 framework 강제이므로 정당화
   대상 아님 (이미 §scope-justifications.md "Out of scope"에 명시).
 
-본문 수정이 필요하면 별도 commit으로 처리. **본 runbook의 다른 step은
-본문 final 확정 후 진행**.
+본문 status line 갱신은 본문 변경과 동일 commit으로 처리한다 (status line
+본문이 self-policing). 다음 변경 시 이 Step 1을 fresh로 재실행하고
+status line 날짜를 갱신할 것.
 
 ## Step 2 — Restricted scope 데모 영상 촬영
 

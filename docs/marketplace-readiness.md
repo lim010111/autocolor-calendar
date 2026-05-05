@@ -107,7 +107,7 @@ scope list; no scope is requested opportunistically.
 - Consent-screen copy placeholder already in the onboarding card:
   `gas/addon.js:119` ("정식 링크는 출시 시점에 제공됩니다") — awaits
   final Privacy Policy and ToS URLs before rewrite.
-- Existing TODO gate: `TODO.md:131` (§7 OAuth Consent Screen 검수).
+- Existing TODO gate: `TODO.md:133` (§7 OAuth Consent Screen 검수).
 
 Both `calendar` and `calendar.events` are currently requested. This section
 captures current state; any scope reduction is a separate engineering task
@@ -239,9 +239,9 @@ a gate, edit the owning source first and then the status here.
 - Prod environment activation: `TODO.md:35` (§3 후속).
 - Prod Watch API activation (blocked on domain verification, not a code
   change): `TODO.md:52` (§4 후속).
-- CI/CD + backup / recovery: `TODO.md:129-130` (§7).
-- OAuth verification: `TODO.md:131` (§7).
-- Privacy policy + Marketplace registration: `TODO.md:132` (§7).
+- CI/CD + backup / recovery: `TODO.md:131-132` (§7).
+- OAuth verification: `TODO.md:133` (§7).
+- Privacy policy + Marketplace registration: `TODO.md:134` (§7).
 - Cross-listed security posture: `docs/security-principles.md`.
 
 ### Status
