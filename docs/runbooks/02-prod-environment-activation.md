@@ -25,14 +25,19 @@
 
 ## Step 1 — Supabase prod 프로젝트 생성
 
-Supabase Dashboard → New project. region 선택 가이드:
+Supabase Dashboard → New project. **본 프로젝트 prod region 은
+`ap-northeast-1` (Tokyo) 로 확정·운영** 되며, `docs/legal/privacy-policy.md`
+§3·§4·§4.1 본문 진술이 Tokyo 에 대해 박혀 있다. region 변경 시 본 정책
+§12 절차로 사전 통지 후 본문도 함께 갱신해야 한다.
 
-- 한국 사용자 → `ap-northeast-2` (Seoul) 또는 `ap-northeast-1` (Tokyo).
-- dev는 `ap-southeast-1` (Singapore) — 라이브 카탈로그
+참고:
+- dev 는 `ap-southeast-1` (Singapore) — 라이브 카탈로그
   [`docs/backend-infrastructure-handoff.md`](../backend-infrastructure-handoff.md)
   line 37 참조.
-- prod는 사용자 다수가 한국이라면 Seoul, 글로벌 분포면 Tokyo / Singapore.
-  같은 vendor / 가까운 지역이 latency 안정적.
+- 한국 사용자가 다수더라도 본 프로젝트는 Tokyo 단일 region. Seoul
+  (`ap-northeast-2`) 미선택 사유: 운영자가 Tokyo 로 이미 `autocolor-prod`
+  생성 + Supabase region 풀에서 Tokyo 가 IPv6 접근 안정성·legacy 호환
+  측면 우위.
 
 생성 후 콘솔의 "Database password"를 안전한 곳에 즉시 저장 (Supabase 콘솔에서
 재발급은 가능하나 즉시 다른 surface 갱신 부담).

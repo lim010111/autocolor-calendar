@@ -118,8 +118,8 @@ and is not adjudicated here.
 | Item | Source of truth | Status | Owner | Notes |
 |---|---|---|---|---|
 | App home page URL | TBD (owned domain) | 미작성 | Ops | Blocked on `TODO.md:8` |
-| Privacy Policy URL | `docs/legal/privacy-policy.md` | 초안 | Legal | Body drafted in repo; legal counsel review + hosting pending |
-| Terms of Service URL | `docs/legal/terms-of-service.md` | 초안 | Legal | Body drafted in repo; legal counsel review + hosting pending |
+| Privacy Policy URL | `docs/legal/privacy-policy.md` | 본문 확정 (publish-ready, sub-agent self-review) | Legal | Round 2 self-publish 보완 적용; 운영자 식별 정보 placeholder 교체 + 호스팅 publish 시 "완료" |
+| Terms of Service URL | `docs/legal/terms-of-service.md` | 본문 확정 (publish-ready, sub-agent self-review) | Legal | Round 2 self-publish 보완 적용; 운영자 식별 정보 placeholder 교체 + 호스팅 publish 시 "완료" |
 | Authorized domain(s) | TBD | 미작성 | Ops | Must match home / privacy / ToS |
 | Scope list (backend) | `src/config/constants.ts:1-8` | 완료 | Eng | Matches `OAUTH_SCOPES` |
 | Scope list (GAS manifest) | `gas/appsscript.json:5-12` | 완료 | Eng | |
@@ -251,8 +251,8 @@ a gate, edit the owning source first and then the status here.
 | Owned domain + Search Console verification | Prod Watch API, support URL, privacy URL, home URL | Ops | 완료 | `TODO.md:8` + `docs/runbooks/01-domain-and-search-console.md` (`autocolorcal.app` GSC verified 2026-05-04, GCP Consent Screen Authorized domains 등록 완료) |
 | Prod Supabase + Worker activated | OAuth verification (prod client), Marketplace listing | Eng | 완료 | `TODO.md:35` + `docs/runbooks/02-prod-environment-activation.md` (PR #43 `a01bde7` — Hyperdrive / Queue / cron bindings 활성화 완료) |
 | Listing assets bundle | Marketplace submission | Product + Design | 미작성 | §1 + `docs/runbooks/05-marketplace-listing-assets.md` |
-| Privacy Policy published | Consent screen, listing | Legal | 초안 | §2 → `docs/legal/privacy-policy.md` + `docs/runbooks/04-legal-hosting.md` |
-| Terms of Service published | Consent screen, listing | Legal | 초안 | §2 → `docs/legal/terms-of-service.md` + `docs/runbooks/04-legal-hosting.md` |
+| Privacy Policy published | Consent screen, listing | Legal | 본문 확정 / 호스팅 대기 | §2 → `docs/legal/privacy-policy.md` (Round 2 self-publish) + `docs/runbooks/04-legal-hosting.md` |
+| Terms of Service published | Consent screen, listing | Legal | 본문 확정 / 호스팅 대기 | §2 → `docs/legal/terms-of-service.md` (Round 2 self-publish) + `docs/runbooks/04-legal-hosting.md` |
 | Scope justifications written | OAuth verification | Eng + Product | 완료 | §2 → `docs/assets/marketplace/scope-justifications.md` (final 2026-05-04) + `docs/runbooks/06-oauth-verification.md` |
 | Restricted-scope demo video | OAuth verification | Product | 미작성 | §2 + `docs/runbooks/06-oauth-verification.md` |
 | Data handling / Admin answers drafted | Marketplace submission | Eng + Ops | 초안 | §3 |
