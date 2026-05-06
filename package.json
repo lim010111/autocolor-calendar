@@ -22,6 +22,7 @@
     "gen-secrets": "tsx scripts/gen-secrets.ts",
     "sync-secrets": "tsx scripts/sync-secrets.ts",
     "legal:build": "tsx scripts/build-legal.ts",
+    "assets:icons": "python3 scripts/generate-marketplace-icons.py",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
