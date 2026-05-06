@@ -82,16 +82,81 @@ status line 날짜를 갱신할 것.
 - test 계정 사용. 사용자 PII 노출 0.
 - 화면 레코더: OBS / Loom / QuickTime 등.
 
+### 사전 준비 (녹화 직전 체크리스트)
+
+영상이 5-15s 구간에서 **Install** 흐름과 65-90s 구간에서 **계정 삭제 →
+Welcome 카드 복귀**를 둘 다 보여줘야 하므로, 녹화 시점에 test 계정의
+환경이 "Add-on 미설치 + OAuth grant 없음"으로 초기화돼 있어야 한다. 또
+50-65s 구간의 **Sync 결과** 시각 확인용으로 캘린더에 매칭 이벤트와
+비매칭 이벤트가 적당히 섞여 있어야 한다.
+
+**(a) test 계정 등록**
+
+- 영상 촬영용 계정 1개 (본인 메인 계정 외 — 일정 PII 노출 방지). 신규
+  Gmail 계정 또는 본인 운영 부계정 모두 가능.
+- GCP Console → APIs & Services → OAuth consent screen → **Test users**
+  에 해당 이메일 등록. publishing status가 "In production"으로 전환되기
+  전까지(=Step 4 Submit 후 검수 통과 전까지) 미등록 사용자는 OAuth
+  consent에서 차단되므로 필수.
+- Marketplace 설치 흐름은 publishing status "Testing" 상태에서도 동작
+  하므로 본 영상은 검수 신청 전에도 촬영 가능.
+
+**(b) 캘린더 사전 데이터 (test 계정 기본 캘린더)**
+
+50-65s 구간의 매칭 시각 효과를 위해 영상 촬영 당일 또는 다음 날에 다음
+이벤트 4개를 미리 만들어 둔다 (모두 30분 길이, default 색상):
+
+| 제목 | 매칭 키워드 | 영상에서 기대 색 |
+|---|---|---|
+| `Team meeting` | "meeting" hits | 세이지 |
+| `Product sync meeting` | "meeting" hits | 세이지 |
+| `Lunch break` | (rule 없음 → no_match) | default |
+| `Solo focus block` | (rule 없음 → no_match) | default |
+
+매칭 이벤트 2건 + 비매칭 2건 구성으로 50-65s 시각 컷에서 "어떤 건 색이
+바뀌고 어떤 건 그대로"가 명확. **이벤트 제목은 영어로 통일** — 자막
+"events whose title contains 'meeting'"과 시각 일관성 + reviewer 영어권
+독해성.
+
+**(c) 녹화 직전 환경 초기화** (가장 빠뜨리기 쉬움)
+
+이전 dev 테스트 / 본인 메인 계정 install 흔적이 남아 있으면 5-15s
+"Install" 단계가 "이미 설치됨"으로 보여 흐름이 깨진다. 녹화 직전 다음을
+**test 계정에서** 실행:
+
+1. `myaccount.google.com/permissions` → "AutoColor" 항목 → **Remove
+   access** (OAuth grant 회수). 백엔드 `oauth_tokens.needs_reauth=true`로
+   flip되며 다음 sync에서 자동 logout 처리됨.
+2. Calendar 사이드바 → ⚙️ 설정 → Add-ons → AutoColor → **Uninstall**.
+   사이드바에서 아이콘 사라짐 확인.
+3. (선택) test 계정 캘린더에 이전 sync로 색이 입혀진 이벤트가 남아
+   있으면 수동으로 color reset — 또는 신규 이벤트 4건만 새로 만들고 이전
+   이벤트는 캘린더 view에서 가려지도록 다른 캘린더로 이동.
+4. Calendar 사이드바를 새로고침해 add-on 마켓 진입 가능한 상태인지
+   확인 (사이드바 우측 ➕ → AutoColor 검색 가능).
+
+**(d) 녹화 자체 환경**
+
+- Browser private/incognito window — 메인 계정 cookie 격리.
+- 화면 해상도 1920×1080 (1080p 송출용). 사이드바는 최대 폭으로 확장.
+- 마이크 음성: 한국어 narration 가능, 단 자막은 영어로 별도 입력.
+- 녹화 도구: OBS Studio (cross-platform) / Loom (브라우저) / QuickTime
+  (macOS) 중 택1.
+
 ### 시나리오 (60-90초 — 모든 Restricted scope 사용 demonstrated)
 
-| 구간 | 시간 | 동작 | 자막 |
+> 동작 컬럼의 한국어 버튼 라벨은 `gas/addon.js` V8 deploy 시점 기준
+> (`buildHomeCard` / `buildRuleManagementCard` / `buildSettingsCard` /
+> color list `addon.js:3-13`). UI 카피 변경 시 본 표 갱신 필요.
+
+| 구간 | 시간 | 동작 | 자막 (영문) |
 |---|---|---|---|
 | Hook | 0-5s | "AutoColor for Calendar" 타이틀 + 1줄 가치 제안 | "AutoColor automatically applies colors to calendar events." |
 | Install | 5-15s | Marketplace install → Calendar 사이드바에 add-on 표시 | "Install from Marketplace, then open the Calendar sidebar." |
-| OAuth | 15-30s | "백엔드 연결" 버튼 → Google consent screen → "Allow" → 사이드바 갱신 | "Sign in with Google. AutoColor requests Calendar read/write to apply colors." |
-| 카테고리 추가 | 30-50s | "규칙 관리" → 키워드 "meeting" + 색상 "Sage" → "규칙 추가" | "Define a rule: any event matching 'meeting' becomes Sage." |
-| Sync 결과 | 50-65s | "지금 동기화" → Calendar로 돌아가 "팀 미팅" 이벤트가 sage 색상으로 변경됨을 시각 확인 | "Run sync — matching events get colored automatically." |
-| 계정 삭제 | 65-90s | "설정" → "계정 삭제" → 확인 → add-on 사이드바가 로그아웃 상태로 환원 | "Delete account anytime — all data and OAuth grants are removed." |
+| OAuth | 15-30s | **"Google 계정으로 시작하기"** 버튼 → Google consent screen → "Allow" → 사이드바가 홈 카드로 갱신 | "Sign in with Google. AutoColor requests Calendar read/write to apply colors." |
+| 규칙 추가 | 30-50s | **"매핑 규칙 관리"** → **"새 규칙 추가"** → 키워드 입력 `meeting` + 색상 **세이지** 선택 → **"규칙 추가"** | "Define a rule — any event whose title contains 'meeting' becomes Sage." |
+| Sync 결과 | 50-65s | **"지금 즉시 동기화"** → Calendar로 돌아가 사전에 만들어 둔 **"Team meeting"** 이벤트가 세이지 색상으로 변경됨을 시각 확인 | "Run sync — matching events get colored automatically." |
+| 계정 삭제 | 65-90s | **"상세 설정"** → **"계정 삭제 / 데이터 삭제"** → 확인 → add-on 사이드바가 비-로그인 Welcome 카드로 환원 | "Delete your account anytime — all data and OAuth grants are removed." |
 
 ### 호스팅
 
