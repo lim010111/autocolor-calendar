@@ -12,45 +12,42 @@
 
 ---
 
-## 게이트 진행 상황 (2026-05-05 기준)
+## 게이트 진행 상황 (2026-05-06 기준)
 
 | 게이트                       | 상태             | 비고                                                    |
 | ---------------------------- | ---------------- | ------------------------------------------------------- |
 | G1 — 도메인 + Search Console | ✅ 완료          | `autocolorcal.app` GSC verified 2026-05-04              |
 | G2 — Prod 환경 활성화        | ✅ 완료          | PR #43 머지 (Hyperdrive / Queue / cron 바인딩)          |
-| G3 — CI/CD 파이프라인        | ⚠️ 거의 완료     | PR #45 머지 — `main` 보호 브랜치 룰 1건만 잔존 (작업 ①) |
+| G3 — CI/CD 파이프라인        | ✅ 완료          | PR #45 머지 + `main` classic branch protection 활성화 확인 2026-05-06 (4 status check + PR review 1명 + force-push/delete 차단; `enforce_admins: false`는 1인 개발자 emergency push 대비 의도적) |
 | G4 — Privacy/ToS 호스팅      | ✅ 완료          | `legal.autocolorcal.app/{privacy,terms}` publish 2026-05-05 + GCP Consent Screen 갱신 (③ 완료 / ⑥ self-publish 채택) |
 | G5 — Listing assets          | ⏳ 대기          | description 정본 OK, 아이콘·스크린샷 미완               |
 | G6 — OAuth 검수              | ⏳ critical path | scope 정당화 final, 데모 영상·Submit 미완               |
-| G7 — 백업/복구               | ⏳ 대기          | Supabase Pro 업그레이드 + PITR 활성화                   |
+| G7 — 백업/복구               | ⚠️ 진행중        | Supabase Pro 결제 완료 2026-05-06 / PITR 토글 잔존 (작업 ②) |
 | G8 — Marketplace publish     | ⏳ G6 의존       | 마지막 단계, 검수 1-3주                                 |
 
 ---
 
 ## ⏱️ 오늘 30분이면 끝나는 것
 
-### ① GitHub `main` 보호 브랜치 룰 (5분)
+### ① GitHub `main` 보호 브랜치 룰 (5분) — ✅ 2026-05-06 완료
 
-- **어디서**: GitHub repo → ⚙️ Settings → Branches → `Add branch ruleset`
-- **설정**:
-  - Rule name: `protect-main`
-  - Target branches: `main` (Default branch)
-  - ✅ Restrict deletions
-  - ✅ Require a pull request before merging (Required approvals: 0)
-  - ✅ Require status checks to pass — `test` / `typecheck` / `lint` / `migration-drift` 4개 추가
-  - ✅ Require branches to be up to date before merging
-  - ✅ Block force pushes
-- **왜 사용자만**: repo Settings 접근 권한
+- **어디서**: GitHub repo → ⚙️ Settings → Branches
+- **확인된 상태** (`gh api repos/.../branches/main/protection`):
+  - ✅ `required_status_checks.contexts`: `test` / `typecheck` / `lint` / `migration-drift`
+  - ✅ `required_pull_request_reviews.required_approving_review_count: 1`
+  - ✅ `allow_force_pushes: false`, `allow_deletions: false`
+  - ⚠️ `enforce_admins: false` — 1인 개발자 emergency push 대비 의도적 (PR push 시 `Bypassed rule violations` 메시지로 자동 통과)
+- **왜 사용자만이었음**: repo Settings 접근 권한
 - **Claude 도움**: 절차서 `docs/runbooks/03-cicd-pipeline.md` Step 3 참조
-- [ ] 룰 추가 완료 + 일부러 깨진 PR 1회로 게이트 동작 확인
+- [x] 룰 추가 완료 (4 status check + PR review 1명 + force-push/delete 차단)
 
-### ② Supabase Pro 업그레이드 + PITR (15분, $25/월)
+### ② Supabase Pro 업그레이드 + PITR (15분, $25/월) — ⚠️ Pro 결제 ✅ / PITR 토글 ⏳
 
 - **어디서**: supabase.com → 프로젝트 → Settings → Billing → **Upgrade to Pro**
 - **그 다음**: Database → Backups → **Point in Time Recovery 토글 ON**
 - **왜 사용자만**: 결제 카드 + Supabase 계정 owner
 - **Claude 도움**: `docs/runbooks/07-backup-and-recovery.md` Step 1-2
-- [ ] Pro plan 결제
+- [x] Pro plan 결제 (2026-05-06)
 - [ ] PITR 활성화 확인 (Backups 탭에 PITR 옵션 표시)
 
 ---

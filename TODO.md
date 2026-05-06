@@ -128,7 +128,7 @@
 
 ## 7. 배포 및 출시
 
-- [ ] Cloudflare Workers 배포 및 CI/CD 파이프라인 (GitHub Actions) 구축 (→ §6.1 E2E 테스트의 선행조건)
-- [ ] Supabase 데이터베이스 백업/복구 정책 수립
+- [x] Cloudflare Workers 배포 및 CI/CD 파이프라인 (GitHub Actions) 구축 (→ §6.1 E2E 테스트의 선행조건) — `.github/workflows/ci.yml` 4 job(test/typecheck/lint/migration-drift) + `main` classic branch protection(4 status check + PR review 1명 + force-push/delete 차단) 활성화. `enforce_admins: false`는 1인 개발자 emergency push 대비 의도적. 자동 deploy job은 G6 통과 후로 미룸 (`docs/runbooks/03-cicd-pipeline.md` Step 5).
+- [ ] Supabase 데이터베이스 백업/복구 정책 수립 — Supabase Pro 결제 완료 (2026-05-06). PITR 토글 + 복구 리허설 잔여 (`docs/runbooks/07-backup-and-recovery.md`).
 - [ ] Google Cloud Console: OAuth Consent Screen 검수(Verification) 신청을 위한 데모/문서 준비 (체크리스트: `docs/marketplace-readiness.md`)
 - [ ] 개인정보처리방침, 서비스 약관 작성 및 Google Workspace Marketplace 등록 (체크리스트: `docs/marketplace-readiness.md`)
