@@ -259,7 +259,7 @@ a gate, edit the owning source first and then the status here.
 | Account-deletion endpoint live | Marketplace submission | Eng | 완료 | §3 → `POST /api/account/delete` (`src/routes/account.ts`) — FK cascade로 9개 user-scoped 테이블 정리 + Google revoke + watch-stop. 계약은 `src/CLAUDE.md` "Account deletion (§3 row 179)" |
 | Reviewer demo bundle | OAuth verification | Product + Eng | 초안 | §4 |
 | CI/CD pipeline | Quality gate | Eng | 완료 | `TODO.md:129` + `docs/runbooks/03-cicd-pipeline.md` (`.github/workflows/ci.yml` 4-job + `main` 보호 룰셋 활성화. Step 5 자동 deploy job은 의도적 미룸 — G6 통과 후) |
-| Backup / recovery policy | Admin review | Eng | 초안 | `TODO.md:130` + `docs/runbooks/07-backup-and-recovery.md` (Supabase Pro 결제 완료 2026-05-06; PITR 토글 + 복구 리허설 잔여) |
+| Backup / recovery policy | Admin review | Eng | 초안 | `TODO.md:130` + `docs/runbooks/07-backup-and-recovery.md` (Supabase Pro 결제 완료 2026-05-06; **PITR add-on 보류 결정 (2026-05-06)** — daily snapshot 7일 보존만 운영, RPO 24h. PITR 도입은 유료 사용자 규모/매출 트리거 충족 후. daily snapshot 기반 복구 리허설 1회 잔여) |
 | Security principles index current | Reviewer spot-checks | Eng | 완료 | `docs/security-principles.md` |
 | Marketplace submission (publish 단계) | — | Product + Eng | 미작성 | `docs/runbooks/08-marketplace-submission.md` (G1·G2·G4·G5·G6·G7 충족 후 publish) |
 
