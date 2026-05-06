@@ -92,19 +92,19 @@
 - [ ] 4장 촬영 + 리사이즈
 - [ ] `docs/assets/marketplace/screenshots/`에 저장
 
-### ⑤ 아이콘 디자인 (외주 1주 / 직접 2-3시간)
+### ⑤ 아이콘 디자인 (직접 채택, 8종 일습 commit 완료)
 
 - **사양**: 128×128 + 32×32 PNG, 투명 배경 또는 brand background
-- **저장**: `docs/assets/marketplace/icons/icon-128.png`, `icon-32.png`
-- **그 다음**: `gas/appsscript.json:17`의 `gstatic` placeholder URL 교체 → 자체 도메인(`autocolorcal.app/icon-128.png`) 또는 GAS 정적 자원
-- **옵션 A — 외주** ($30-150, 5-7일): 크몽 / Fiverr
-- **옵션 B — 직접** (Figma / Canva): 캘린더 + 색상 팔레트 모티프
+- **저장**: `docs/assets/marketplace/icons/` (1024 / 480 / 128 / 32 / 16 + mono-dark/light + source.svg = 8종)
+- **그 다음**: `gas/appsscript.json:22` `logoUrl` 교체 완료 (`https://legal.autocolorcal.app/icon-128.png`) → 아이콘은 `scripts/build-legal.ts`가 `dist/legal/`로 함께 publish하므로 ③ Cloudflare Pages 새 deploy 1회로 라이브
+- **옵션 A — 외주** ($30-150, 5-7일): 크몽 / Fiverr ← 미채택
+- **옵션 B — 직접** (Figma / Canva): 캘린더 + 색상 팔레트 모티프 ← **채택 (`scripts/generate-marketplace-icons.py`로 재생성 가능, commit `aa4ff62`)**
 - **왜 사용자만**: 브랜드 미감 결정
 - **Claude 도움**: 디자인 브리프 (외주 전달용), 컨셉 스케치, 컬러 팔레트 제안
 - **상세**: `docs/runbooks/05-marketplace-listing-assets.md` Step 2
-- [ ] 옵션 결정 (외주 / 직접)
-- [ ] 아이콘 PNG 2종 생성
-- [ ] `gas/appsscript.json:17` URL 교체 + GAS 새 version 배포
+- [x] 옵션 결정 (외주 / 직접) — **직접**
+- [x] 아이콘 PNG 8종 + SVG 1종 생성 (commit `aa4ff62`)
+- [x] `gas/appsscript.json:22` `logoUrl` 교체 (코드 commit, GAS 새 version 배포는 ③ Pages deploy 후 운영자 수동 단계로 잔존)
 
 ---
 

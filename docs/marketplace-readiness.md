@@ -71,7 +71,7 @@ only the index.
 | App display name | `gas/appsscript.json:16` | 완료 | — | "AutoColor" confirmed |
 | Short description (KR / EN) | `docs/assets/marketplace/description.md` | 완료 | Product | KR 41자 / EN 65 chars; tone-review pending pre-publish |
 | Long description (KR / EN) | `docs/assets/marketplace/description.md` | 완료 | Product | Derived from `docs/add-on-ui-plan.md` Screen 1·2 + `gas/addon.js:95-115` 3-step copy |
-| App icon 128×128 / 32×32 | TBD `docs/assets/marketplace/icons/` | 미작성 | Design | Replace `gstatic` placeholder at `gas/appsscript.json:17` |
+| App icon 128×128 / 32×32 | `docs/assets/marketplace/icons/` (8종 일습) | 초안 | Design | 1024 마스터 + 480/128/32/16 + mono-dark/light + source SVG commit 완료. `scripts/generate-marketplace-icons.py`로 재생성. Cloudflare Pages 호스팅 + `gas/appsscript.json:22` `logoUrl` 교체 pending |
 | Promotional screenshots (≥ 3) | TBD `docs/assets/marketplace/screenshots/` | 미작성 | Design | Welcome / Home / Rules / Event preview |
 | Promotional video (optional) | TBD | 미작성 | Product | Reusable for the §2 restricted-scope demo |
 | Category | TBD | 미작성 | Product | Candidate: Productivity |

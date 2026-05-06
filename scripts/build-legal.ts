@@ -8,7 +8,7 @@
  * Source-of-truth: docs/runbooks/04-legal-hosting.md Step 3 (option A).
  */
 
-import { readFile, writeFile, mkdir } from "node:fs/promises";
+import { readFile, writeFile, mkdir, readdir, copyFile } from "node:fs/promises";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { marked } from "marked";
@@ -16,6 +16,7 @@ import { marked } from "marked";
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const repoRoot = join(__dirname, "..");
 const srcDir = join(repoRoot, "docs", "legal");
+const iconSrcDir = join(repoRoot, "docs", "assets", "marketplace", "icons");
 const outDir = join(repoRoot, "dist", "legal");
 
 interface Page {
@@ -149,12 +150,22 @@ async function buildPage(page: Page): Promise<void> {
   console.log(`  ✓ ${page.src} → dist/legal/${page.slug}.html (${out.length.toLocaleString()} bytes)`);
 }
 
+async function copyIcons(): Promise<void> {
+  const entries = await readdir(iconSrcDir);
+  const targets = entries.filter((f) => f.endsWith(".png") || f.endsWith(".svg"));
+  for (const f of targets) {
+    await copyFile(join(iconSrcDir, f), join(outDir, f));
+    console.log(`  ✓ icons/${f} → dist/legal/${f}`);
+  }
+}
+
 async function main(): Promise<void> {
   await mkdir(outDir, { recursive: true });
   console.log(`legal:build → ${outDir}`);
   for (const page of pages) {
     await buildPage(page);
   }
+  await copyIcons();
 }
 
 main().catch((err) => {

@@ -42,7 +42,7 @@
 ### 2.2 스타일
 
 - **모서리 둥근 사각형** (Material Design / Workspace Add-on 표준). 현재
-  `gas/appsscript.json:17`의 `gstatic palette_black_48dp` placeholder가
+  `gas/appsscript.json:22`의 `gstatic palette_black_48dp` placeholder가
   정확히 이 스타일 — Marketplace 내 다른 add-on과 조화.
 - **단순함**: 32px에서 식별 가능한 silhouette. 디테일 과다는 favicon에서
   blob으로 보임.
@@ -211,8 +211,8 @@ Google OAuth 동의 화면 상단:
 2. [`docs/runbooks/04-legal-hosting.md`](../../runbooks/04-legal-hosting.md)
    Step 3의 Cloudflare Pages 빌드 결과물에 `icon-128.png` / `icon-32.png`
    포함되도록 빌드 스크립트 업데이트.
-3. [`gas/appsscript.json:17`](../../../gas/appsscript.json) `logoUrl`을
-   `https://autocolorcal.app/icon-128.png`으로 교체. GAS 새 version 배포
+3. [`gas/appsscript.json:22`](../../../gas/appsscript.json) `logoUrl`을
+   `https://legal.autocolorcal.app/icon-128.png`으로 교체. GAS 새 version 배포
    ([`src/CLAUDE.md`](../../../src/CLAUDE.md) "GAS deployment URL must
    stay stable" 준수 — 기존 deployment의 New version만, 신규 deployment
    금지).

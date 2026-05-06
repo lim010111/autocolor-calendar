@@ -19,7 +19,7 @@
   "addOns": {
     "common": {
       "name": "AutoColor",
-      "logoUrl": "https://www.gstatic.com/images/icons/material/system/1x/palette_black_48dp.png",
+      "logoUrl": "https://legal.autocolorcal.app/icon-128.png",
       "useLocaleFromApp": true,
       "openLinkUrlPrefixes": [
         "https://autocolor-dev.autocolor-lim.workers.dev",
