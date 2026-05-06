@@ -43,7 +43,8 @@ Workers·Supabase·GCP·GAS Editor)이 단계 단위로 정리되어 있다. 코
   Consent Screen 입력값 final 점검·"Submit for verification"·통과/거절
   대응·CASA 평가 트리거.
 - [07 — Backup and recovery](./07-backup-and-recovery.md)
-  — Supabase plan 결정·Point-in-Time Recovery 활성화·RPO/RTO 정의·복구
+  — Supabase plan 결정·daily snapshot 운영 (PITR add-on 보류 — 유료
+  사용자 규모 / 매출 / SLA 트리거 충족 후 도입)·RPO/RTO 정의·복구
   리허설 + Disaster recovery 시나리오 (단일 row / 전면 손실 / Hyperdrive
   장애)·정기 운영 트리거.
 - [08 — Marketplace submission](./08-marketplace-submission.md)
