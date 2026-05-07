@@ -195,6 +195,47 @@ export async function patchEventColor(
   if (!res.ok) await throwApiError(res, "events.patch");
 }
 
+// Per-event manual override (sidebar "변경사항 저장"). Sets `colorId` to a
+// concrete value AND deletes the three §5.4 ownership markers in the same
+// PATCH. Result: the event is unambiguously user-manual, so the next
+// incremental sync's §5.4 check (`current !== "" && !appOwned`) lands on
+// `skipped_manual` and leaves the user's choice intact — same outcome as
+// editing the color directly in Google Calendar.
+//
+// Separate from `patchEventColor` (sync-pipeline writer) and
+// `clearEventColor` (rule-deletion rollback) to keep each function's
+// payload contract narrow: this is the only call site that combines a
+// non-null `colorId` with explicit marker deletion.
+export async function patchEventColorManual(
+  accessToken: string,
+  calendarId: string,
+  eventId: string,
+  colorId: string,
+): Promise<void> {
+  const url = `${CALENDAR_BASE}/calendars/${encodeURIComponent(
+    calendarId,
+  )}/events/${encodeURIComponent(eventId)}`;
+  const body = {
+    colorId,
+    extendedProperties: {
+      private: {
+        [AUTOCOLOR_KEYS.version]: null,
+        [AUTOCOLOR_KEYS.color]: null,
+        [AUTOCOLOR_KEYS.category]: null,
+      },
+    },
+  };
+  const res = await fetch(url, {
+    method: "PATCH",
+    headers: {
+      authorization: `Bearer ${accessToken}`,
+      "content-type": "application/json",
+    },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) await throwApiError(res, "events.patch.manual");
+}
+
 // §5 후속 B — rule-deletion rollback. PATCH an event to clear both the
 // color override AND the three autocolor ownership markers. `null` on a
 // top-level field (`colorId`) resets it to the calendar default; `null`
