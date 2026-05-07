@@ -14,6 +14,14 @@ function getCalendarColors() {
   ];
 }
 
+function getColorOrderIndex(colorId) {
+  var colors = getCalendarColors();
+  for (var i = 0; i < colors.length; i++) {
+    if (colors[i].id === colorId) return i;
+  }
+  return Number.MAX_SAFE_INTEGER;
+}
+
 /**
  * Entry point for the Google Workspace Add-on (Homepage Trigger).
  *
@@ -867,8 +875,8 @@ function buildRuleManagementCard(e) {
   builder.addSection(navSection);
   
   var addSection = CardService.newCardSection()
-    .setHeader("새 규칙 추가");
-    
+    .setHeader("키워드 입력");
+
   var priorKeyword = "";
   if (e && e.formInput && e.formInput.rule_keyword) {
     priorKeyword = e.formInput.rule_keyword;
@@ -882,12 +890,11 @@ function buildRuleManagementCard(e) {
 
   addSection.addWidget(CardService.newTextInput()
     .setFieldName("rule_keyword")
-    .setTitle("키워드 (예: 회의, 미팅)")
-    .setHint("콤마(,)로 여러 개 입력 가능")
+    .setTitle("예: 회의, 미팅")
     .setValue(priorKeyword));
 
   var colorGrid = CardService.newGrid()
-    .setTitle("캘린더 색상 선택")
+    .setTitle("일정 색상 선택")
     .setNumColumns(6)
     .setOnClickAction(CardService.newAction().setFunctionName("actionSelectColorForRule"));
     
@@ -937,6 +944,9 @@ function buildRuleManagementCard(e) {
       .setWrapText(true));
   } else {
     var colors = getCalendarColors();
+    rules.sort(function(a, b) {
+      return getColorOrderIndex(a.colorId) - getColorOrderIndex(b.colorId);
+    });
     rules.forEach(function(rule) {
       var colorObj = null;
       for (var i = 0; i < colors.length; i++) {
@@ -945,7 +955,6 @@ function buildRuleManagementCard(e) {
           break;
         }
       }
-      var colorName = colorObj ? colorObj.label : "색상 없음";
       var colorUrl = colorObj ? colorObj.url : "";
 
       var deleteButton = CardService.newTextButton()
@@ -957,7 +966,6 @@ function buildRuleManagementCard(e) {
       listSection.addWidget(CardService.newDecoratedText()
         .setStartIcon(CardService.newIconImage().setIconUrl(colorUrl).setImageCropType(CardService.ImageCropType.CIRCLE))
         .setText(rule.keyword)
-        .setBottomLabel(colorName)
         .setButton(deleteButton));
     });
   }
