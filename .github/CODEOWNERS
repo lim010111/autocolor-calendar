@@ -1,0 +1,36 @@
+# CODEOWNERS — review routing
+#
+# Single-owner repo today. The point of this file is not headcount but
+# discoverability: a reviewer (human or agent) opening a PR can see at a
+# glance which surfaces are sensitive enough to require explicit sign-off.
+#
+# Conventions:
+#   - Default owner: @lim010111 (everything not otherwise routed).
+#   - High-stakes paths get a duplicate explicit entry so changes there are
+#     reviewed against the relevant invariants in src/CLAUDE.md, not just
+#     diff-clean criteria.
+
+# Default
+*                                       @lim010111
+
+# Backend operational invariants — token rotation, color ownership,
+# tenant-isolation exceptions live in this surface.
+/src/CLAUDE.md                          @lim010111
+/src/services/                          @lim010111
+/src/queues/                            @lim010111
+/src/middleware/                        @lim010111
+/src/db/schema.ts                       @lim010111
+
+# Migrations — read SQL diff before merging.
+/drizzle/                               @lim010111
+
+# OAuth + scope manifest — Marketplace review surface.
+/gas/appsscript.json                    @lim010111
+/gas/auth.js                            @lim010111
+/src/routes/oauth.ts                    @lim010111
+/src/routes/account.ts                  @lim010111
+
+# CI gates and secret-handling scripts.
+/.github/                               @lim010111
+/scripts/                               @lim010111
+/wrangler.toml                          @lim010111
