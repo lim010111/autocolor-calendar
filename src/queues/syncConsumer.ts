@@ -103,6 +103,12 @@ async function handleOne(
         attempts: r.attempts,
         ...(r.httpStatus !== undefined ? { httpStatus: r.httpStatus } : {}),
         ...(r.categoryName !== undefined ? { categoryName: r.categoryName } : {}),
+        ...(r.eventId !== undefined ? { eventId: r.eventId } : {}),
+        ...(r.promptSummary !== undefined ? { promptSummary: r.promptSummary } : {}),
+        ...(r.rawResponse !== undefined ? { rawResponse: r.rawResponse } : {}),
+        ...(r.availableCategories !== undefined
+          ? { availableCategories: r.availableCategories }
+          : {}),
       }));
       execCtx.waitUntil(
         db

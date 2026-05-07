@@ -309,6 +309,43 @@ describe("buildDefaultClassifier — rule → LLM chain", () => {
     expect(second.categoryCount).toBe(1);
   });
 
+  it("§6.3 후속 — quota-latched synthetic record carries eventId + availableCategories (NOT promptSummary / rawResponse)", async () => {
+    // The latched skip never builds a prompt or hits the network, so
+    // `promptSummary` / `rawResponse` MUST be undefined to match the
+    // schema NULL semantics. `eventId` and `availableCategories` are
+    // known cheaply and would be useful for debugging which event tripped
+    // the over-quota fallthrough.
+    const reserveSpy = vi.fn(async () => ({ ok: false, count: 201 }));
+    const onLlmCall = vi.fn();
+    const classify = buildDefaultClassifier({
+      db: {} as never,
+      env: makeEnv(),
+      userId: USER,
+      reserve: reserveSpy,
+      onLlmCall,
+    });
+
+    // First call latches via classifyWithLlm.
+    await classify(ev({ id: "evt-A", summary: "x" }), ctxOf([cat()]));
+    // Second call is the chain's synthetic skip.
+    await classify(
+      ev({ id: "evt-B", summary: "y" }),
+      ctxOf([cat({ name: "회의" }), cat({ id: "c-2", name: "개인" })]),
+    );
+
+    expect(onLlmCall).toHaveBeenCalledTimes(2);
+    const synth = onLlmCall.mock.calls[1]![0] as {
+      eventId?: string;
+      availableCategories?: string[];
+      promptSummary?: string;
+      rawResponse?: string;
+    };
+    expect(synth.eventId).toBe("evt-B");
+    expect(synth.availableCategories).toEqual(["회의", "개인"]);
+    expect(synth.promptSummary).toBeUndefined();
+    expect(synth.rawResponse).toBeUndefined();
+  });
+
   it("empty categories → null, no LLM counters bumped (LLM leg short-circuits)", async () => {
     const fetchSpy = vi.fn();
     globalThis.fetch = fetchSpy as unknown as typeof fetch;

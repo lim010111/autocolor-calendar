@@ -58,6 +58,11 @@ export function buildDefaultClassifier(deps: ChainDeps): ClassifyEventFn {
       // Quota already confirmed exhausted earlier in this run — skip both
       // the LLM fetch and the `reserveLlmCall` UPSERT. Still count the
       // event so the summary reflects that the chain wanted to call LLM.
+      // §6.3 후속: even though no fetch fires, populate `eventId` and
+      // `availableCategories` so the row is consistent with non-latched
+      // `quota_exceeded` rows from `classifyWithLlm`. `promptSummary` and
+      // `rawResponse` stay undefined because no prompt was built and no
+      // response was received.
       deps.onLlmAttempted?.();
       deps.onLlmQuotaExceeded?.();
       deps.onLlmCall?.({
@@ -65,6 +70,10 @@ export function buildDefaultClassifier(deps: ChainDeps): ClassifyEventFn {
         latencyMs: 0,
         categoryCount: Math.min(LLM_PROMPT_MAX_CATEGORIES, ctx.categories.length),
         attempts: 0,
+        eventId: event.id,
+        availableCategories: ctx.categories
+          .slice(0, LLM_PROMPT_MAX_CATEGORIES)
+          .map((c) => c.name),
       });
       return null;
     }
