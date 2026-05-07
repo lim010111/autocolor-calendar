@@ -109,7 +109,7 @@ function buildWelcomeCard() {
     
   tutorialSection.addWidget(CardService.newDecoratedText()
     .setTopLabel("3단계. 자동 색상 적용")
-    .setText("백그라운드에서 AutoColor가 자동으로 일정을 찾아 예쁜 색상을 입혀줍니다! ✨")
+    .setText("일정을 등록하면 보통 5~10초 안에 자동으로 색상이 적용됩니다. ✨ 사이드바를 열지 않아도 백그라운드에서 동작합니다.")
     .setWrapText(true));
     
   builder.addSection(tutorialSection);
@@ -160,7 +160,7 @@ function buildHomeCard() {
   if (pushActive) {
     pushSection.addWidget(CardService.newDecoratedText()
       .setText("🟢 자동 동기화 활성")
-      .setBottomLabel("일정을 만들면 자동으로 색이 적용됩니다."));
+      .setBottomLabel("일정을 만들면 보통 5~10초 안에 자동으로 색이 적용됩니다."));
   } else {
     pushSection.addWidget(CardService.newDecoratedText()
       .setText("🔴 자동 동기화 비활성")
