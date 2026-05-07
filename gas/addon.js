@@ -706,9 +706,87 @@ function actionRetryAnalysis(e) {
     .build();
 }
 
+/**
+ * Per-event manual color override. Posts the user's grid pick to
+ * `POST /api/events/:calendarId/:eventId/color`, which PATCHes the
+ * event's `colorId` AND clears the §5.4 ownership marker so the next
+ * sync respects the user's choice as `skipped_manual`.
+ *
+ * Pre-fetch guards: bail with a toast if the user hasn't picked a color
+ * or the event context is missing. Success toast fires only AFTER the
+ * 200 response — never before — so the user is never told the apply
+ * succeeded when it didn't.
+ */
 function actionSaveEventOverride(e) {
+  var p1 = (e && e.parameters) || {};
+  var p2 = (e && e.commonEventObject && e.commonEventObject.parameters) || {};
+  var selectedColorId = p1.selectedColorId || p2.selectedColorId || null;
+
+  if (!selectedColorId) {
+    return CardService.newActionResponseBuilder()
+      .setNotification(CardService.newNotification().setText("색상을 먼저 선택해주세요."))
+      .build();
+  }
+
+  var calendarId = e && e.calendar && e.calendar.calendarId;
+  var eventId = e && e.calendar && e.calendar.id;
+  if (!calendarId || !eventId) {
+    return CardService.newActionResponseBuilder()
+      .setNotification(CardService.newNotification().setText("선택된 일정을 찾지 못했습니다."))
+      .build();
+  }
+
+  var endpoint =
+    '/api/events/' +
+    encodeURIComponent(calendarId) +
+    '/' +
+    encodeURIComponent(eventId) +
+    '/color';
+
+  try {
+    AutoColorAPI.fetchBackend(endpoint, {
+      method: 'post',
+      contentType: 'application/json',
+      payload: JSON.stringify({ colorId: selectedColorId }),
+    });
+  } catch (err) {
+    var msg = (err && err.message) || '';
+    if (msg === 'AUTH_EXPIRED' || msg.indexOf('reauth') !== -1) {
+      return CardService.newActionResponseBuilder()
+        .setNavigation(CardService.newNavigation().popToRoot().updateCard(buildReconnectCard()))
+        .build();
+    }
+    var notice;
+    if (msg.indexOf('event_not_found') !== -1 || msg.indexOf('CLIENT_ERROR: 404') === 0) {
+      notice = "일정을 찾지 못했습니다. 새로고침 후 다시 시도해주세요.";
+    } else if (msg.indexOf('forbidden') !== -1 || msg.indexOf('CLIENT_ERROR: 403') === 0) {
+      notice = "이 일정의 색상을 변경할 권한이 없습니다.";
+    } else if (msg.indexOf('rate_limited') !== -1 || msg.indexOf('429') !== -1) {
+      notice = "잠시 후 다시 시도해주세요.";
+    } else if (msg.indexOf('CLIENT_ERROR') === 0) {
+      notice = "색상 적용에 실패했습니다. 잠시 후 다시 시도해주세요.";
+    } else {
+      // SERVER_ERROR / Fetch failed after N attempts / 그 외 — raw 메시지를
+      // 사용자에게 노출하지 않고 친화적으로 매핑.
+      notice = "색상 적용에 실패했습니다. 잠시 후 다시 시도해주세요.";
+    }
+    return CardService.newActionResponseBuilder()
+      .setNotification(CardService.newNotification().setText(notice))
+      .build();
+  }
+
+  // 200 응답 이후에만 success toast 출력. 색상 라벨 포함해서 어떤 색이
+  // 적용됐는지 사용자에게 명확히 표시.
+  var colors = getCalendarColors();
+  var label = "색상";
+  for (var i = 0; i < colors.length; i++) {
+    if (colors[i].id === selectedColorId) {
+      label = colors[i].label;
+      break;
+    }
+  }
   return CardService.newActionResponseBuilder()
-    .setNotification(CardService.newNotification().setText("일정 색상이 업데이트되었습니다."))
+    .setNotification(CardService.newNotification().setText(label + " 색상을 적용했습니다."))
     .build();
 }
 
