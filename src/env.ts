@@ -44,6 +44,15 @@ export type Bindings = {
   // in `classifyWithLlm`; NaN / ≤ 0 / unset all fall back to the default
   // (200). Exists so we can bump or lower the ceiling without a redeploy.
   LLM_DAILY_LIMIT?: string;
+
+  // Cost guardrail (§5/§6 후속) — operator-side global daily LLM call
+  // ceiling. Bumped via `llm_usage_global_daily` BEFORE the per-user
+  // counter inside `reserveLlmCall`. Default = 10,000 calls/day
+  // (≈ $21/month at current gpt-5.4-nano pricing assumptions). Same parse
+  // rules as `LLM_DAILY_LIMIT` — NaN / ≤ 0 / unset all fall back to the
+  // default. Defined as a `vars` value (not a secret) so operators can
+  // adjust per environment without re-deploying.
+  LLM_GLOBAL_DAILY_LIMIT?: string;
 };
 
 export type Variables = {

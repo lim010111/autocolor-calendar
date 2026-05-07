@@ -319,13 +319,143 @@ When set, rule-miss events are forwarded through the same
   `classifyRoute.test.ts`'s "rule hit via chain" case).
 - Preview is triggered by an explicit GAS button (`actionClassifyWithLlm`),
   which throttles user-initiated invocations socially. A dedicated preview
-  rate limit is deferred to §6.4 후속.
+  rate limit is **enforced by the route via `users.last_preview_at`** — see
+  "Cost guardrail (§5/§6 후속)" below. Sliding-window minute/hour rate
+  limits remain deferred to the §6.4 후속 general rate-limit work.
 
 Response shape additions: `source: "llm"` for LLM hits (no
 `matchedKeyword`); `llmTried: true` on `source: "no_match"` when the chain
 engaged the LLM leg (key present + categories ≥ 1 + reached `onLlmAttempted`).
 Callers that are `llm: false` / omit the flag see the pre-existing three
 shapes only — the new shapes are opt-in and backwards-compatible.
+
+## Cost guardrail (§5/§6 후속)
+
+Operator-side OpenAI-credit protection. Five mechanisms layered to make a
+single hung request, a macro-driven preview spam, an unbounded user signup
+ramp, and a malformed model response all converge on a small, bounded cost.
+
+### Two-tier daily cap (`reserveLlmCall`)
+
+`reserveLlmCall` (`src/services/llmClassifier.ts`) bumps two atomic UPSERT
+counters BEFORE every OpenAI fetch:
+
+1. **Global tier** — `llm_usage_global_daily(day PRIMARY KEY, call_count)`.
+   Default cap **10,000 calls/day** via `LLM_GLOBAL_DAILY_LIMIT` (vars,
+   not secret — present in `wrangler.toml` per env, parsed by
+   `parseGlobalDailyLimit`). Hit: every user's LLM fallback collapses to
+   silent `no_match` for the rest of the UTC day.
+2. **Per-user tier** — `llm_usage_daily(user_id, day)`, the §5.3 200/day
+   guard. Same UPSERT pattern.
+
+**Order is global-first by design.** If the global counter is already
+exhausted, the per-user counter is NOT touched, so an unrelated user
+doesn't burn one of their 200 daily calls because some other user filled
+the global bucket. The mirror trade-off is that the global counter can
+over-count by exactly one when per-user fails after global succeeded —
+that is the safe direction (next call sees the inflated count and aborts
+earlier). Documented inline at the top of `reserveLlmCall`.
+
+**Cross-user UPSERT exception.** The global tier writes
+`llm_usage_global_daily` without a `user_id` predicate (the table has no
+such column). This is the **second documented exception** to the
+"Tenant isolation" rule above (the first being the §3-후속 token-rotation
+cron at `src/services/tokenRotation.ts`). The exception is justified
+because `llm_usage_global_daily` is operator-scoped, not user-scoped, and
+the migration / `0014_youthful_leopardon.sql` header makes this explicit.
+Any new query that touches `llm_usage_global_daily` MUST keep this
+operator-scope discipline; do NOT add a `user_id` column or rewrite the
+table to per-user storage without re-deriving the global cap separately.
+
+**Failure path uniformity.** Both `reason: "global"` and `reason: "per_user"`
+denials produce `outcome: "quota_exceeded"` in the chain, which collapses
+to silent `no_match` in `calendarSync.processEvent` — identical user-facing
+behavior. The `reason` field is reserved for future telemetry (e.g. an
+`llm_calls.quota_reason` column) but is intentionally NOT in `llm_calls`
+today; operators distinguish by joining against `llm_usage_global_daily`.
+
+### Preview throttle (`users.last_preview_at`)
+
+Sole-writer single-column rate limit, mirror of `sync_state.last_manual_trigger_at`
+(§6.4) and `sync_state.watch_renewal_in_progress_at` (§6.4 / §4B M4).
+
+- **Sole writer** is `src/routes/classify.ts`'s `POST /api/classify/preview`,
+  and only on the `llm: true` branch. **Never write this column from any
+  other code path.** Adding a second writer (e.g. a future "preview now"
+  admin endpoint) silently re-opens the abuse window the throttle was
+  designed to close.
+- **2-second minimum interval** via atomic `UPDATE … WHERE id = ? AND
+  (last_preview_at IS NULL OR last_preview_at < now() - interval N)
+  RETURNING id`. Zero rows returned ≡ throttled → 429 `preview_throttled`
+  with `Retry-After: 2`. The atomic UPDATE-RETURNING is stricter than
+  `last_manual_trigger_at`'s SELECT-then-UPDATE because the threat model
+  here is automated bots, not button spam — see the inline rationale in
+  `classify.ts`.
+- **`llm: false` / omitted skip the throttle entirely.** Rule-only
+  classification costs nothing (DB-only), and the GAS sidebar's default
+  path is rule-only.
+- **NULL semantics**: pre-migration rows land with `NULL`, treated as "no
+  prior call observed" by the OR-clause — first stamp goes through.
+
+### Prompt-side input caps (`buildPrompt` truncation)
+
+`buildPrompt` (`src/services/llmClassifier.ts`) slices each user-authored
+field AFTER `redactEventForLlm`:
+
+- `summary` → 256 UTF-16 chars (`LLM_PROMPT_SUMMARY_MAX`)
+- `description` → 1024 UTF-16 chars (`LLM_PROMPT_DESC_MAX`)
+- `location` → 256 UTF-16 chars (`LLM_PROMPT_LOC_MAX`)
+
+The route-layer Zod cap (`description.max(8000)` in `classify.ts`) only
+protects `/api/classify/preview` — the **sync path receives raw Calendar
+events whose descriptions reach Google's 32KB ceiling**, so `buildPrompt`
+is the actual chokepoint that bounds input tokens. Truncation is silent;
+classification quality tradeoff is acceptable per the §5.3 whitelist
+rationale (leading characters carry the highest classification signal).
+Surrogate-pair splits on emoji boundaries are documented inline as
+benign (model treats lone surrogates as opaque text).
+
+### Response-token cap (`max_completion_tokens`)
+
+`callOpenAi` payload includes `max_completion_tokens: 64`
+(`LLM_MAX_COMPLETION_TOKENS`). Structured-output JSON schema constrains
+the response to `{ "category_name": "<name>" }`, even a verbose Korean
+category name leaves us well under 64 tokens. If the model overruns (e.g.
+reasoning-token regression), the response truncates and `parseCategoryName`
+returns `bad_response` → silent miss. Operator-side cost-per-call thus
+becomes a bounded constant regardless of model behavior.
+
+### Daily cost report cron (`runDailyCostReport`)
+
+`5 0 * * *` UTC dispatched from `src/index.ts`'s `scheduled()` at
+`DAILY_COST_REPORT_CRON`. Reads yesterday's `llm_usage_global_daily` row
+and emits one structured log line:
+
+- `console.warn` when `call_count >= floor(globalLimit * 80 / 100)`
+  (`WARN_THRESHOLD_PCT`) — operators tailing `wrangler tail` see saturation.
+- `console.log` (info) otherwise. Empty rows (the day saw zero LLM
+  activity) still emit a normal info line with `count: 0` so absence of
+  activity is visible.
+
+**Failure isolation matches the §6 Wave A/B observability discipline.**
+The dispatcher wraps `runDailyCostReport` in `.catch(warn)` at the top
+level; the function itself never rethrows. An observability-write failure
+must NEVER trigger cron retry — a retried tick re-issues the SELECT
+against the same row and provides zero additional signal. Cron lockstep
+with `wrangler.toml` `[env.dev.triggers].crons` / `[env.prod.triggers].crons`
+is mandatory; drift lands the dispatch in the "unknown cron" warn branch
+(see `src/index.ts` cron-string constants comment).
+
+### What's deferred
+
+- **Per-IP signup rate limit** — Marketplace+Google OAuth provide initial
+  bot defense; revisit after launch if abuse patterns appear. Tracked
+  separately from this section.
+- **Per-call `quotaReason` telemetry** — `llm_calls` does not yet
+  distinguish global vs per-user denials. Operators cross-reference
+  `llm_usage_global_daily` for the global tier today.
+- **Sliding-window minute/hour rate limits** — covered by the §6.4 후속
+  general rate-limit work, not this guardrail.
 
 ## Manual-trigger rate limit (§6.4)
 

@@ -1,14 +1,33 @@
-import { asc, eq } from "drizzle-orm";
+import { and, asc, eq, isNull, or, sql } from "drizzle-orm";
 import { Hono } from "hono";
 import { z } from "zod";
 
 import { getDb } from "../db";
-import { categories, llmCalls } from "../db/schema";
+import { categories, llmCalls, users } from "../db/schema";
 import type { HonoEnv } from "../env";
 import { authMiddleware } from "../middleware/auth";
 import { classifyEvent } from "../services/classifier";
 import { buildDefaultClassifier } from "../services/classifierChain";
 import type { LlmCallRecord } from "../services/llmClassifier";
+
+// Cost guardrail (§5/§6 후속) — preview-LLM throttle window.
+//
+// Single-writer column: `users.last_preview_at` is stamped only by this
+// route, only on the `llm: true` branch, only after we decide to run the
+// classifier. Same single-writer discipline as
+// `sync_state.last_manual_trigger_at` (§6.4) — adding a second writer
+// would re-open the abuse window.
+//
+// 2-second minimum interval is a deliberately coarse defense: human users
+// click the "🤖 AI 분류 확인" button at most a few times per minute, but a
+// macro/bot driving HTTP directly can otherwise burn the per-user 200/day
+// quota in seconds. This throttle stops the burst at ~30 reqs/min, which
+// then collides with the per-user daily quota AND the operator-side global
+// daily cap. Sliding-window minute/hour rate limits are deferred to
+// `TODO.md` §6.4 후속 (general rate limit work).
+//
+// `llm: false` / omitted → throttle skipped (rule-only path costs nothing).
+const PREVIEW_LLM_MIN_INTERVAL_MS = 2_000;
 
 export const classifyRoutes = new Hono<HonoEnv>();
 
@@ -50,6 +69,40 @@ classifyRoutes.post("/preview", async (c) => {
   const useLlm = parsed.data.llm === true;
   const { db, close } = getDb(c.env);
   try {
+    // Cost guardrail (§5/§6 후속) — preview-LLM throttle. Atomic
+    // UPDATE-RETURNING: stamp `users.last_preview_at` only when the prior
+    // value is NULL or older than the minimum interval. Zero rows returned
+    // = some other in-flight request just claimed the window. The
+    // SELECT-then-UPDATE alternative (used by `sync_state.last_manual_trigger_at`)
+    // tolerates concurrent passes; here we want stricter abuse absorption
+    // because preview's threat model is automated bots, not button spam.
+    if (useLlm) {
+      const intervalSec = Math.ceil(PREVIEW_LLM_MIN_INTERVAL_MS / 1000);
+      const stamped = await db
+        .update(users)
+        .set({ lastPreviewAt: sql`now()`, updatedAt: sql`now()` })
+        .where(
+          and(
+            eq(users.id, userId),
+            or(
+              isNull(users.lastPreviewAt),
+              sql`${users.lastPreviewAt} < now() - (${intervalSec} || ' seconds')::interval`,
+            ),
+          ),
+        )
+        .returning({ id: users.id });
+      if (stamped.length === 0) {
+        return c.json(
+          {
+            error: "preview_throttled" as const,
+            retryAfterMs: PREVIEW_LLM_MIN_INTERVAL_MS,
+          },
+          429,
+          { "Retry-After": String(intervalSec) },
+        );
+      }
+    }
+
     const rows = await db
       .select({
         id: categories.id,

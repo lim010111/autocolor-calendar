@@ -84,17 +84,34 @@ type FakeDbHandle = {
   state: { rows: Row[] };
   inserts: { table: unknown; values: unknown }[];
 };
+// Cost guardrail (§5/§6 후속) — preview-LLM throttle. The fake `db.update()`
+// keeps a single shared `last_preview_at` (single-user-per-test assumption)
+// inside its closure; tests advance `Date.now()` via `vi.useFakeTimers` to
+// drive the 2s window. Multi-user concurrency tests would need a Map keyed
+// by extracted user_id, but no current case requires that.
 
 type InsertRecord = { table: unknown; values: unknown };
 
 type FakeDb = {
   select(_cols: unknown): unknown;
   insert(table: unknown): { values(values: unknown): Promise<void> };
+  update(table: unknown): {
+    set(values: unknown): {
+      where(where: unknown): {
+        returning(cols: unknown): Promise<Array<{ id: string }>>;
+      };
+    };
+  };
 };
+
+const PREVIEW_THROTTLE_MS = 2_000;
 
 function makeFakeDb(initial: Row[] = []): FakeDbHandle & { inserts: InsertRecord[] } {
   const state = { rows: [...initial] };
   const inserts: InsertRecord[] = [];
+  // 0 means "no prior stamp" — the route's atomic UPDATE OR-clause
+  // (`isNull(lastPreviewAt) OR ...`) treats this as a hit.
+  const handle = { throttleStampedMs: 0 };
   const db: FakeDb = {
     select(_cols: unknown) {
       return {
@@ -124,6 +141,29 @@ function makeFakeDb(initial: Row[] = []): FakeDbHandle & { inserts: InsertRecord
       return {
         values: async (values: unknown) => {
           inserts.push({ table, values });
+        },
+      };
+    },
+    update(_table: unknown) {
+      return {
+        set(_values: unknown) {
+          return {
+            where(_where: unknown) {
+              return {
+                returning: async (_cols: unknown) => {
+                  const now = Date.now();
+                  if (
+                    handle.throttleStampedMs !== 0 &&
+                    now - handle.throttleStampedMs < PREVIEW_THROTTLE_MS
+                  ) {
+                    return [];
+                  }
+                  handle.throttleStampedMs = now;
+                  return [{ id: "stub-user" }];
+                },
+              };
+            },
+          };
         },
       };
     },
@@ -428,6 +468,72 @@ describe("POST /api/classify/preview", () => {
       attempts: 1,
       categoryName: "회의",
     });
+  });
+
+  // Cost guardrail (§5/§6 후속) — preview-LLM throttle suite. The route
+  // stamps `users.last_preview_at` via an atomic UPDATE-RETURNING and
+  // returns 429 when the prior stamp is < 2s old. Threat model is
+  // automated bots — see classify.ts header comment for rationale.
+  it("llm:true throttle: 1st call passes, immediate 2nd call 429s, after 2s passes again", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-05-07T00:00:00Z"));
+    try {
+      currentDb.state.rows.push(row({}));
+      vi.mocked(buildDefaultClassifier).mockImplementation(
+        stubChain({
+          result: null,
+          engageLlmLeg: true,
+          llmCallRecord: { outcome: "miss", latencyMs: 5, categoryCount: 1, attempts: 1 },
+        }),
+      );
+      const reqInit = {
+        method: "POST" as const,
+        userToken: "token-a",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ summary: "임의 이벤트", llm: true }),
+        env: { ...baseEnv, OPENAI_API_KEY: "sk-test" },
+      };
+
+      const first = await invoke("/api/classify/preview", reqInit);
+      expect(first.status).toBe(200);
+
+      // Within the 2s window — throttle UPDATE returns no rows.
+      vi.advanceTimersByTime(500);
+      const second = await invoke("/api/classify/preview", reqInit);
+      expect(second.status).toBe(429);
+      const body = (await second.json()) as { error: string; retryAfterMs: number };
+      expect(body.error).toBe("preview_throttled");
+      expect(body.retryAfterMs).toBe(2000);
+      expect(second.headers.get("Retry-After")).toBe("2");
+
+      // Past the window — throttle releases.
+      vi.advanceTimersByTime(2_000);
+      const third = await invoke("/api/classify/preview", reqInit);
+      expect(third.status).toBe(200);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("llm:false skips the throttle (rule-only is cost-free)", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-05-07T00:00:00Z"));
+    try {
+      currentDb.state.rows.push(row({ keywords: ["주간회의"] }));
+      const reqInit = {
+        method: "POST" as const,
+        userToken: "token-a",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ summary: "오늘의 주간회의" }),
+      };
+      const first = await invoke("/api/classify/preview", reqInit);
+      expect(first.status).toBe(200);
+      // Same instant — no throttle check fires because `llm` flag is absent.
+      const second = await invoke("/api/classify/preview", reqInit);
+      expect(second.status).toBe(200);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("llm:true + LLM miss (null) — no_match with llmTried:true", async () => {

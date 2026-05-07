@@ -14,6 +14,7 @@ import type { Bindings } from "../env";
 const closeSpy = vi.fn(async () => undefined);
 const renewMock = vi.fn(async (..._args: unknown[]) => undefined);
 const rotateMock = vi.fn(async (..._args: unknown[]) => undefined);
+const costReportMock = vi.fn(async (..._args: unknown[]) => undefined);
 
 vi.mock("../db", () => ({
   getDb: () => ({
@@ -28,6 +29,10 @@ vi.mock("../services/watchRenewal", () => ({
 
 vi.mock("../services/tokenRotation", () => ({
   rotateBatch: (...args: unknown[]) => rotateMock(...args),
+}));
+
+vi.mock("../services/dailyCostReport", () => ({
+  runDailyCostReport: (...args: unknown[]) => costReportMock(...args),
 }));
 
 import worker from "../index";
@@ -69,6 +74,7 @@ beforeEach(() => {
   closeSpy.mockClear();
   renewMock.mockClear();
   rotateMock.mockClear();
+  costReportMock.mockClear();
   warnSpy = vi.spyOn(console, "warn").mockImplementation(() => undefined);
   logSpy = vi.spyOn(console, "log").mockImplementation(() => undefined);
 });
@@ -165,6 +171,42 @@ describe("scheduled() — cron dispatch (§3 후속)", () => {
     // Unknown-cron warn doesn't need a DB; skipping getDb keeps drift
     // logs cheap.
     expect(closeSpy).not.toHaveBeenCalled();
+  });
+
+  // Cost guardrail (§5/§6 후속) — daily cost report dispatch.
+  it("daily cost report cron → runDailyCostReport called once, others not called", async () => {
+    const env = { ...BASE_ENV };
+    const { ctx, awaitAll } = makeCtx();
+
+    await worker.scheduled?.(
+      { cron: "5 0 * * *", scheduledTime: Date.now(), type: "scheduled" } as ScheduledEvent,
+      env,
+      ctx,
+    );
+    await awaitAll();
+
+    expect(costReportMock).toHaveBeenCalledTimes(1);
+    expect(renewMock).not.toHaveBeenCalled();
+    expect(rotateMock).not.toHaveBeenCalled();
+    expect(closeSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it("daily cost report cron + runDailyCostReport throws → top-level warn, close() still runs", async () => {
+    costReportMock.mockRejectedValueOnce(new Error("simulated cost report failure"));
+    const env = { ...BASE_ENV };
+    const { ctx, awaitAll } = makeCtx();
+
+    await worker.scheduled?.(
+      { cron: "5 0 * * *", scheduledTime: Date.now(), type: "scheduled" } as ScheduledEvent,
+      env,
+      ctx,
+    );
+    await awaitAll();
+
+    expect(costReportMock).toHaveBeenCalledTimes(1);
+    const warned = warnSpy.mock.calls.map((c) => String(c[0])).join("\n");
+    expect(warned).toContain("daily cost report failed at top level");
+    expect(closeSpy).toHaveBeenCalledTimes(1);
   });
 
   it("rotation cron + rotateBatch throws → top-level warn, close() still runs (no unhandled rejection)", async () => {
