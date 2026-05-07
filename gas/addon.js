@@ -1,16 +1,16 @@
 function getCalendarColors() {
   return [
-    { id: "11", label: "토마토", url: "https://placehold.co/48x48/D50000/D50000.png?text=%20&radius=24", selectedUrl: "https://placehold.co/48x48/D50000/FFFFFF.png?text=%E2%9C%93&radius=24" },
-    { id: "4", label: "플라밍고", url: "https://placehold.co/48x48/E67C73/E67C73.png?text=%20&radius=24", selectedUrl: "https://placehold.co/48x48/E67C73/FFFFFF.png?text=%E2%9C%93&radius=24" },
-    { id: "6", label: "귤", url: "https://placehold.co/48x48/F4511E/F4511E.png?text=%20&radius=24", selectedUrl: "https://placehold.co/48x48/F4511E/FFFFFF.png?text=%E2%9C%93&radius=24" },
-    { id: "5", label: "바나나", url: "https://placehold.co/48x48/F6BF26/F6BF26.png?text=%20&radius=24", selectedUrl: "https://placehold.co/48x48/F6BF26/333333.png?text=%E2%9C%93&radius=24" },
-    { id: "2", label: "세이지", url: "https://placehold.co/48x48/33B679/33B679.png?text=%20&radius=24", selectedUrl: "https://placehold.co/48x48/33B679/FFFFFF.png?text=%E2%9C%93&radius=24" },
-    { id: "10", label: "바질", url: "https://placehold.co/48x48/0B8043/0B8043.png?text=%20&radius=24", selectedUrl: "https://placehold.co/48x48/0B8043/FFFFFF.png?text=%E2%9C%93&radius=24" },
-    { id: "7", label: "공작", url: "https://placehold.co/48x48/039BE5/039BE5.png?text=%20&radius=24", selectedUrl: "https://placehold.co/48x48/039BE5/FFFFFF.png?text=%E2%9C%93&radius=24" },
-    { id: "9", label: "블루베리", url: "https://placehold.co/48x48/3F51B5/3F51B5.png?text=%20&radius=24", selectedUrl: "https://placehold.co/48x48/3F51B5/FFFFFF.png?text=%E2%9C%93&radius=24" },
-    { id: "1", label: "라벤더", url: "https://placehold.co/48x48/7986CB/7986CB.png?text=%20&radius=24", selectedUrl: "https://placehold.co/48x48/7986CB/FFFFFF.png?text=%E2%9C%93&radius=24" },
-    { id: "3", label: "포도", url: "https://placehold.co/48x48/8E24AA/8E24AA.png?text=%20&radius=24", selectedUrl: "https://placehold.co/48x48/8E24AA/FFFFFF.png?text=%E2%9C%93&radius=24" },
-    { id: "8", label: "회연필", url: "https://placehold.co/48x48/616161/616161.png?text=%20&radius=24", selectedUrl: "https://placehold.co/48x48/616161/FFFFFF.png?text=%E2%9C%93&radius=24" }
+    { id: "11", label: "토마토", url: "https://placehold.co/48x48/D50000/D50000.png?text=%20&radius=24", selectedUrl: "https://placehold.co/48x48/D50000/FFFFFF.png?text=%E2%88%9A&radius=24" },
+    { id: "4", label: "플라밍고", url: "https://placehold.co/48x48/E67C73/E67C73.png?text=%20&radius=24", selectedUrl: "https://placehold.co/48x48/E67C73/FFFFFF.png?text=%E2%88%9A&radius=24" },
+    { id: "6", label: "귤", url: "https://placehold.co/48x48/F4511E/F4511E.png?text=%20&radius=24", selectedUrl: "https://placehold.co/48x48/F4511E/FFFFFF.png?text=%E2%88%9A&radius=24" },
+    { id: "5", label: "바나나", url: "https://placehold.co/48x48/F6BF26/F6BF26.png?text=%20&radius=24", selectedUrl: "https://placehold.co/48x48/F6BF26/333333.png?text=%E2%88%9A&radius=24" },
+    { id: "2", label: "세이지", url: "https://placehold.co/48x48/33B679/33B679.png?text=%20&radius=24", selectedUrl: "https://placehold.co/48x48/33B679/FFFFFF.png?text=%E2%88%9A&radius=24" },
+    { id: "10", label: "바질", url: "https://placehold.co/48x48/0B8043/0B8043.png?text=%20&radius=24", selectedUrl: "https://placehold.co/48x48/0B8043/FFFFFF.png?text=%E2%88%9A&radius=24" },
+    { id: "7", label: "공작", url: "https://placehold.co/48x48/039BE5/039BE5.png?text=%20&radius=24", selectedUrl: "https://placehold.co/48x48/039BE5/FFFFFF.png?text=%E2%88%9A&radius=24" },
+    { id: "9", label: "블루베리", url: "https://placehold.co/48x48/3F51B5/3F51B5.png?text=%20&radius=24", selectedUrl: "https://placehold.co/48x48/3F51B5/FFFFFF.png?text=%E2%88%9A&radius=24" },
+    { id: "1", label: "라벤더", url: "https://placehold.co/48x48/7986CB/7986CB.png?text=%20&radius=24", selectedUrl: "https://placehold.co/48x48/7986CB/FFFFFF.png?text=%E2%88%9A&radius=24" },
+    { id: "3", label: "포도", url: "https://placehold.co/48x48/8E24AA/8E24AA.png?text=%20&radius=24", selectedUrl: "https://placehold.co/48x48/8E24AA/FFFFFF.png?text=%E2%88%9A&radius=24" },
+    { id: "8", label: "회연필", url: "https://placehold.co/48x48/616161/616161.png?text=%20&radius=24", selectedUrl: "https://placehold.co/48x48/616161/FFFFFF.png?text=%E2%88%9A&radius=24" }
   ];
 }
 
