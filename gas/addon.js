@@ -93,7 +93,7 @@ function buildWelcomeCard() {
   builder.setHeader(CardService.newCardHeader()
     .setTitle("AutoColor 사용 가이드")
     .setSubtitle("AI가 캘린더를 예쁘게 정리해 드립니다.")
-    .setImageUrl("https://www.gstatic.com/images/icons/material/system/1x/palette_black_48dp.png"));
+    .setImageUrl("https://legal.autocolorcal.app/icon-128.png"));
     
   var tutorialSection = CardService.newCardSection().setHeader("💡 이렇게 사용해보세요!");
   
@@ -114,16 +114,6 @@ function buildWelcomeCard() {
     
   builder.addSection(tutorialSection);
 
-  var authSection = CardService.newCardSection();
-  authSection.addWidget(CardService.newDecoratedText()
-    .setText("시작하려면 Google 계정 연동이 필요합니다. 진행하면 <a href=\"https://legal.autocolorcal.app/privacy\">개인정보처리방침</a> 및 <a href=\"https://legal.autocolorcal.app/terms\">서비스 이용약관</a>에 동의하는 것으로 간주됩니다.")
-    .setWrapText(true));
-  authSection.addWidget(CardService.newDecoratedText()
-    .setText("본 서비스는 데이터 처리 위탁을 위해 미국·일본·캐나다·아일랜드 등에 개인정보를 국외이전합니다. 회원가입을 진행하면 개인정보처리방침 §4.1 의 국외이전 조건에 별도로 동의한 것으로 간주됩니다.")
-    .setWrapText(true));
-
-  builder.addSection(authSection);
-  
   var fixedFooter = CardService.newFixedFooter()
     .setPrimaryButton(CardService.newTextButton()
       .setText("Google 계정으로 시작하기")
@@ -170,16 +160,16 @@ function buildHomeCard() {
     .setSwitchControl(switchControl));
 
   var classifiedLine;
+  var aiBottomLabel = null;
   var syncLine;
-  var llmLine = null;
   if (!stats || stats.error) {
     classifiedLine = "통계를 불러오지 못했습니다";
     syncLine = "잠시 후 다시 시도해주세요";
   } else {
     var updatedCount = (stats.classification && stats.classification.updated) || 0;
     classifiedLine = updatedCount > 0
-      ? "최근 7일 분류된 일정: " + updatedCount + "건"
-      : "아직 분류된 일정이 없습니다";
+      ? "최근 7일 자동 색상 적용: " + updatedCount + "건"
+      : "아직 자동 색상이 적용된 일정이 없습니다";
 
     var finishedAt = stats.lastSync && stats.lastSync.finishedAt;
     syncLine = finishedAt
@@ -189,32 +179,30 @@ function buildHomeCard() {
     var hits = stats.llm && stats.llm.hits;
     var avg = stats.llm && stats.llm.avgLatencyMs;
     if (hits && hits > 0) {
-      llmLine = avg != null
-        ? "AI 분류: " + hits + "건 성공 / 평균 " + avg + "ms"
-        : "AI 분류: " + hits + "건 성공";
+      aiBottomLabel = avg != null
+        ? "└ 그 중 AI 분류: " + hits + "건 (평균 " + avg + "ms)"
+        : "└ 그 중 AI 분류: " + hits + "건";
     }
   }
 
-  section.addWidget(CardService.newDecoratedText()
+  var classifiedWidget = CardService.newDecoratedText()
     .setText(classifiedLine)
-    .setStartIcon(CardService.newIconImage().setIcon(CardService.Icon.BOOKMARK)));
+    .setStartIcon(CardService.newIconImage().setIcon(CardService.Icon.BOOKMARK));
+  if (aiBottomLabel) {
+    classifiedWidget.setBottomLabel(aiBottomLabel);
+  }
+  section.addWidget(classifiedWidget);
 
   section.addWidget(CardService.newDecoratedText()
     .setText(syncLine)
     .setStartIcon(CardService.newIconImage().setIcon(CardService.Icon.CLOCK)));
-
-  if (llmLine) {
-    section.addWidget(CardService.newDecoratedText()
-      .setText(llmLine)
-      .setStartIcon(CardService.newIconImage().setIcon(CardService.Icon.STAR)));
-  }
 
   builder.addSection(section);
 
   var actionSection = CardService.newCardSection();
 
   var ruleButton = CardService.newTextButton()
-    .setText("매핑 규칙 관리")
+    .setText("색상 규칙 관리")
     .setOnClickAction(CardService.newAction().setFunctionName("actionGoToRuleManagement"));
 
   var settingsButton = CardService.newTextButton()
@@ -752,9 +740,6 @@ function buildRuleManagementCard(e) {
     .setHint("콤마(,)로 여러 개 입력 가능")
     .setValue(priorKeyword));
 
-  addSection.addWidget(CardService.newTextParagraph()
-    .setText("<font color=\"#B06000\">⚠️ 2자 이하 키워드는 의도치 않은 이벤트까지 매칭될 수 있습니다.</font>"));
-
   var colorGrid = CardService.newGrid()
     .setTitle("캘린더 색상 선택")
     .setNumColumns(6)
@@ -799,18 +784,10 @@ function buildRuleManagementCard(e) {
     .setTextButtonStyle(CardService.TextButtonStyle.FILLED)
     .setOnClickAction(addAction));
 
-  addSection.addWidget(CardService.newDecoratedText()
-    .setText("💡 키워드가 제목·설명에 부분 일치하면 색상이 적용됩니다. 수동으로 바꾼 색상은 보존됩니다.")
-    .setWrapText(true));
-
   builder.addSection(addSection);
 
   var listSection = CardService.newCardSection()
     .setHeader("내 규칙 목록");
-
-  listSection.addWidget(CardService.newDecoratedText()
-    .setText("ℹ️ 이미 색이 지정된 일정은 자동 변경되지 않습니다. 규칙 추가 후 홈의 '지금 즉시 동기화'를 눌러 적용하세요.")
-    .setWrapText(true));
 
   // AUTH_EXPIRED already short-circuited above; only non-auth errors land here.
   var rules = fetched.rules || [];
@@ -848,9 +825,13 @@ function buildRuleManagementCard(e) {
         .setButton(deleteButton));
     });
   }
-    
+
+  listSection.addWidget(CardService.newDecoratedText()
+    .setText("ℹ️ 이미 색이 지정된 일정은 자동 변경되지 않습니다. 새 규칙을 기존 일정에 적용하려면 <b>대시보드 → '지금 즉시 동기화'</b>를 눌러주세요.")
+    .setWrapText(true));
+
   builder.addSection(listSection);
-  
+
   return builder.build();
 }
 
@@ -1000,8 +981,8 @@ function buildSettingsCard() {
     .setFieldName("policy_settings");
     
   policyGroup.addItem("수동 색상 덮어쓰기 방지", "prevent_overwrite", true);
-  policyGroup.addItem("AI(LLM) 자동 추론 사용", "use_llm", true);
-  policyGroup.addItem("설명(Description) 필드도 분석에 포함", "use_description", false);
+  policyGroup.addItem("AI 색상 자동 분류", "use_llm", true);
+  policyGroup.addItem("설명(일정 세부 정보) 분석에 포함", "use_description", false);
   
   section.addWidget(policyGroup);
   builder.addSection(section);
@@ -1023,12 +1004,7 @@ function buildSettingsCard() {
     .setOnClickAction(CardService.newAction().setFunctionName("actionLogout")));
 
   accountSection.addWidget(CardService.newTextButton()
-    .setText("서비스 해지 (Cancel Service)")
-    .setTextButtonStyle(CardService.TextButtonStyle.TEXT)
-    .setOnClickAction(CardService.newAction().setFunctionName("actionGoToCancelConfirm")));
-
-  accountSection.addWidget(CardService.newTextButton()
-    .setText("계정 삭제 / 데이터 삭제")
+    .setText("서비스 해지 및 계정 삭제")
     .setTextButtonStyle(CardService.TextButtonStyle.TEXT)
     .setOnClickAction(CardService.newAction().setFunctionName("actionGoToAccountDeleteConfirm")));
 
@@ -1046,50 +1022,6 @@ function actionLogout(e) {
     .build();
 }
 
-function actionGoToCancelConfirm(e) {
-  return CardService.newActionResponseBuilder()
-    .setNavigation(CardService.newNavigation().pushCard(buildCancelConfirmCard()))
-    .build();
-}
-
-function buildCancelConfirmCard() {
-  var builder = CardService.newCardBuilder();
-
-  builder.setHeader(CardService.newCardHeader()
-    .setTitle("서비스 해지")
-    .setSubtitle("정말 해지하시겠습니까?"));
-
-  var warningSection = CardService.newCardSection();
-  warningSection.addWidget(CardService.newDecoratedText()
-    .setText("⚠️ <b>주의</b>: 모든 설정과 연동된 규칙이 삭제됩니다. 이 작업은 되돌릴 수 없습니다.")
-    .setWrapText(true));
-
-  builder.addSection(warningSection);
-
-  var actionSection = CardService.newCardSection();
-  actionSection.addWidget(CardService.newButtonSet()
-    .addButton(CardService.newTextButton()
-      .setText("⬅ 취소")
-      .setOnClickAction(CardService.newAction().setFunctionName("actionGoBack")))
-    .addButton(CardService.newTextButton()
-      .setText("네, 해지합니다")
-      .setTextButtonStyle(CardService.TextButtonStyle.FILLED)
-      .setOnClickAction(CardService.newAction().setFunctionName("actionConfirmCancelService"))));
-
-  builder.addSection(actionSection);
-
-  return builder.build();
-}
-
-function actionConfirmCancelService(e) {
-  AutoColorStorage.clearAllState();
-
-  return CardService.newActionResponseBuilder()
-    .setNavigation(CardService.newNavigation().popToRoot().updateCard(buildWelcomeCard()))
-    .setNotification(CardService.newNotification().setText("서비스가 해지되었습니다."))
-    .build();
-}
-
 function actionGoToAccountDeleteConfirm(e) {
   return CardService.newActionResponseBuilder()
     .setNavigation(CardService.newNavigation().pushCard(buildAccountDeleteConfirmCard()))
@@ -1100,12 +1032,12 @@ function buildAccountDeleteConfirmCard() {
   var builder = CardService.newCardBuilder();
 
   builder.setHeader(CardService.newCardHeader()
-    .setTitle("계정 삭제")
-    .setSubtitle("정말 삭제하시겠습니까?"));
+    .setTitle("서비스 해지 및 계정 삭제")
+    .setSubtitle("정말 진행하시겠습니까?"));
 
   var warningSection = CardService.newCardSection();
   warningSection.addWidget(CardService.newDecoratedText()
-    .setText("⚠️ <b>주의</b>: 모든 데이터가 영구 삭제됩니다. 카테고리·동기화 상태·OAuth 연결·세션이 모두 제거되며, 이 작업은 되돌릴 수 없습니다.")
+    .setText("⚠️ <b>주의</b>: 모든 데이터가 영구 삭제되며 즉시 서비스가 해지됩니다. 카테고리·동기화 상태·OAuth 연결·세션이 모두 제거되며, 이 작업은 되돌릴 수 없습니다.")
     .setWrapText(true));
 
   builder.addSection(warningSection);
@@ -1116,7 +1048,7 @@ function buildAccountDeleteConfirmCard() {
       .setText("⬅ 취소")
       .setOnClickAction(CardService.newAction().setFunctionName("actionGoBack")))
     .addButton(CardService.newTextButton()
-      .setText("네, 삭제합니다")
+      .setText("네, 진행합니다")
       .setTextButtonStyle(CardService.TextButtonStyle.FILLED)
       .setOnClickAction(CardService.newAction().setFunctionName("actionConfirmDeleteAccount"))));
 
@@ -1138,7 +1070,7 @@ function actionConfirmDeleteAccount(e) {
   AutoColorAuth.clearSessionToken();
   return CardService.newActionResponseBuilder()
     .setNavigation(CardService.newNavigation().popToRoot().updateCard(buildWelcomeCard()))
-    .setNotification(CardService.newNotification().setText("계정이 삭제되었습니다."))
+    .setNotification(CardService.newNotification().setText("서비스가 해지되고 계정이 삭제되었습니다."))
     .build();
 }
 
