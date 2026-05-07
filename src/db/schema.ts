@@ -245,9 +245,17 @@ export const syncFailures = pgTable(
 // burn the Worker's 50-subrequest budget.
 //
 // PII: `category_name` is the user's own category name (not PII). `outcome`,
-// `http_status`, counts, and `latency_ms` are pure telemetry. No event
-// content crosses this boundary — the calendar event payload never reaches
-// this table, consistent with the log-redaction contract in src/CLAUDE.md.
+// `http_status`, counts, and `latency_ms` are pure telemetry.
+//
+// §6.3 후속 — `event_id` / `prompt_summary` / `raw_response` /
+// `available_categories` are the per-event debugging surface. They store the
+// same data already sent to the OpenAI boundary, redacted by
+// `redactEventForLlm` (§5.3 contract preserved). These columns are the DB
+// expansion that replaces the deferred Langfuse integration: see
+// `docs/architecture-guidelines.md` "Failure audit tables" and
+// `src/CLAUDE.md` "Observability tables (§6 Wave A)" for the NULL policy
+// matrix per outcome. They are never logged — the "Calendar event payloads
+// must never be logged" rule binds the log stream, not DB columns.
 export const llmCalls = pgTable(
   "llm_calls",
   {
@@ -270,6 +278,20 @@ export const llmCalls = pgTable(
     attempts: integer("attempts").notNull().default(1),
     // Only populated for outcome='hit'. Nullable otherwise.
     categoryName: text("category_name"),
+    // §6.3 후속 debugging surface (NULL on preview path; populated on sync).
+    eventId: text("event_id"),
+    // Redacted user-message JSON sent to the model (system message omitted —
+    // it is deterministic and stored in source). NULL when no fetch occurred
+    // (`disabled`, `quota_exceeded`).
+    promptSummary: text("prompt_summary"),
+    // Raw OpenAI chat/completions response body (text, pre-parse). Populated
+    // when an HTTP response was actually received: `hit`, `miss`,
+    // `bad_response`, and `http_error` (4xx/5xx body). NULL when no body
+    // exists: `timeout`, `quota_exceeded`, `disabled`.
+    rawResponse: text("raw_response"),
+    // Category names sent to the model (post-slice — what the model actually
+    // saw). NULL only for `disabled` outcomes since no slicing occurred.
+    availableCategories: text("available_categories").array(),
   },
   (t) => [
     index("llm_calls_user_occurred_at_idx").on(t.userId, t.occurredAt),

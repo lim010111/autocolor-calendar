@@ -12,6 +12,7 @@ import { authRoutes } from "./routes/auth";
 import { categoriesRoutes } from "./routes/categories";
 import { classifyRoutes } from "./routes/classify";
 import { healthRoutes } from "./routes/health";
+import { llmCallsRoutes } from "./routes/llmCalls";
 import { meRoutes } from "./routes/me";
 import { oauthRoutes } from "./routes/oauth";
 import { statsRoutes } from "./routes/stats";
@@ -48,6 +49,7 @@ app.route("/webhooks", webhookRoutes);
 app.route("/api/categories", categoriesRoutes);
 app.route("/api/classify", classifyRoutes);
 app.route("/api/stats", statsRoutes);
+app.route("/api/llm-calls", llmCallsRoutes);
 app.route("/api/account", accountRoutes);
 
 export default {

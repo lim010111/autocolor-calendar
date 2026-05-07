@@ -226,9 +226,86 @@ Written as a single bulk INSERT at sync-run end, not per event:
 
 PII stance: `category_name` is the user's own category name (not PII).
 `outcome`, `latency_ms`, `category_count`, `attempts`, `http_status` are pure
-telemetry. No event content crosses this boundary — the whitelist in
-`buildPrompt` and the `redactEventForLlm` call happen upstream of the record
-emission.
+telemetry.
+
+§6.3 후속 — per-event debugging surface (`drizzle/0015_fast_namor.sql`).
+Four nullable columns added to `llm_calls`, populated by `classifyWithLlm`'s
+`finish()` helper progressively as the function walks past each guard:
+
+- **`event_id`** — `event.id`. Sync path → Google Calendar event id; preview
+  path → the route's synthetic `"preview"` literal (not NULL — the literal
+  is itself a useful filter target). Always populated, including on
+  `disabled` and `quota_exceeded` outcomes.
+- **`prompt_summary`** — the user-message JSON (`buildPrompt`'s second
+  message, post-`redactEventForLlm`). System message is omitted because it
+  is deterministic and lives in source. NULL when no prompt was built —
+  i.e. the `disabled` and `quota_exceeded` paths short-circuit before
+  `buildPrompt`. Captured by `extractUserMessage(messages)` immediately
+  after the prompt is built so a subsequent timeout / retry still records
+  the input the model would have seen.
+- **`raw_response`** — the OpenAI body as text (`await res.text()`,
+  pre-parse). Set on every outcome where an HTTP body was actually
+  received: `hit`, `miss`, `bad_response`, AND `http_error` (the 4xx/5xx
+  body is the most useful debugging signal — capturing it here is a
+  deliberate scope expansion past the original "success-only" plan).
+  Overwritten on each retry so the column reflects the FINAL attempt's
+  body, matching the row's reported outcome. NULL on `timeout`,
+  `quota_exceeded`, `disabled`.
+- **`available_categories`** — `categories.slice(0, LLM_MAX_CATEGORIES).map(c => c.name)`
+  (post-slice, what the model actually saw). Captured before the quota
+  reservation so a `quota_exceeded` row still tells us which categories
+  the user owned at the moment we wanted to fire. NULL only on `disabled`
+  outcomes since no slicing occurred.
+
+NULL policy summary by outcome:
+
+| outcome           | event_id | prompt_summary | raw_response | available_categories |
+|-------------------|:--------:|:--------------:|:------------:|:--------------------:|
+| `hit`             |    ✓     |       ✓        |      ✓       |          ✓           |
+| `miss`            |    ✓     |       ✓        |      ✓       |          ✓           |
+| `bad_response`    |    ✓     |       ✓        |      ✓       |          ✓           |
+| `http_error`      |    ✓     |       ✓        |      ✓       |          ✓           |
+| `timeout`         |    ✓     |       ✓        |     NULL     |          ✓           |
+| `quota_exceeded`  |    ✓     |      NULL      |     NULL     |          ✓           |
+| `disabled`        |    ✓     |      NULL      |     NULL     |         NULL         |
+
+PII discipline:
+- **DB columns are NOT logs.** The "Calendar event payloads must never be
+  logged" contract above binds `console.log` / `console.warn` etc. — the
+  middleware's body-exclusion + the deliberate avoidance of event-content
+  logging in `classifyWithLlm`. Storing the redacted prompt in a DB column
+  is a different surface and is intentionally allowed.
+- `prompt_summary` inherits the §5.3 redaction guarantee: the only
+  data path into this column passes `redactEventForLlm` (whitelist of
+  `summary` / `description` / `location`, with email / URL / phone
+  replaced by opaque placeholders). No new redactor needed.
+- `raw_response` is bounded by the model's structured output schema
+  (`{category_name: string}`) plus the closed enum of user category names
+  the model received. The one path where the model can return arbitrary
+  text is `bad_response`, but the prompt provides redacted input only —
+  PII has no path into the model's context.
+- All four columns are scoped to `users.id` via the existing FK + `onDelete:
+  "cascade"`, so `POST /api/account/delete` cleanup applies automatically
+  (the §3 row 179 schema cascade contract / regex guard count is unchanged
+  — this is a column addition, not a new table).
+
+Reader: `GET /api/llm-calls?window=24h|7d|30d&outcome=...&eventId=...&limit=...`
+(`src/routes/llmCalls.ts`). Self-query only — `where(eq(llmCalls.userId,
+ctx.userId))` is the sole tenant guard (RLS is bypassed by the Worker,
+see "Tenant isolation"). Default window `24h`, default limit 50,
+hard-cap 200. Mirrors `/api/stats` window keys (with `24h` added) so
+operators can drill down from the aggregate to the per-event rows in one
+URL hop.
+
+Langfuse trade-off note: the Langfuse-equivalent surface
+(prompt/response trace UI, span hierarchy) was deferred — Langfuse JS v5
+is Node-only (`engines.node >= 20`, `@opentelemetry/sdk-node` dep) and
+the official docs do not endorse Cloudflare Workers. The columns above
++ the reader route cover the per-event drill-down need without adding
+a third-party processor or the privacy-policy work that follows from
+shipping prompts to a SaaS. Re-evaluate when (a) prompt version
+management, (b) LLM-as-judge, or (c) Workers-blessed Langfuse path
+becomes a need — see TODO §6.3.
 
 ### `rollback_runs`
 

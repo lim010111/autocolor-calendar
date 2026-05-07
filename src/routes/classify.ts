@@ -177,6 +177,16 @@ classifyRoutes.post("/preview", async (c) => {
             ...(rec.categoryName !== undefined
               ? { categoryName: rec.categoryName }
               : {}),
+            ...(rec.eventId !== undefined ? { eventId: rec.eventId } : {}),
+            ...(rec.promptSummary !== undefined
+              ? { promptSummary: rec.promptSummary }
+              : {}),
+            ...(rec.rawResponse !== undefined
+              ? { rawResponse: rec.rawResponse }
+              : {}),
+            ...(rec.availableCategories !== undefined
+              ? { availableCategories: rec.availableCategories }
+              : {}),
           })
           .catch((e: unknown) => {
             console.warn(

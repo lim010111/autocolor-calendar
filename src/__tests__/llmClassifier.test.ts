@@ -8,6 +8,7 @@ import {
   classifyWithLlm,
   mapCategoryNameToClassification,
   reserveLlmCall,
+  type LlmCallRecord,
   type ReserveLlmCallFn,
 } from "../services/llmClassifier";
 
@@ -561,5 +562,237 @@ describe("classifyWithLlm", () => {
       { db: {} as never, env: makeEnv(), userId: USER, reserve: mkReserve(true) },
     );
     assertNoPiiLogged(["매우비밀회의", "password=hunter2", "hunter2", "server error body"]);
+  });
+});
+
+// §6.3 후속 — debugging surface fields on `LlmCallRecord`. Every outcome
+// branch is exercised once so a future edit that forgets to populate (or
+// wrongly populates) one of {eventId, promptSummary, rawResponse,
+// availableCategories} fails a test instead of silently writing
+// incomplete rows. The existing tests above cover outcome+latency+attempts
+// invariants; this suite is purely about the new columns.
+describe("classifyWithLlm — §6.3 debugging fields", () => {
+  const originalFetch = globalThis.fetch;
+  beforeEach(() => {
+    vi.restoreAllMocks();
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+  });
+  afterEach(() => {
+    globalThis.fetch = originalFetch;
+    vi.restoreAllMocks();
+  });
+
+  function captureRecord(): {
+    rec: LlmCallRecord | null;
+    onCall: (r: LlmCallRecord) => void;
+  } {
+    const wrap: { rec: LlmCallRecord | null } = { rec: null };
+    return {
+      get rec() {
+        return wrap.rec;
+      },
+      onCall: (r) => {
+        wrap.rec = r;
+      },
+    };
+  }
+
+  function mkReserve(ok: boolean, count = 1): ReserveLlmCallFn {
+    return vi.fn(async () => ({ ok, count }));
+  }
+
+  function openAiText(content: string): Response {
+    return new Response(
+      JSON.stringify({ choices: [{ message: { content } }] }),
+      { status: 200, headers: { "content-type": "application/json" } },
+    );
+  }
+
+  it("hit: populates eventId / promptSummary / rawResponse / availableCategories + categoryName", async () => {
+    const cap = captureRecord();
+    globalThis.fetch = vi.fn(async () =>
+      openAiText(JSON.stringify({ category_name: "회의" })),
+    ) as unknown as typeof fetch;
+    await classifyWithLlm(
+      ev({ id: "evt-42", summary: "팀 회의" }),
+      [cat({ name: "회의" }), cat({ id: "c-2", name: "개인" })],
+      {
+        db: {} as never,
+        env: makeEnv(),
+        userId: USER,
+        reserve: mkReserve(true),
+        onCall: cap.onCall,
+      },
+    );
+    expect(cap.rec).not.toBeNull();
+    const r = cap.rec!;
+    expect(r.outcome).toBe("hit");
+    expect(r.categoryName).toBe("회의");
+    expect(r.eventId).toBe("evt-42");
+    expect(r.promptSummary).toBeDefined();
+    expect(r.promptSummary).toContain("팀 회의");
+    expect(r.rawResponse).toBeDefined();
+    expect(r.rawResponse).toContain("category_name");
+    expect(r.availableCategories).toEqual(["회의", "개인"]);
+  });
+
+  it("miss: rawResponse populated, categoryName undefined", async () => {
+    const cap = captureRecord();
+    globalThis.fetch = vi.fn(async () =>
+      openAiText(JSON.stringify({ category_name: "none" })),
+    ) as unknown as typeof fetch;
+    await classifyWithLlm(ev({ id: "e1" }), [cat()], {
+      db: {} as never,
+      env: makeEnv(),
+      userId: USER,
+      reserve: mkReserve(true),
+      onCall: cap.onCall,
+    });
+    const r = cap.rec!;
+    expect(r.outcome).toBe("miss");
+    expect(r.categoryName).toBeUndefined();
+    expect(r.rawResponse).toContain("none");
+    expect(r.availableCategories).toEqual(["회의"]);
+    expect(r.promptSummary).toBeDefined();
+  });
+
+  it("bad_response: malformed body still recorded into rawResponse", async () => {
+    const cap = captureRecord();
+    globalThis.fetch = vi.fn(
+      async () =>
+        new Response(
+          JSON.stringify({ choices: [{ message: { content: "not-json" } }] }),
+          { status: 200 },
+        ),
+    ) as unknown as typeof fetch;
+    await classifyWithLlm(ev({ id: "e1" }), [cat()], {
+      db: {} as never,
+      env: makeEnv(),
+      userId: USER,
+      reserve: mkReserve(true),
+      onCall: cap.onCall,
+    });
+    const r = cap.rec!;
+    expect(r.outcome).toBe("bad_response");
+    expect(r.rawResponse).toContain("not-json");
+    expect(r.promptSummary).toBeDefined();
+  });
+
+  it("http_error: 4xx body captured in rawResponse, promptSummary captured pre-fetch", async () => {
+    const cap = captureRecord();
+    globalThis.fetch = vi.fn(
+      async () => new Response("invalid request payload", { status: 400 }),
+    ) as unknown as typeof fetch;
+    await classifyWithLlm(ev({ id: "e1", summary: "x" }), [cat()], {
+      db: {} as never,
+      env: makeEnv(),
+      userId: USER,
+      reserve: mkReserve(true),
+      onCall: cap.onCall,
+    });
+    const r = cap.rec!;
+    expect(r.outcome).toBe("http_error");
+    expect(r.httpStatus).toBe(400);
+    expect(r.rawResponse).toBe("invalid request payload");
+    expect(r.promptSummary).toBeDefined();
+    expect(r.availableCategories).toEqual(["회의"]);
+  });
+
+  it("timeout: rawResponse undefined (no body received)", async () => {
+    const cap = captureRecord();
+    globalThis.fetch = vi.fn(async () => {
+      const err = new Error("timed out");
+      err.name = "TimeoutError";
+      throw err;
+    }) as unknown as typeof fetch;
+    await classifyWithLlm(ev({ id: "e1" }), [cat()], {
+      db: {} as never,
+      env: makeEnv(),
+      userId: USER,
+      reserve: mkReserve(true),
+      onCall: cap.onCall,
+    });
+    const r = cap.rec!;
+    expect(r.outcome).toBe("timeout");
+    expect(r.rawResponse).toBeUndefined();
+    // promptSummary is captured pre-fetch, so it survives the timeout.
+    expect(r.promptSummary).toBeDefined();
+    expect(r.availableCategories).toEqual(["회의"]);
+  });
+
+  it("quota_exceeded: NO promptSummary, NO rawResponse — but availableCategories present", async () => {
+    const cap = captureRecord();
+    const fetchSpy = vi.fn();
+    globalThis.fetch = fetchSpy as unknown as typeof fetch;
+    await classifyWithLlm(ev({ id: "e1" }), [cat({ name: "회의" })], {
+      db: {} as never,
+      env: makeEnv(),
+      userId: USER,
+      reserve: mkReserve(false, 201),
+      onCall: cap.onCall,
+    });
+    const r = cap.rec!;
+    expect(r.outcome).toBe("quota_exceeded");
+    expect(r.promptSummary).toBeUndefined();
+    expect(r.rawResponse).toBeUndefined();
+    expect(r.availableCategories).toEqual(["회의"]);
+    expect(r.eventId).toBe("e1");
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
+  it("disabled (no API key): promptSummary / rawResponse / availableCategories all undefined", async () => {
+    const cap = captureRecord();
+    const { OPENAI_API_KEY: _omit, ...envNoKey } = makeEnv();
+    await classifyWithLlm(ev({ id: "e1" }), [cat()], {
+      db: {} as never,
+      env: envNoKey,
+      userId: USER,
+      reserve: mkReserve(true),
+      onCall: cap.onCall,
+    });
+    const r = cap.rec!;
+    expect(r.outcome).toBe("disabled");
+    expect(r.promptSummary).toBeUndefined();
+    expect(r.rawResponse).toBeUndefined();
+    expect(r.availableCategories).toBeUndefined();
+    expect(r.eventId).toBe("e1");
+  });
+
+  it("disabled (zero categories): all debug fields undefined", async () => {
+    const cap = captureRecord();
+    await classifyWithLlm(ev({ id: "e1" }), [], {
+      db: {} as never,
+      env: makeEnv(),
+      userId: USER,
+      reserve: mkReserve(true),
+      onCall: cap.onCall,
+    });
+    const r = cap.rec!;
+    expect(r.outcome).toBe("disabled");
+    expect(r.promptSummary).toBeUndefined();
+    expect(r.rawResponse).toBeUndefined();
+    expect(r.availableCategories).toBeUndefined();
+  });
+
+  it("availableCategories reflects post-slice cap (50 of 60 owned)", async () => {
+    const cap = captureRecord();
+    globalThis.fetch = vi.fn(async () =>
+      openAiText(JSON.stringify({ category_name: "cat-0" })),
+    ) as unknown as typeof fetch;
+    const cats = Array.from({ length: 60 }, (_, i) =>
+      cat({ id: `c-${i}`, name: `cat-${i}` }),
+    );
+    await classifyWithLlm(ev({ id: "e1" }), cats, {
+      db: {} as never,
+      env: makeEnv(),
+      userId: USER,
+      reserve: mkReserve(true),
+      onCall: cap.onCall,
+    });
+    const r = cap.rec!;
+    expect(r.availableCategories).toHaveLength(50);
+    expect(r.availableCategories?.[0]).toBe("cat-0");
+    expect(r.availableCategories?.[49]).toBe("cat-49");
+    expect(r.categoryCount).toBe(50);
   });
 });

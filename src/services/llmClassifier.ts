@@ -89,8 +89,16 @@ export type LlmOutcome =
 
 // §6 Wave A — per-call log record emitted via `LlmClassifyDeps.onCall`.
 // Persisted into the `llm_calls` table by `calendarSync.runPagedList` at
-// sync-run end (bulk insert, fire-and-forget). Contains only telemetry and
-// the user's own category name — never event content.
+// sync-run end (bulk insert, fire-and-forget) and by the preview route
+// (`POST /api/classify/preview`) as a single-row insert.
+//
+// PII contract: `promptSummary` carries the user-message JSON that already
+// passed `redactEventForLlm` (§5.3) — the same payload that was sent to
+// OpenAI. `rawResponse` is OpenAI's reply, which by structured-outputs
+// constraint is a `{category_name: string}` echo of the closed enum
+// (`bad_response` is the one path where the model can return arbitrary
+// text, but the prompt provides redacted input only). Both columns inherit
+// the §5.3 redaction guarantee — no new PII surface.
 export type LlmCallRecord = {
   outcome: LlmOutcome["kind"];
   // Only set for outcome='http_error'. undefined otherwise.
@@ -103,6 +111,21 @@ export type LlmCallRecord = {
   attempts: number;
   // Only set for outcome='hit'. undefined otherwise.
   categoryName?: string;
+  // §6.3 후속 debugging surface. NULL on preview path (preview synthesises
+  // event id "preview"; sync uses Google's event id).
+  eventId?: string;
+  // Redacted user-message JSON (system message omitted — deterministic and
+  // stored in source). undefined when no fetch occurred (`disabled` /
+  // `quota_exceeded`).
+  promptSummary?: string;
+  // Raw OpenAI chat/completions response body (text, pre-parse). Set on any
+  // outcome where an HTTP body was actually received: `hit`, `miss`,
+  // `bad_response`, and `http_error` (4xx/5xx body). undefined when no body
+  // exists: `timeout`, `quota_exceeded`, `disabled`.
+  rawResponse?: string;
+  // Category names sent to the model (post-slice — what the model actually
+  // saw). undefined only for `disabled` outcomes.
+  availableCategories?: string[];
 };
 
 // Exported for `classifierChain.ts` quota-latched skip path so the skipped
@@ -337,6 +360,13 @@ async function callOpenAi(
   });
 }
 
+// Pull the user-message content out of the prompt array. Used to populate
+// `LlmCallRecord.promptSummary` — system message is deterministic and lives
+// in source, so we only persist the variable user-message.
+function extractUserMessage(messages: ChatMessage[]): string | undefined {
+  return messages.find((m) => m.role === "user")?.content;
+}
+
 function parseCategoryName(content: string): string | null | undefined {
   // Returns:
   //   string   — category name candidate (caller validates via map)
@@ -361,12 +391,22 @@ export async function classifyWithLlm(
   deps: LlmClassifyDeps,
 ): Promise<LlmOutcome> {
   // §6 Wave A — single emission point. Every return in this function routes
-  // through `finish()` so the per-call record (latency, attempts, outcome)
-  // is always emitted exactly once. Skipping `finish()` would silently drop
-  // a row from the observability log.
+  // through `finish()` so the per-call record (latency, attempts, outcome,
+  // §6.3 후속 debugging columns) is always emitted exactly once. Skipping
+  // `finish()` would silently drop a row from the observability log.
   const t0 = Date.now();
   const categoryCount = Math.min(LLM_MAX_CATEGORIES, categories.length);
   let attempts = 0;
+  // Captured progressively as the function walks past each guard:
+  // - eventId is known immediately
+  // - availableCategories is known once we'd build a prompt
+  // - promptSummary is known after `buildPrompt`
+  // - rawResponse is known after we read the OpenAI body (or NULL for
+  //   timeout/network/quota/disabled paths where no body exists)
+  const eventId = event.id;
+  let availableCategories: string[] | undefined;
+  let promptSummary: string | undefined;
+  let rawResponse: string | undefined;
 
   function finish(outcome: LlmOutcome): LlmOutcome {
     const rec: LlmCallRecord = {
@@ -377,13 +417,27 @@ export async function classifyWithLlm(
     };
     if (outcome.kind === "http_error") rec.httpStatus = outcome.status;
     if (outcome.kind === "hit") rec.categoryName = outcome.classification.reason.replace(/^llm_match:/, "");
+    rec.eventId = eventId;
+    if (availableCategories !== undefined) rec.availableCategories = availableCategories;
+    if (promptSummary !== undefined) rec.promptSummary = promptSummary;
+    if (rawResponse !== undefined) rec.rawResponse = rawResponse;
     deps.onCall?.(rec);
     return outcome;
   }
 
   const apiKey = deps.env.OPENAI_API_KEY;
+  // `disabled` exits leave availableCategories / promptSummary / rawResponse
+  // all undefined — no slicing or prompt build occurred, so the columns
+  // would be misleading if populated.
   if (!apiKey) return finish({ kind: "disabled" });
   if (categories.length === 0) return finish({ kind: "disabled" });
+
+  // From this point onward, we know what slice the prompt builder would use.
+  // Capture even before quota check so a `quota_exceeded` row still tells us
+  // which categories the user owned at the moment we wanted to fire.
+  availableCategories = categories
+    .slice(0, LLM_MAX_CATEGORIES)
+    .map((c) => c.name);
 
   const perUserLimit = parseDailyLimit(deps.env.LLM_DAILY_LIMIT);
   const globalLimit = parseGlobalDailyLimit(deps.env.LLM_GLOBAL_DAILY_LIMIT);
@@ -393,6 +447,7 @@ export async function classifyWithLlm(
 
   const redacted = redactEventForLlm(event);
   const messages = buildPrompt(redacted, categories);
+  promptSummary = extractUserMessage(messages);
 
   let lastOutcome: LlmOutcome = { kind: "bad_response" };
 
@@ -400,6 +455,22 @@ export async function classifyWithLlm(
     attempts = attempt;
     try {
       const res = await callOpenAi(apiKey, messages);
+      // Read body as text first so we can persist the raw response across all
+      // HTTP-received outcomes (hit/miss/bad_response/http_error 4xx/5xx).
+      // Each retry overwrites — only the final attempt's body is recorded
+      // (matches `lastOutcome` semantics so debugging matches the row's
+      // reported outcome).
+      let bodyText: string;
+      try {
+        bodyText = await res.text();
+      } catch {
+        // Reading the body failed mid-stream — no body available to record.
+        // Treat as bad_response since neither the success nor the http_error
+        // path can proceed without it.
+        return finish({ kind: "bad_response" });
+      }
+      rawResponse = bodyText;
+
       if (!res.ok) {
         lastOutcome = { kind: "http_error", status: res.status };
         if (attempt < MAX_ATTEMPTS && isTransient(res.status)) continue;
@@ -407,7 +478,7 @@ export async function classifyWithLlm(
       }
       let body: OpenAiChatResponse;
       try {
-        body = (await res.json()) as OpenAiChatResponse;
+        body = JSON.parse(bodyText) as OpenAiChatResponse;
       } catch {
         return finish({ kind: "bad_response" });
       }
