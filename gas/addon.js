@@ -186,8 +186,8 @@ function buildHomeCard() {
   } else {
     var updatedCount = (stats.classification && stats.classification.updated) || 0;
     classifiedLine = updatedCount > 0
-      ? "✨ 최근 7일 자동 색상 적용: " + updatedCount + "건"
-      : "✨ 아직 자동 색상이 적용된 일정이 없습니다";
+      ? "✨   최근 7일 자동 색상 적용: " + updatedCount + "건"
+      : "✨   아직 자동 색상이 적용된 일정이 없습니다";
 
     var finishedAt = stats.lastSync && stats.lastSync.finishedAt;
     syncLine = finishedAt
@@ -218,17 +218,19 @@ function buildHomeCard() {
     .addButton(ruleButton)
     .addButton(settingsButton));
 
-  actionSection.addWidget(CardService.newDecoratedText()
-    .setText("'지금 모든 일정에 규칙 적용'을 누르면 과거 30일 ~ 미래 365일의 일정을 검사해 규칙을 적용합니다. 직접 지정한 색상은 그대로 유지됩니다.")
-    .setWrapText(true));
-
   builder.addSection(actionSection);
 
-  var infoSection = CardService.newCardSection();
-  infoSection.addWidget(CardService.newDecoratedText()
+  var pushInfoSection = CardService.newCardSection();
+  pushInfoSection.addWidget(CardService.newDecoratedText()
     .setText("ℹ️ 새 일정을 만들면 보통 5~10초 안에 자동으로 색이 적용됩니다.")
     .setWrapText(true));
-  builder.addSection(infoSection);
+  builder.addSection(pushInfoSection);
+
+  var syncInfoSection = CardService.newCardSection();
+  syncInfoSection.addWidget(CardService.newDecoratedText()
+    .setText("ℹ️ '지금 모든 일정에 규칙 적용'을 누르면 과거 30일 ~ 미래 365일의 일정을 검사해 규칙을 적용합니다. 직접 지정한 색상은 그대로 유지됩니다.")
+    .setWrapText(true));
+  builder.addSection(syncInfoSection);
 
   var fixedFooter = CardService.newFixedFooter()
     .setPrimaryButton(CardService.newTextButton()
