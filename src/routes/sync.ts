@@ -9,6 +9,7 @@ import { enqueueSync, SyncQueueUnavailableError } from "../queues/syncProducer";
 import { CalendarApiError } from "../services/googleCalendar";
 import { getValidAccessToken, ReauthRequiredError } from "../services/tokenRefresh";
 import { registerWatchChannel, stopWatchChannel } from "../services/watchChannel";
+import { maybeSelfHealWatch } from "../services/watchSelfHeal";
 
 export const syncRoutes = new Hono<HonoEnv>();
 
@@ -20,6 +21,12 @@ syncRoutes.use("*", authMiddleware);
 syncRoutes.post("/run", async (c) => {
   const userId = c.get("userId");
   const { db, close } = getDb(c.env);
+  // Set true once we've reached the "this looks like a real sync trigger"
+  // branch (post reauth-guard, post coalesce, post rate-limit). The finally
+  // block uses this to gate the watch self-heal call — early-return paths
+  // (reauth, calendar_inactive, coalesce, rate-limited, queue_unavailable)
+  // are not the right moment to retry watch registration.
+  let shouldSelfHeal = false;
   try {
     // Reauth guard — fail fast if the refresh token is known-bad.
     const tokRows = await db
@@ -90,6 +97,10 @@ syncRoutes.post("/run", async (c) => {
       ? "incremental"
       : "full_resync";
 
+    // Past every guard — this is a real sync attempt. Mark for the finally
+    // block to opportunistically self-heal the user's watch channel.
+    shouldSelfHeal = true;
+
     try {
       if (jobType === "incremental") {
         await enqueueSync(c.env, {
@@ -128,7 +139,24 @@ syncRoutes.post("/run", async (c) => {
 
     return c.json({ ok: true, enqueued: true, jobType }, 202);
   } finally {
-    c.executionCtx.waitUntil(close());
+    // Watch self-heal — fire-and-forget on every successful sync trigger.
+    // Pressing "지금 즉시 동기화" = the user's clearest signal that the
+    // automatic webhook path isn't fulfilling their expectations, so this is
+    // the highest-value moment to backfill a missing/expiring watch channel.
+    // Skipped on early-return paths (reauth, coalesce, rate-limit, etc.) —
+    // those aren't the right moment to retry watch registration. Chained
+    // with close() so the shared db connection stays alive until the helper
+    // finishes (waitUntil promises run concurrently otherwise — close would
+    // race the helper's queries on the same socket).
+    if (shouldSelfHeal) {
+      c.executionCtx.waitUntil(
+        maybeSelfHealWatch(db, c.env, userId)
+          .catch(() => undefined)
+          .finally(() => close()),
+      );
+    } else {
+      c.executionCtx.waitUntil(close());
+    }
   }
 });
 
@@ -209,6 +237,110 @@ syncRoutes.post("/bootstrap", async (c) => {
     }
 
     return c.json({ ok: true, calendarId: PRIMARY, watchRegistered }, 202);
+  } finally {
+    c.executionCtx.waitUntil(close());
+  }
+});
+
+// User-explicit watch reconnect. Called by the GAS home card's "지금 연결"
+// button when `push_active=false`. Differs from /sync/bootstrap in two ways:
+//   1. No full_resync enqueue — this endpoint only re-creates the watch
+//      channel. The next webhook (or manual sync) catches up missed events.
+//   2. No self-heal cooldown gate — user explicitly clicked, so rate-limit
+//      doesn't apply. We also intentionally do NOT stamp last_self_heal_at
+//      (sole-writer is `maybeSelfHealWatch`, see src/CLAUDE.md).
+syncRoutes.post("/heal-watch", async (c) => {
+  const userId = c.get("userId");
+  const { db, close } = getDb(c.env);
+  try {
+    if (!c.env.WEBHOOK_BASE_URL) {
+      // Dev shell — Google rejects workers.dev for push notifications, so
+      // there's nothing this endpoint can register. Surface as 503 with a
+      // distinct code so GAS can show "이 환경에서는 자동 동기화 불가".
+      return c.json({ error: "webhook_unconfigured" }, 503);
+    }
+
+    const tokRows = await db
+      .select({ needsReauth: oauthTokens.needsReauth })
+      .from(oauthTokens)
+      .where(and(eq(oauthTokens.userId, userId), eq(oauthTokens.provider, "google")))
+      .limit(1);
+    if (!tokRows[0] || tokRows[0].needsReauth) {
+      return c.json({ error: "reauth_required" }, 503);
+    }
+
+    const ssRows = await db
+      .select({
+        calendarId: syncState.calendarId,
+        active: syncState.active,
+      })
+      .from(syncState)
+      .where(and(eq(syncState.userId, userId), eq(syncState.calendarId, PRIMARY)))
+      .limit(1);
+    const ss = ssRows[0];
+    if (!ss) {
+      // Onboarding wasn't completed — bootstrap creates the row. Surface as
+      // 409 so GAS routes to the onboarding card.
+      return c.json({ error: "not_bootstrapped" }, 409);
+    }
+    if (!ss.active) {
+      return c.json({ error: "calendar_inactive" }, 409);
+    }
+
+    let accessToken: string;
+    try {
+      const res = await getValidAccessToken(db, c.env, userId);
+      accessToken = res.accessToken;
+    } catch (err) {
+      if (err instanceof ReauthRequiredError) {
+        return c.json({ error: "reauth_required" }, 503);
+      }
+      throw err;
+    }
+
+    try {
+      await stopWatchChannel(db, accessToken, userId, PRIMARY);
+      const reg = await registerWatchChannel(
+        db,
+        accessToken,
+        userId,
+        PRIMARY,
+        c.env.WEBHOOK_BASE_URL,
+      );
+      return c.json(
+        { ok: true, expiresAt: reg.expiration.toISOString() },
+        200,
+      );
+    } catch (err) {
+      if (err instanceof CalendarApiError) {
+        switch (err.kind) {
+          case "auth":
+            return c.json({ error: "reauth_required" }, 503);
+          case "forbidden":
+            return c.json({ error: "forbidden" }, 403);
+          case "not_found":
+            return c.json({ error: "calendar_not_found" }, 404);
+          case "rate_limited": {
+            const retryAfter = err.retryAfterSec ?? 1;
+            return c.json(
+              { error: "rate_limited", retry_after_sec: retryAfter },
+              429,
+              { "Retry-After": String(retryAfter) },
+            );
+          }
+          case "full_sync_required":
+          case "server":
+          case "unknown":
+            return c.json({ error: "upstream_unavailable" }, 502);
+          default: {
+            const _exhaustive: never = err.kind;
+            void _exhaustive;
+            return c.json({ error: "upstream_unavailable" }, 502);
+          }
+        }
+      }
+      throw err;
+    }
   } finally {
     c.executionCtx.waitUntil(close());
   }

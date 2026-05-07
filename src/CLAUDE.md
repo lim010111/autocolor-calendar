@@ -615,6 +615,61 @@ the `try { ... } finally { release }` block specifically so a skipped row
 does not trigger a spurious release (which would no-op via the ownership guard
 anyway, but avoiding the DB round-trip keeps the observable behavior clean).
 
+## Watch self-heal (§ /me + /sync/run)
+
+Watch channel registration has exactly two creation paths — the renewal cron
+above only refreshes existing channels, never creates new ones:
+
+- **`/sync/bootstrap`** — onboarding-time, fires once per (user, calendar).
+- **`maybeSelfHealWatch`** (`src/services/watchSelfHeal.ts`) — opportunistic,
+  invoked from `/me` and `/sync/run` via `c.executionCtx.waitUntil(...)`.
+  Registers a fresh channel when `watchChannelId IS NULL`, `watchExpiration
+  IS NULL`, or expiration is < 24h away. Gated on `WEBHOOK_BASE_URL` being
+  set and `oauth_tokens.needs_reauth = false`. Logs `watch self-heal ok` /
+  `watch self-heal failed` (warn) — same shape as renewal logs.
+
+If the user's `/sync/bootstrap` was incomplete (transient Google API
+failure, `WEBHOOK_BASE_URL` unset at the time, …) the user has no Watch
+channel and webhooks never fire. Self-heal closes that gap on subsequent
+home-card loads or manual sync presses.
+
+`sync_state.last_self_heal_at` is the cooldown gate — `maybeSelfHealWatch`
+is the **sole writer** (mirror of `last_manual_trigger_at`'s sole-writer
+discipline above). Stamped immediately *before* each register attempt,
+success or failure, so a 10-min cooldown blocks retry storms when
+registration keeps failing. Two concurrent waitUntil-wrapped calls can both
+pass the cooldown check and both stamp; that's safe because
+`stopWatchChannel` absorbs the resulting double-register (404 on
+already-stopped channel is no-op'd).
+
+`/sync/heal-watch` (user-explicit "지금 연결" button) deliberately ignores
+the cooldown gate and does NOT stamp `last_self_heal_at` — manual user
+action is not subject to background rate-limit, and the helper's stamp
+would silently lock out the next opportunistic heal for 10 min.
+
+**Adding a new entry point that registers a watch.** Route through
+`/sync/bootstrap` (onboarding only) or `maybeSelfHealWatch` (everything
+else). Do not call `registerWatchChannel` directly from a new code path —
+you'll bypass the cooldown / reauth / active gates and re-introduce the
+silent-failure mode this module exists to fix.
+
+**Race with the renewal cron.** Self-heal does NOT take
+`watch_renewal_in_progress_at`. Cron and self-heal can therefore both fire
+register on the same row in a tight window; observed behavior is
+"observed, not prevented" — the second `stopWatchChannel` 404-absorbs the
+first registration, the loser's `register` clobbers the winner's
+`watch_channel_id` columns under the unique partial index, and the next
+webhook-handler `lookupChannelOwner` resolves whichever channel survived.
+Same policy as the §5.4 concurrent PATCH race; do not add a claim column
+without a concrete bug report.
+
+**Queue dispatch latency.** `wrangler.toml` ships `max_batch_timeout = 2`
+(was 5). Trims dispatch wait for single webhook messages so freshly
+created events are color-classified within ~5–9s instead of 8–15s. The
+trade-off is consumer invocations on bursty traffic ramp ~2.5×; revisit
+once launch traffic ramps. Lockstep is implicit — the value lives in
+wrangler.toml only, with the rationale comment co-located there.
+
 ## Account deletion (§3 row 179)
 
 `POST /api/account/delete` (auth required) is the user-facing data-deletion

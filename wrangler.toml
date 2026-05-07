@@ -58,7 +58,11 @@ queue = "autocolor-sync-dev"
 [[env.dev.queues.consumers]]
 queue = "autocolor-sync-dev"
 max_batch_size = 10
-max_batch_timeout = 5
+# 2s (was 5s). Trims dispatch wait for single webhook messages so freshly
+# created events are color-classified within ~5–9s instead of 8–15s. Cost:
+# bursty traffic invokes the consumer ~2.5× more often. Acceptable at
+# pre-launch single-user volume; revisit if launch traffic ramps.
+max_batch_timeout = 2
 max_concurrency = 5
 max_retries = 5
 dead_letter_queue = "autocolor-sync-dlq-dev"
@@ -97,7 +101,8 @@ queue = "autocolor-sync-prod"
 [[env.prod.queues.consumers]]
 queue = "autocolor-sync-prod"
 max_batch_size = 10
-max_batch_timeout = 5
+# Mirrors env.dev — see comment there for the latency/cost trade-off.
+max_batch_timeout = 2
 max_concurrency = 5
 max_retries = 5
 dead_letter_queue = "autocolor-sync-dlq-prod"

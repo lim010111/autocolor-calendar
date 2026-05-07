@@ -5,6 +5,7 @@ import { getDb } from "../db";
 import { oauthTokens, syncState } from "../db/schema";
 import type { HonoEnv } from "../env";
 import { authMiddleware } from "../middleware/auth";
+import { maybeSelfHealWatch } from "../services/watchSelfHeal";
 
 export const meRoutes = new Hono<HonoEnv>();
 
@@ -35,16 +36,27 @@ meRoutes.get("/", async (c) => {
         lastError: syncState.lastError,
         lastRunSummary: syncState.lastRunSummary,
         active: syncState.active,
+        watchChannelId: syncState.watchChannelId,
+        watchExpiration: syncState.watchExpiration,
       })
       .from(syncState)
       .where(and(eq(syncState.userId, userId), eq(syncState.calendarId, "primary")))
       .limit(1);
+
+    // `pushActive` is the GAS home card's status pill source. Both columns
+    // are required because a row with `watchExpiration` set but `channelId`
+    // null is incoherent state — treat as inactive defensively.
+    const pushActive =
+      Boolean(sync?.watchChannelId) &&
+      Boolean(sync?.watchExpiration) &&
+      new Date(sync!.watchExpiration!).getTime() > Date.now();
 
     const body: Record<string, unknown> = {
       userId,
       email: c.get("email"),
       needs_reauth: tok?.needsReauth ?? false,
       needs_reauth_reason: tok?.needsReauthReason ?? null,
+      push_active: pushActive,
     };
 
     if (sync) {
@@ -64,6 +76,17 @@ meRoutes.get("/", async (c) => {
 
     return c.json(body);
   } finally {
-    c.executionCtx.waitUntil(close());
+    // Watch self-heal — fire-and-forget. Caller-side waitUntil keeps /me
+    // response latency at zero while the helper opportunistically registers a
+    // missing/expiring channel. We chain `close()` after the helper so the
+    // shared `db` connection isn't yanked mid-query (waitUntil promises run
+    // concurrently — without the chain, close() can race the helper's
+    // SELECT/UPDATE on the same socket). See `src/services/watchSelfHeal.ts`
+    // for the 24h threshold + 10min cooldown contract.
+    c.executionCtx.waitUntil(
+      maybeSelfHealWatch(db, c.env, userId)
+        .catch(() => undefined)
+        .finally(() => close()),
+    );
   }
 });
