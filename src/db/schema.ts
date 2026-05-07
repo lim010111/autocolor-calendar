@@ -29,6 +29,13 @@ export const users = pgTable("users", {
   email: text("email").notNull(),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  // Cost guardrail (§5/§6 후속) — per-user preview-LLM throttle window.
+  // Sole writer: `POST /api/classify/preview` when `llm: true`. NULL on
+  // pre-migration rows; the route falls back to "no prior call observed"
+  // (no throttle) until the first stamp lands. Mirror of the
+  // `sync_state.last_manual_trigger_at` / `watch_renewal_in_progress_at`
+  // single-writer pattern — never write this from any other code path.
+  lastPreviewAt: timestamp("last_preview_at", { withTimezone: true }),
 });
 
 export const oauthTokens = pgTable(
@@ -180,6 +187,26 @@ export const llmUsageDaily = pgTable(
   },
   (t) => [primaryKey({ columns: [t.userId, t.day] })],
 );
+
+// Cost guardrail (§5/§6 후속) — operator-side global daily LLM call ceiling.
+// Single-row-per-day counter (PK = day) bumped atomically BEFORE the per-user
+// `llm_usage_daily` UPSERT inside `reserveLlmCall`. When the global count
+// post-increment exceeds `LLM_GLOBAL_DAILY_LIMIT`, the call is denied and
+// the per-user counter is NOT touched, so a single user does not absorb
+// blame for global exhaustion. `day` is UTC for parity with `llm_usage_daily`.
+//
+// No `user_id` column — this counter is operator-scoped, not user-scoped.
+// The cross-user nature is intentional and analogous to the rotation cron's
+// cross-user SELECT exception (`docs/architecture-guidelines.md` "Token
+// encryption rotation invariant"); RLS here is informational because the
+// Worker connects via `postgres` (BYPASSRLS) and Studio queries should be
+// operator-only anyway.
+export const llmUsageGlobalDaily = pgTable("llm_usage_global_daily", {
+  day: date("day").primaryKey(),
+  callCount: integer("call_count").notNull().default(0),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+});
 
 export const syncFailures = pgTable(
   "sync_failures",

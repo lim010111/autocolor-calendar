@@ -17,6 +17,7 @@ import { oauthRoutes } from "./routes/oauth";
 import { statsRoutes } from "./routes/stats";
 import { syncRoutes } from "./routes/sync";
 import { webhookRoutes } from "./routes/webhooks";
+import { runDailyCostReport } from "./services/dailyCostReport";
 import { rotateBatch } from "./services/tokenRotation";
 import { renewExpiringWatches } from "./services/watchRenewal";
 
@@ -27,6 +28,11 @@ import { renewExpiringWatches } from "./services/watchRenewal";
 // "unknown cron schedule" warn branch and the job silently no-ops.
 const WATCH_RENEWAL_CRON = "0 */6 * * *";
 const TOKEN_ROTATION_CRON = "0 3 * * *";
+// Cost guardrail (§5/§6 후속) — daily summary of `llm_usage_global_daily`.
+// 5 0 * * * (UTC 00:05) — five-minute offset from midnight so the report
+// reads a complete prior-day row regardless of last-second writes around
+// the rollover. Same dispatcher discipline as the other crons above.
+const DAILY_COST_REPORT_CRON = "5 0 * * *";
 
 const app = new Hono<HonoEnv>();
 
@@ -112,6 +118,24 @@ export default {
               JSON.stringify({
                 level: "warn",
                 msg: "token rotation failed at top level",
+                error: err instanceof Error ? err.message : String(err),
+              }),
+            );
+          })
+          .finally(() => close()),
+      );
+    } else if (event.cron === DAILY_COST_REPORT_CRON) {
+      // Cost guardrail (§5/§6 후속) — read-only summary, runs everywhere
+      // including dev shells (no Google API surface to gate on). Failure
+      // is observability-only: warn at top level, never rethrow.
+      const { db, close } = getDb(env);
+      ctx.waitUntil(
+        runDailyCostReport({ db, env })
+          .catch((err: unknown) => {
+            console.warn(
+              JSON.stringify({
+                level: "warn",
+                msg: "daily cost report failed at top level",
                 error: err instanceof Error ? err.message : String(err),
               }),
             );

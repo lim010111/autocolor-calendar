@@ -1,7 +1,7 @@
 import { sql } from "drizzle-orm";
 import type { PostgresJsDatabase } from "drizzle-orm/postgres-js";
 
-import { llmUsageDaily } from "../db/schema";
+import { llmUsageDaily, llmUsageGlobalDaily } from "../db/schema";
 import type { Bindings } from "../env";
 import type { Category, Classification } from "./classifier";
 import { redactEventForLlm } from "./piiRedactor";
@@ -34,17 +34,47 @@ import type { CalendarEvent } from "./googleCalendar";
 //
 // COST GUARD
 // ----------
-// `reserveLlmCall` bumps a per-user daily counter BEFORE the fetch. If the
-// post-increment count exceeds the limit, we abort without calling OpenAI.
-// A hung request therefore cannot cause runaway cost; the 1 wasted
-// increment per over-quota event acts as self-rate-limiting.
+// Two-tier daily counter via `reserveLlmCall`, bumped BEFORE the fetch:
+//   1. Global counter (`llm_usage_global_daily`) — operator-side ceiling
+//      that protects the OpenAI credit independently of how many users
+//      have signed up. Checked first; if over, the per-user counter is
+//      NOT touched so a single user doesn't absorb blame for global
+//      exhaustion.
+//   2. Per-user counter (`llm_usage_daily`) — the original §5.3 guard.
+// Either tier overflowing aborts without calling OpenAI. A hung request
+// therefore cannot cause runaway cost; the 1 wasted increment per
+// over-quota event acts as self-rate-limiting.
+//
+// Prompt-side caps below also bound per-call input size, and
+// `max_completion_tokens` bounds the response — combined, this turns
+// "1 quota call" into a small, near-constant cost regardless of what
+// the user pastes into a calendar event description.
 
 const LLM_TIMEOUT_MS = 5_000;
 const LLM_MODEL = "gpt-5.4-nano";
 const LLM_DEFAULT_DAILY_LIMIT = 200;
+const LLM_DEFAULT_GLOBAL_DAILY_LIMIT = 10_000;
 const LLM_MAX_CATEGORIES = 50;
 const OPENAI_URL = "https://api.openai.com/v1/chat/completions";
 const MAX_ATTEMPTS = 2; // 1 재시도 = 최대 2회
+
+// Prompt-side input caps applied AFTER PII redaction inside `buildPrompt`.
+// These are the second line of defense behind the route-level Zod caps
+// (`description.max(8000)`, etc.); the sync path never reaches the route
+// validator, so the prompt builder is the chokepoint that matters for
+// arbitrary calendar payloads. UTF-16 length cap (`String.prototype.slice`)
+// — bytewise length is not what we're rate-limiting; we're rate-limiting
+// tokens, and slicing characters is the cheapest proxy for that.
+const LLM_PROMPT_SUMMARY_MAX = 256;
+const LLM_PROMPT_DESC_MAX = 1024;
+const LLM_PROMPT_LOC_MAX = 256;
+
+// Response-token ceiling. The structured-output schema only emits
+// `{ "category_name": "<name>" }` — even a verbose name leaves us well
+// under 64 tokens. If the model overruns (reasoning tokens, etc.) the
+// response is truncated and `parseCategoryName` returns `bad_response`,
+// which folds to a silent miss — same outcome as a missing key.
+const LLM_MAX_COMPLETION_TOKENS = 64;
 
 export type ChatMessage = { role: "system" | "user"; content: string };
 
@@ -83,8 +113,9 @@ export const LLM_PROMPT_MAX_CATEGORIES = 50;
 export type ReserveLlmCallFn = (
   db: PostgresJsDatabase,
   userId: string,
-  limit: number,
-) => Promise<{ ok: boolean; count: number }>;
+  perUserLimit: number,
+  globalLimit: number,
+) => Promise<{ ok: boolean; count: number; reason?: "per_user" | "global" }>;
 
 export type LlmClassifyDeps = {
   db: PostgresJsDatabase;
@@ -130,12 +161,23 @@ Categories: [{"name":"Meeting","keywords":["meeting","sync"]}]
 Event: {"summary":"team sync 10am"}
 Output: {"category_name":"Meeting"}`;
 
+  // Cost guardrail (§5/§6 후속) — slice each user-authored field so a
+  // pathological 32KB description (Google's per-event ceiling) cannot push
+  // input tokens into the hundreds of thousands. Slice happens AFTER
+  // redaction so PII placeholders like `[email]` are preserved when they
+  // fall inside the cap. Truncation is silent — classification quality
+  // tradeoff is acceptable because the leading characters of a calendar
+  // field carry the highest classification signal (`buildPrompt` whitelist
+  // rationale, §5.3). UTF-16 `slice` may split a surrogate pair when the
+  // truncation boundary lands mid-emoji; the model treats the resulting
+  // lone surrogate as opaque text and JSON.stringify emits `\uXXXX`
+  // unchanged, so this is benign by construction.
   const userPayload = {
     categories: categoryList,
     event: {
-      summary: redactedEvent.summary ?? "",
-      description: redactedEvent.description ?? "",
-      location: redactedEvent.location ?? "",
+      summary: (redactedEvent.summary ?? "").slice(0, LLM_PROMPT_SUMMARY_MAX),
+      description: (redactedEvent.description ?? "").slice(0, LLM_PROMPT_DESC_MAX),
+      location: (redactedEvent.location ?? "").slice(0, LLM_PROMPT_LOC_MAX),
     },
   };
 
@@ -163,14 +205,52 @@ export function mapCategoryNameToClassification(
   };
 }
 
-// Atomic UPSERT + increment. Returns post-increment count and whether the
-// caller should proceed (count <= limit).
+// Atomic UPSERT + increment, two-tier (global → per-user).
+//
+// Order is global-first by design: if the global counter is already
+// exhausted, we abort WITHOUT bumping the per-user counter, so an
+// unrelated user doesn't burn one of their 200 daily calls because
+// some other user filled the global bucket. The mirror trade-off is
+// that the global counter can over-count by one when per-user fails
+// AFTER global succeeded — that is the safe direction (next call sees
+// the inflated count and aborts earlier).
+//
+// `count` and `reason` reflect WHICH tier denied the call: callers
+// (telemetry, dashboards) get to distinguish "this user is over their
+// own ceiling" from "OpenAI credit is at risk system-wide today".
 export async function reserveLlmCall(
   db: PostgresJsDatabase,
   userId: string,
-  limit: number,
-): Promise<{ ok: boolean; count: number }> {
-  const rows = await db
+  perUserLimit: number,
+  globalLimit: number,
+): Promise<{ ok: boolean; count: number; reason?: "per_user" | "global" }> {
+  // Tier 1: global counter.
+  const globalRows = await db
+    .insert(llmUsageGlobalDaily)
+    .values({
+      day: sql`CURRENT_DATE` as unknown as string,
+      callCount: 1,
+    })
+    .onConflictDoUpdate({
+      target: llmUsageGlobalDaily.day,
+      set: {
+        callCount: sql`${llmUsageGlobalDaily.callCount} + 1`,
+        updatedAt: sql`now()`,
+      },
+    })
+    .returning({ callCount: llmUsageGlobalDaily.callCount });
+
+  const globalRow = globalRows[0];
+  if (!globalRow) {
+    // Defensive: RETURNING must produce one row. Treat as over-quota.
+    return { ok: false, count: 0, reason: "global" };
+  }
+  if (globalRow.callCount > globalLimit) {
+    return { ok: false, count: globalRow.callCount, reason: "global" };
+  }
+
+  // Tier 2: per-user counter.
+  const userRows = await db
     .insert(llmUsageDaily)
     .values({
       userId,
@@ -186,19 +266,28 @@ export async function reserveLlmCall(
     })
     .returning({ callCount: llmUsageDaily.callCount });
 
-  const row = rows[0];
-  if (!row) {
-    // Defensive: RETURNING must produce exactly one row for this UPSERT.
-    // Treat as over-quota so the caller aborts rather than proceeding
-    // without an accounted reservation.
-    return { ok: false, count: 0 };
+  const userRow = userRows[0];
+  if (!userRow) {
+    return { ok: false, count: 0, reason: "per_user" };
   }
-  return { ok: row.callCount <= limit, count: row.callCount };
+  if (userRow.callCount > perUserLimit) {
+    return { ok: false, count: userRow.callCount, reason: "per_user" };
+  }
+  return { ok: true, count: userRow.callCount };
 }
 
 function parseDailyLimit(raw: string | undefined): number {
   const n = raw ? Number.parseInt(raw, 10) : Number.NaN;
   return Number.isFinite(n) && n > 0 ? n : LLM_DEFAULT_DAILY_LIMIT;
+}
+
+// Exported for `dailyCostReport.ts` so the cron uses the same parse rules
+// and default as `classifyWithLlm` — operator-side cap drift between the
+// classifier and the report would mean the alert fires at a different
+// threshold than the actual ceiling.
+export function parseGlobalDailyLimit(raw: string | undefined): number {
+  const n = raw ? Number.parseInt(raw, 10) : Number.NaN;
+  return Number.isFinite(n) && n > 0 ? n : LLM_DEFAULT_GLOBAL_DAILY_LIMIT;
 }
 
 function isTransient(status: number): boolean {
@@ -222,6 +311,12 @@ async function callOpenAi(
     body: JSON.stringify({
       model: LLM_MODEL,
       messages,
+      // Cost guardrail (§5/§6 후속) — response-token ceiling. Capped low
+      // because the structured-output schema constrains the response to
+      // a tiny JSON object; if the model exceeds the cap the response
+      // truncates and the caller falls through to `bad_response` → silent
+      // miss. See `LLM_MAX_COMPLETION_TOKENS` declaration for rationale.
+      max_completion_tokens: LLM_MAX_COMPLETION_TOKENS,
       response_format: {
         type: "json_schema",
         json_schema: {
@@ -290,9 +385,10 @@ export async function classifyWithLlm(
   if (!apiKey) return finish({ kind: "disabled" });
   if (categories.length === 0) return finish({ kind: "disabled" });
 
-  const limit = parseDailyLimit(deps.env.LLM_DAILY_LIMIT);
+  const perUserLimit = parseDailyLimit(deps.env.LLM_DAILY_LIMIT);
+  const globalLimit = parseGlobalDailyLimit(deps.env.LLM_GLOBAL_DAILY_LIMIT);
   const reserve = deps.reserve ?? reserveLlmCall;
-  const reservation = await reserve(deps.db, deps.userId, limit);
+  const reservation = await reserve(deps.db, deps.userId, perUserLimit, globalLimit);
   if (!reservation.ok) return finish({ kind: "quota_exceeded" });
 
   const redacted = redactEventForLlm(event);

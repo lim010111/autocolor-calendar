@@ -42,17 +42,35 @@ function makeEnv(overrides: Partial<Bindings> = {}): Bindings {
   };
 }
 
-// Drizzle query builder returns an awaitable chain. The only surface
-// `reserveLlmCall` touches is `.insert().values().onConflictDoUpdate().returning()`
-// which ultimately awaits to an array. A thin chainable stub is enough.
-function fakeDbForReserve(rows: Array<{ callCount: number }>) {
-  const chain = {
-    values: () => chain,
-    onConflictDoUpdate: () => chain,
-    returning: async () => rows,
+// Drizzle query builder returns an awaitable chain. `reserveLlmCall` now
+// fires two `.insert().values().onConflictDoUpdate().returning()` chains in
+// strict order — global counter first, per-user counter second. The fake
+// returns `globalRows` for the first call and `userRows` for the second so
+// tests can simulate each tier independently. The order invariant lives in
+// reserveLlmCall's source; if it ever changes, this fake will need to
+// switch on table identity instead of call sequence.
+function fakeDbForReserve(opts: {
+  globalRows?: Array<{ callCount: number }>;
+  userRows?: Array<{ callCount: number }>;
+} = {}) {
+  const globalRows = opts.globalRows ?? [{ callCount: 1 }];
+  const userRows = opts.userRows ?? [{ callCount: 1 }];
+  const stats = { insertCalls: 0 };
+  const makeChain = (rows: Array<{ callCount: number }>) => {
+    const chain = {
+      values: (..._args: unknown[]) => chain,
+      onConflictDoUpdate: (..._args: unknown[]) => chain,
+      returning: async () => rows,
+    };
+    return chain;
   };
-  const db = { insert: () => chain } as never;
-  return db;
+  const db = {
+    insert: (..._args: unknown[]) => {
+      stats.insertCalls += 1;
+      return stats.insertCalls === 1 ? makeChain(globalRows) : makeChain(userRows);
+    },
+  } as never;
+  return { db, stats };
 }
 
 describe("buildPrompt", () => {
@@ -110,6 +128,36 @@ describe("buildPrompt", () => {
     expect(blob).not.toContain("organizer");
   });
 
+  it("truncates description longer than 1024 chars (cost guardrail)", () => {
+    // Sync path receives raw Calendar events whose descriptions can reach
+    // ~32KB. The route-layer Zod cap (8000) only protects /api/classify/preview,
+    // so buildPrompt is the chokepoint for sync-side input. PII placeholders
+    // already survive redaction; the slice cap is a token-budget guard.
+    const big = "x".repeat(2048);
+    const msgs = buildPrompt(ev({ summary: "s", description: big }), [cat()]);
+    const user = msgs.find((m) => m.role === "user")!;
+    const payload = JSON.parse(user.content) as {
+      event: { description: string };
+    };
+    expect(payload.event.description.length).toBe(1024);
+  });
+
+  it("truncates summary longer than 256 chars", () => {
+    const big = "y".repeat(512);
+    const msgs = buildPrompt(ev({ summary: big }), [cat()]);
+    const user = msgs.find((m) => m.role === "user")!;
+    const payload = JSON.parse(user.content) as { event: { summary: string } };
+    expect(payload.event.summary.length).toBe(256);
+  });
+
+  it("truncates location longer than 256 chars", () => {
+    const big = "z".repeat(512);
+    const msgs = buildPrompt(ev({ summary: "s", location: big }), [cat()]);
+    const user = msgs.find((m) => m.role === "user")!;
+    const payload = JSON.parse(user.content) as { event: { location: string } };
+    expect(payload.event.location.length).toBe(256);
+  });
+
   it("caps category list at 50 entries", () => {
     const cats = Array.from({ length: 60 }, (_, i) =>
       cat({ id: `c-${i}`, name: `cat-${i}`, keywords: [`kw-${i}`] }),
@@ -156,29 +204,65 @@ describe("mapCategoryNameToClassification", () => {
   });
 });
 
-describe("reserveLlmCall", () => {
-  it("returns ok=true when count <= limit", async () => {
-    const db = fakeDbForReserve([{ callCount: 1 }]);
-    const res = await reserveLlmCall(db, USER, 200);
+describe("reserveLlmCall — two-tier (global → per-user)", () => {
+  it("ok=true when both tiers under their respective limits", async () => {
+    const { db, stats } = fakeDbForReserve({
+      globalRows: [{ callCount: 5 }],
+      userRows: [{ callCount: 1 }],
+    });
+    const res = await reserveLlmCall(db, USER, 200, 10_000);
     expect(res).toEqual({ ok: true, count: 1 });
+    expect(stats.insertCalls).toBe(2);
   });
 
-  it("returns ok=true when count equals limit", async () => {
-    const db = fakeDbForReserve([{ callCount: 200 }]);
-    const res = await reserveLlmCall(db, USER, 200);
+  it("ok=true when both tiers exactly at their limits (boundary)", async () => {
+    const { db } = fakeDbForReserve({
+      globalRows: [{ callCount: 10_000 }],
+      userRows: [{ callCount: 200 }],
+    });
+    const res = await reserveLlmCall(db, USER, 200, 10_000);
     expect(res).toEqual({ ok: true, count: 200 });
   });
 
-  it("returns ok=false when count > limit", async () => {
-    const db = fakeDbForReserve([{ callCount: 201 }]);
-    const res = await reserveLlmCall(db, USER, 200);
-    expect(res).toEqual({ ok: false, count: 201 });
+  it("global over → ok=false, reason=global, per-user counter NOT touched", async () => {
+    // Cost guardrail invariant: global exhaustion must not consume per-user
+    // budget. The fake's insertCalls counter pins this — only the global
+    // UPSERT fires before the function returns.
+    const { db, stats } = fakeDbForReserve({
+      globalRows: [{ callCount: 10_001 }],
+      userRows: [{ callCount: 1 }],
+    });
+    const res = await reserveLlmCall(db, USER, 200, 10_000);
+    expect(res).toEqual({ ok: false, count: 10_001, reason: "global" });
+    expect(stats.insertCalls).toBe(1);
   });
 
-  it("treats empty RETURNING as over-quota (defensive)", async () => {
-    const db = fakeDbForReserve([]);
-    const res = await reserveLlmCall(db, USER, 200);
+  it("global ok + per-user over → ok=false, reason=per_user", async () => {
+    const { db, stats } = fakeDbForReserve({
+      globalRows: [{ callCount: 5 }],
+      userRows: [{ callCount: 201 }],
+    });
+    const res = await reserveLlmCall(db, USER, 200, 10_000);
+    expect(res).toEqual({ ok: false, count: 201, reason: "per_user" });
+    expect(stats.insertCalls).toBe(2);
+  });
+
+  it("treats empty global RETURNING as over-quota (defensive)", async () => {
+    const { db, stats } = fakeDbForReserve({ globalRows: [] });
+    const res = await reserveLlmCall(db, USER, 200, 10_000);
     expect(res.ok).toBe(false);
+    expect(res.reason).toBe("global");
+    expect(stats.insertCalls).toBe(1);
+  });
+
+  it("treats empty per-user RETURNING as over-quota (defensive)", async () => {
+    const { db } = fakeDbForReserve({
+      globalRows: [{ callCount: 5 }],
+      userRows: [],
+    });
+    const res = await reserveLlmCall(db, USER, 200, 10_000);
+    expect(res.ok).toBe(false);
+    expect(res.reason).toBe("per_user");
   });
 });
 
@@ -441,6 +525,30 @@ describe("classifyWithLlm", () => {
     expect(hasNameLog).toBe(true);
     // … but never with the message content or event PII.
     assertNoPiiLogged(["매우비밀회의", "password=hunter2", "hunter2", "request body leak"]);
+  });
+
+  it("request body sets max_completion_tokens: 64 (response-side cost cap)", async () => {
+    // Cost guardrail: structured-output schema gives us a tiny JSON object,
+    // but reasoning-token overruns or model regressions could still inflate
+    // response size. The completion cap turns the worst-case cost-per-call
+    // into a bounded constant.
+    const fetchSpy = vi.fn(async (_url: unknown, _init?: unknown) =>
+      openAiJson("회의"),
+    );
+    globalThis.fetch = fetchSpy as unknown as typeof fetch;
+    await classifyWithLlm(ev({ summary: "x" }), [cat({ name: "회의" })], {
+      db: {} as never,
+      env: makeEnv(),
+      userId: USER,
+      reserve: mkReserve(true),
+    });
+    const init = fetchSpy.mock.calls[0]?.[1] as RequestInit | undefined;
+    expect(init).toBeDefined();
+    const body = JSON.parse((init?.body as string) ?? "{}") as Record<string, unknown>;
+    expect(body.max_completion_tokens).toBe(64);
+    // Sanity: the rest of the payload is intact.
+    expect(body.model).toBeTypeOf("string");
+    expect(Array.isArray(body.messages)).toBe(true);
   });
 
   it("does NOT log event content on any failure path", async () => {
