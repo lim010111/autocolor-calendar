@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>autocolor_for_calendar · AI-Readiness Map</title>
+    <title>autocolor_for_calendar · AI-Readiness Map (3차 · 76/100 · AI-Ready)</title>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
@@ -656,16 +656,16 @@
     <div class="page">
       <header class="header">
         <div>
-          <div class="eyebrow">레포지토리 감사 · AI 준비도 · v2 루브릭 · 2회차</div>
+          <div class="eyebrow">레포지토리 감사 · AI 준비도 · v2 루브릭 · 3회차</div>
           <h1>autocolor_for_calendar — AI 준비도 지도</h1>
           <div class="sub">
             7개 카테고리 채점 · 구조 지도 · ROI 우선순위 액션
           </div>
         </div>
         <div class="header-meta">
-          <div>점수 측정 <strong>2026-05-02</strong> (1차 측정 동일 일자)</div>
-          <div>브랜치 <strong>feature/section-7-reviewer-demo-slice-8-test-account</strong></div>
-          <div>모듈 <strong>4</strong> · 컨텍스트 파일 <strong>9</strong> <span class="delta">+3</span></div>
+          <div>점수 측정 <strong>2026-05-07</strong> (3차 · 2차 +5일)</div>
+          <div>브랜치 <strong>main</strong></div>
+          <div>모듈 <strong>4</strong> · 컨텍스트 파일 <strong>11</strong> <span class="delta">+2</span></div>
         </div>
       </header>
 
@@ -673,35 +673,38 @@
         <div class="score-hero">
           <div class="label">AI 준비도 지수</div>
           <div class="value">
-            <span class="num">59</span><span class="denom">/ 100</span>
-            <span class="delta">+29</span>
+            <span class="num">76</span><span class="denom">/ 100</span>
+            <span class="delta">+17</span>
           </div>
           <div class="grade-row">
-            <span class="grade-badge">
-              <span class="grade-dot"></span> AI-Fragile · 부분 친화
+            <span class="grade-badge" style="background: var(--green-soft); color: var(--green)">
+              <span class="grade-dot" style="background: var(--green)"></span> AI-Ready · 본격 친화 진입
             </span>
           </div>
           <div class="desc">
-            1차 측정 (30/100, AI-Hostile) 대비 <strong>+29점, 등급 두 단계
-            상승</strong>. <strong>A 탐색 만점 (15/15)</strong>·<strong>C 암묵지
-            +12 (2→14)</strong>·<strong>D 의존도 진입 (0→8)</strong>이
-            상승의 핵심. 잔여 약점은 G 성과 측정 (0/5, 별건), B 컨텍스트
-            품질 (9/20, src/CLAUDE.md 532줄 압축이 별건), F 신선도
-            (6/10, 다음 PR 의 hook 인프라 도입으로 +3 회수 예정).
+            2차 (59/100, AI-Fragile) → 3차 (76/100, <strong>AI-Ready</strong>),
+            <strong>+17점 · 등급 두 단계 상승</strong>. 1차 30 → 2차 59 → 3차 76 누적 +46.
+            <strong>E 검증 게이트 +5 (7→12, CODEOWNERS+PR template+context-paths CI gate)</strong>·
+            <strong>F 신선도 +2 (6→8, CI path 검증 도입)</strong>·
+            <strong>D 의존성 +3 (8→11, README mermaid + 모듈 cross-link)</strong>·
+            <strong>C 암묵지 +4 (14→18, gas/ CLAUDE.md 풀 패턴화)</strong>·
+            <strong>B 품질 +3 (9→12)</strong>이 상승의 핵심. 잔여 약점은
+            G 성과 측정 (0/5, evals/ 인프라 별건), B 컨텍스트 (12/20,
+            <code>src/CLAUDE.md</code> 739줄 압축 별건).
           </div>
           <hr />
           <div class="mini-stats">
             <div class="mini-stat">
               <div class="k">컨텍스트 보유 모듈</div>
-              <div class="v">4 / 4 <span class="delta">+2</span></div>
+              <div class="v">4 / 4 <span class="delta">stable</span></div>
             </div>
             <div class="mini-stat">
               <div class="k">잘못된 경로 (참조)</div>
-              <div class="v" style="color: var(--amber)">1 / 50<span class="delta">stable</span></div>
+              <div class="v" style="color: var(--green)">0 / 74 <span class="delta">−1</span></div>
             </div>
             <div class="mini-stat">
               <div class="k">300줄 초과 파일</div>
-              <div class="v" style="color: var(--red)">16</div>
+              <div class="v" style="color: var(--red)">18</div>
             </div>
           </div>
         </div>
@@ -709,7 +712,7 @@
         <div class="rules">
           <div class="rules-head">
             <div>
-              <h2>7개 카테고리 — 카테고리별 점수 (1차 → 2차)</h2>
+              <h2>7개 카테고리 — 카테고리별 점수 (2차 → 3차)</h2>
             </div>
             <div class="legend-inline">
               <span><i style="background: var(--green)"></i> 75% 이상</span>
@@ -721,9 +724,9 @@
           <div class="rule-row">
             <div class="idx">A</div>
             <div>
-              <div class="title">AI 탐색 &amp; 커버리지 <span class="delta">+7</span></div>
+              <div class="title">AI 탐색 &amp; 커버리지 <span class="delta">stable</span></div>
               <div class="sub">
-                4 / 4 모듈 보유 (drizzle/, scripts/ CLAUDE.md 신규)
+                4 / 4 모듈 보유 — root CLAUDE.md compass-style 강화
               </div>
             </div>
             <div class="bar bar-good">
@@ -735,99 +738,99 @@
           <div class="rule-row">
             <div class="idx">B</div>
             <div>
-              <div class="title">컨텍스트 문서 품질 <span class="delta">+2</span></div>
+              <div class="title">컨텍스트 문서 품질 <span class="delta">+3</span></div>
               <div class="sub">
-                <code>src/CLAUDE.md</code> 532줄 압축 (별건) 시 +5~7 추가 회수
+                gas/CLAUDE.md 풀 패턴화 (Why/Note/Gotcha) · root quick-cmd · 잔여: <code>src/CLAUDE.md</code> 739줄 압축
               </div>
             </div>
-            <div class="bar bar-bad">
-              <span style="width: 45%"></span>
+            <div class="bar bar-warn">
+              <span style="width: 60%"></span>
             </div>
-            <div class="num">9/20</div>
+            <div class="num">12/20</div>
           </div>
           <div class="sub-scores">
             <div class="ss-cell"><span class="lbl">B1 간결성</span><br /><span class="val warn">3</span></div>
-            <div class="ss-cell"><span class="lbl">B2 명령</span><br /><span class="val bad">1</span></div>
+            <div class="ss-cell"><span class="lbl">B2 명령</span><br /><span class="val warn">2</span></div>
             <div class="ss-cell"><span class="lbl">B3 핵심파일</span><br /><span class="val warn">3</span></div>
-            <div class="ss-cell"><span class="lbl">B4 비자명</span><br /><span class="val bad">1</span></div>
-            <div class="ss-cell"><span class="lbl">B5 교차참조</span><br /><span class="val bad">1</span></div>
+            <div class="ss-cell"><span class="lbl">B4 비자명</span><br /><span class="val warn">2</span></div>
+            <div class="ss-cell"><span class="lbl">B5 교차참조</span><br /><span class="val warn">2</span></div>
           </div>
 
           <div class="rule-row">
             <div class="idx">C</div>
             <div>
-              <div class="title">암묵지 외부화 <span class="delta">+12</span></div>
+              <div class="title">암묵지 외부화 <span class="delta">+4</span></div>
               <div class="sub">
-                Q5 ADR scaffold 진입 · drizzle/scripts CLAUDE.md 가 Q1~Q4 라이프
+                gas/ CLAUDE.md 가 Q2 패턴 / Q4 deps 풀 라이프 — Q5 ADR scaffold 유지
               </div>
             </div>
             <div class="bar bar-good">
-              <span style="width: 70%"></span>
+              <span style="width: 90%"></span>
             </div>
-            <div class="num">14/20</div>
+            <div class="num">18/20</div>
           </div>
           <div class="sub-scores">
             <div class="ss-cell"><span class="lbl">Q1 소유</span><br /><span class="val good">3</span></div>
-            <div class="ss-cell"><span class="lbl">Q2 패턴</span><br /><span class="val warn">2</span></div>
+            <div class="ss-cell"><span class="lbl">Q2 패턴</span><br /><span class="val good">4</span></div>
             <div class="ss-cell"><span class="lbl">Q3 비자명</span><br /><span class="val good">3</span></div>
-            <div class="ss-cell"><span class="lbl">Q4 의존성</span><br /><span class="val warn">2</span></div>
+            <div class="ss-cell"><span class="lbl">Q4 의존성</span><br /><span class="val good">4</span></div>
             <div class="ss-cell"><span class="lbl">Q5 ADR/MEM</span><br /><span class="val good">4</span></div>
           </div>
 
           <div class="rule-row">
             <div class="idx">D</div>
             <div>
-              <div class="title">모듈 간 의존성 매핑 <span class="delta">+8</span></div>
+              <div class="title">모듈 간 의존성 매핑 <span class="delta">+3</span></div>
               <div class="sub">
-                ARCHITECTURE.md +6 · context_with_deps 2/9 +2 · mermaid 인식 X
+                ARCHITECTURE.md 보유 · README mermaid sync-flow 신규 · context_with_deps 4/11
               </div>
             </div>
             <div class="bar bar-warn">
-              <span style="width: 53%"></span>
+              <span style="width: 73%"></span>
             </div>
-            <div class="num">8/15</div>
+            <div class="num">11/15</div>
           </div>
 
           <div class="rule-row">
             <div class="idx">E</div>
             <div>
-              <div class="title">검증 &amp; 품질 게이트</div>
+              <div class="title">검증 &amp; 품질 게이트 <span class="delta">+5</span></div>
               <div class="sub">
-                참조 정확도 49 / 50 (98%) · CODEOWNERS / evals 부재
+                참조 정확도 74/74 (100%) · CODEOWNERS +2 · PR template +2 · CI context-paths gate
               </div>
             </div>
-            <div class="bar bar-bad">
-              <span style="width: 47%"></span>
+            <div class="bar bar-warn">
+              <span style="width: 80%"></span>
             </div>
-            <div class="num">7/15</div>
+            <div class="num">12/15</div>
           </div>
           <div class="sub-scores cols-4">
             <div class="ss-cell"><span class="lbl">E1 참조정확</span><br /><span class="val good">5</span></div>
-            <div class="ss-cell"><span class="lbl">E2 비평게이트</span><br /><span class="val bad">0</span></div>
-            <div class="ss-cell"><span class="lbl">E3 빌드/테스트</span><br /><span class="val warn">2</span></div>
+            <div class="ss-cell"><span class="lbl">E2 비평게이트</span><br /><span class="val good">4</span></div>
+            <div class="ss-cell"><span class="lbl">E3 빌드/테스트</span><br /><span class="val warn">3</span></div>
             <div class="ss-cell"><span class="lbl">E4 프롬프트테스트</span><br /><span class="val bad">0</span></div>
           </div>
 
           <div class="rule-row">
             <div class="idx">F</div>
             <div>
-              <div class="title">신선도 &amp; 자가 유지보수</div>
+              <div class="title">신선도 &amp; 자가 유지보수 <span class="delta">+2</span></div>
               <div class="sub">
-                drift 0% 유지 · husky pre-push + path 검증은 다음 PR
+                drift 0% 유지 · CI workflow 에 <code>scripts/check-context-paths.py</code> gate 추가
               </div>
             </div>
-            <div class="bar bar-warn">
-              <span style="width: 60%"></span>
+            <div class="bar bar-good">
+              <span style="width: 80%"></span>
             </div>
-            <div class="num">6/10</div>
+            <div class="num">8/10</div>
           </div>
 
           <div class="rule-row">
             <div class="idx">G</div>
             <div>
-              <div class="title">에이전트 성과 측정</div>
+              <div class="title">에이전트 성과 측정 <span class="delta">stable</span></div>
               <div class="sub">
-                evals/ benchmarks/ 부재 — 본 PR out-of-scope
+                evals/ benchmarks/ 부재 — 별건 (Effort 6h)
               </div>
             </div>
             <div class="bar bar-bad">
@@ -841,9 +844,9 @@
       <section class="map-section">
         <div class="map-head">
           <div>
-            <h2>구조 지도 — 2차 측정 후</h2>
+            <h2>구조 지도 — 3차 측정 후</h2>
             <div class="sub">
-              녹색 테두리 노드 = 본 PR 신규 컨텍스트 · 파란 노드 = 기존 CLAUDE.md
+              녹색 테두리 노드 = 본 라운드 신규/대폭 강화 · 파란 노드 = 기존 CLAUDE.md
             </div>
           </div>
           <div class="map-legend">
@@ -1113,62 +1116,67 @@
       <div class="findings">
         <section class="panel panel-strength">
           <div class="panel-head">
-            <h3>강점 (1차 → 2차 변화)</h3>
+            <h3>강점 (2차 → 3차 변화)</h3>
             <span class="count">유지할 것</span>
           </div>
           <ul class="panel-list">
             <li>
               <div class="head">
-                <span class="tag tag-rule" style="background: var(--green-soft); color: var(--green)">Cat A · 만점</span>
-                4 / 4 모듈 컨텍스트 보유 (8 → 15)
+                <span class="tag tag-rule" style="background: var(--green-soft); color: var(--green)">Cat E · +5</span>
+                검증 게이트 7 → 12 (CODEOWNERS · PR template · CI path gate)
               </div>
               <div class="note">
-                drizzle/ · scripts/ 에 67줄 / 70줄 모듈 CLAUDE.md 신규.
-                기존 src/CLAUDE.md (532ln) 와 gas/CLAUDE.md 는 무수정. 신규
-                두 파일 모두 사실관계 인용만 (정책 진술은 src/CLAUDE.md 에 위임).
+                <code>.github/CODEOWNERS</code> 가 7개 high-stakes 경로
+                (oauth/account routes · src/CLAUDE.md · drizzle/) 별도 라우팅.
+                <code>.github/pull_request_template.md</code> 가 5개 invariant
+                (tenant isolation · halt-on-failure · color marker · log redaction
+                · observability fire-and-forget) 자체 점검 체크리스트화.
+                CI <code>context-paths</code> job 이
+                <code>scripts/check-context-paths.py</code> 로 머지 시점 path 회귀 차단.
               </div>
             </li>
             <li>
               <div class="head">
-                <span class="tag tag-rule" style="background: var(--green-soft); color: var(--green)">Cat C · +12</span>
-                암묵지 외부화 2 → 14
+                <span class="tag tag-rule" style="background: var(--green-soft); color: var(--green)">Cat E1</span>
+                참조 정확도 100% (74 / 74) 달성
               </div>
               <div class="note">
-                <code>docs/decisions/README.md</code> ADR scaffold 진입 (Q5 +4).
-                drizzle/scripts CLAUDE.md 가 Q1 (Owns) +2, Q2 (Patterns) +2,
-                Q3 (Non-obvious) +2, Q4 (Cross-module) +2 동시 라이프.
+                2차의 잔여 1건 (score.py regex alternation bug) 을 README
+                phrasing 조정으로 회피 (path 의미는 보존: <code>appsscript.json</code> +
+                <code>gas/</code> 분리 표기). 글로벌 툴 미수정.
               </div>
             </li>
             <li>
               <div class="head">
-                <span class="tag tag-rule" style="background: var(--green-soft); color: var(--green)">Cat D · +8</span>
-                의존성 매핑 0 → 8
+                <span class="tag tag-rule" style="background: var(--green-soft); color: var(--green)">Cat C · +4</span>
+                암묵지 외부화 14 → 18 (Q2/Q4 만점 진입)
               </div>
               <div class="note">
-                <code>docs/ARCHITECTURE.md</code> (≤64ln) 신규 — 8 노드 mermaid
-                + 4 모듈 cross-module deps. edge label 은 안정 어휘만
-                (`-->`, `-.->`, "reads") — 코드 변경 시 drift 위험 최소화.
+                <code>gas/CLAUDE.md</code> 가 Common patterns / Cross-module
+                dependencies / Non-obvious rules 풀 패턴화. Q5 ADR scaffold +
+                drizzle/scripts CLAUDE.md 의 기존 라이프와 합쳐 18/20 도달.
               </div>
             </li>
             <li>
               <div class="head">
-                <span class="tag tag-rule">Cat E1</span>
-                참조 정확도 49 / 50 (98%) 유지
+                <span class="tag tag-rule">Cat F · +2</span>
+                CI path 검증 도입 (drift 0% 유지)
               </div>
               <div class="note">
-                신규 4개 파일에 line-range 참조 0건 — score.py 의 정규식 한계
-                (`gas/appsscript.json:5-13` → `gas/appsscript.js` 변환)를 회피.
-                남은 1건은 본 PR 이전부터 존재한 글로벌 false positive.
+                CI에 별도 <code>context-paths</code> job 추가 — node 의존성
+                없이 stdlib python 만 (<code>actions/setup-python@v5</code>),
+                머지 시점 평균 30s 미만으로 회귀 차단. pre-push hook 은 옵션으로 남김.
               </div>
             </li>
             <li>
               <div class="head">
-                <span class="tag tag-rule">Cat F</span>
-                drift 0% 유지 (4 / 4 측정 가능 모듈)
+                <span class="tag tag-rule">Cat D · +3</span>
+                의존성 매핑 8 → 11 (mermaid 인식 진입)
               </div>
               <div class="note">
-                신규 두 모듈 CLAUDE.md 의 mtime 이 최신. src/CLAUDE.md 는
-                무수정으로 git diff stat 0 lines.
+                <code>README.md</code> 에 sync-flow sequenceDiagram 추가 —
+                score.py 의 has_mermaid 검사 대상 (CLAUDE/AGENTS/README) 진입.
+                루트 <code>CLAUDE.md</code> 가 4 모듈 + docs/ 5-row 모듈 맵으로 cross-link.
               </div>
             </li>
           </ul>
@@ -1176,43 +1184,20 @@
 
         <section class="panel panel-risk">
           <div class="panel-head">
-            <h3>다음 PR 후보 ROI 액션</h3>
+            <h3>잔여 ROI 액션 (4차 후보)</h3>
             <span class="count">우선순위 정렬</span>
           </div>
           <ul class="panel-list">
             <li>
               <div class="head">
-                <span class="tag tag-rule">Cat F · S</span>
-                pre-push hook + checkContextPaths.ts (분리됨)
-              </div>
-              <div class="note">
-                <strong>Effort 1.0 hr · Impact 8/10.</strong>
-                husky 도입 + scripts/checkContextPaths.ts (score.py 의
-                line-range false-positive 회피하는 로컬 검증). 사용자 결정으로
-                이번 PR 에서 분리. 적용 시 F 6 → 9, E3 +1.
-              </div>
-            </li>
-            <li>
-              <div class="head">
                 <span class="tag tag-rule">Cat B · M</span>
-                <code>src/CLAUDE.md</code> 532줄 → 100줄 compass + 부록
+                <code>src/CLAUDE.md</code> 739줄 → 100줄 compass + 부록
               </div>
               <div class="note">
                 <strong>Effort 2.0 hr · Impact 7/10.</strong>
                 "compass-not-encyclopedia". invariant 정확도 검토 위해 별건.
-                B 9 → 14 예상 (B1 conciseness +3, B5 cross-refs +1).
-              </div>
-            </li>
-            <li>
-              <div class="head">
-                <span class="tag tag-rule">Cat D · S</span>
-                drizzle/ scripts/ CLAUDE.md 에 mermaid 1개씩 추가
-              </div>
-              <div class="note">
-                <strong>Effort 1.0 hr · Impact 5/10.</strong>
-                score.py 의 has_mermaid 검사는 context_files 만 봄
-                (ARCHITECTURE.md 가 context_files 에 안 잡힘). 모듈 CLAUDE.md
-                안에 작은 mermaid 추가 시 D +3.
+                B 12 → 16 예상 (B1 conciseness +3, B5 cross-refs +1). 가장
+                큰 잔여 약점이지만 invariant 텍스트 검증 필요로 신중.
               </div>
             </li>
             <li>
@@ -1222,43 +1207,61 @@
               </div>
               <div class="note">
                 <strong>Effort 6.0 hr · Impact 6/10.</strong>
-                "color rollback PR 추가", "watch renewal claim 신규 컬럼", "OAuth
-                라우트 신설" 등 invariant-touching task 의 agent run pass-rate.
-                G 0 → 4 + 다른 액션 ROI 정량화.
+                "color rollback PR 추가", "watch renewal claim 신규 컬럼",
+                "OAuth 라우트 신설" 등 invariant-touching task 의 agent run
+                pass-rate. G 0 → 4 + 다른 액션 ROI 정량화. 본 라운드 out-of-scope.
               </div>
             </li>
             <li>
               <div class="head">
-                <span class="tag tag-rule">Cat E2 · S</span>
-                CODEOWNERS / PR template 추가
+                <span class="tag tag-rule">Cat E4 · M</span>
+                prompt regression test (<code>llmClassifier.test.ts</code> 확장)
               </div>
               <div class="note">
-                <strong>Effort 0.5 hr · Impact 4/10.</strong>
-                <code>.github/CODEOWNERS</code> + <code>.github/PULL_REQUEST_TEMPLATE.md</code>.
-                단순 파일 추가로 E2 0 → 4. CI workflow 본격 구축 전 워밍업.
+                <strong>Effort 3.0 hr · Impact 5/10.</strong>
+                E4 0 → 2. 7개 outcome (hit / miss / bad_response / http_error /
+                timeout / quota_exceeded / disabled) 가 이미 pinned 되어 있어
+                "prompt drift catch" 패턴 추가 시 테스트 인프라 재사용 가능.
               </div>
             </li>
             <li>
               <div class="head">
-                <span class="tag tag-rule" style="background: var(--amber-soft); color: var(--amber)">Cat E1 · 글로벌</span>
-                score.py 정규식 한계 (잔여 1건의 진실)
+                <span class="tag tag-rule">Cat F · S</span>
+                pre-push hook (husky)
               </div>
               <div class="note">
-                <strong>레포 변경 0건.</strong>
-                <code>~/.claude/skills/ai-readiness-cartography/scripts/score.py</code>
-                의 RE_PATH_REF 가 <code>:line-range</code> 후미를 strip 하지
-                못함. 실레포 broken path 0건 — "잘못된 경로 1건" 표기는
-                글로벌 툴 한계. 글로벌 패치는 사용자 결정.
+                <strong>Effort 1.0 hr · Impact 4/10.</strong>
+                CI gate 가 머지 시점 차단을 이미 보장하므로 우선순위 하락.
+                로컬 빠른 피드백 목적이라면 husky + lint-staged 도입 검토.
+                F 8 → 10 예상.
               </div>
             </li>
             <li>
               <div class="head">
                 <span class="tag tag-rule">Cat B · L</span>
-                god file 분할 (test 파일 1190 / 740 / 673줄)
+                god file 분할 (<code>gas/addon.js</code> 1216 · test 1190)
               </div>
               <div class="note">
-                <strong>Effort 10.0 hr · Impact 6/10.</strong>
-                테스트 회귀 위험으로 본 PR 외. 분할 시 token cost ↓ + 편집 정확도 ↑.
+                <strong>Effort 17.5 hr · Impact 6/10.</strong>
+                테스트 회귀 위험으로 별건. <code>gas/addon.js</code> 는
+                CardService 카드별로 분리 가능하나 module 간 액션 라우팅
+                재배선 필요. 분할 시 파일당 5K~10K token 절감.
+              </div>
+            </li>
+            <li>
+              <div class="head">
+                <span class="tag tag-rule" style="background: var(--amber-soft); color: var(--amber)">글로벌 툴 노트</span>
+                score.py regex alternation order 결함
+              </div>
+              <div class="note">
+                <strong>레포 변경 0건.</strong>
+                <code>~/.claude/skills/ai-readiness-cartography/scripts/score.py</code>
+                의 <code>RE_PATH_REF</code> 가 <code>js|jsx|json</code> 순으로
+                alternation 을 정의 — leftmost-alternative 매칭 때문에
+                <code>foo.json</code> 을 <code>foo.js</code> 로 캡처. 본
+                레포의 신규 <code>scripts/check-context-paths.py</code> 는
+                <code>json|jsx|js</code> 순으로 의도적으로 다르게 정의.
+                글로벌 패치는 사용자 결정.
               </div>
             </li>
           </ul>
@@ -1266,7 +1269,7 @@
       </div>
 
       <footer>
-        autocolor_for_calendar · AI 준비도 감사 · v2 루브릭 (7 카테고리 / 100점) · 2차 측정 2026-05-02 · 1차 30 → 2차 59 (+29)
+        autocolor_for_calendar · AI 준비도 감사 · v2 루브릭 (7 카테고리 / 100점) · 3차 측정 2026-05-07 · 1차 30 → 2차 59 → 3차 76 (+17 / 누적 +46)
       </footer>
     </div>
   </body>
