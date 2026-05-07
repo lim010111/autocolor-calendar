@@ -142,10 +142,34 @@ function buildHomeCard() {
     return buildReconnectCard();
   }
 
+  var me = fetchMeOrError();
+  if (me && me.error === 'AUTH_EXPIRED') {
+    return buildReconnectCard();
+  }
+
   var builder = CardService.newCardBuilder();
 
   builder.setHeader(CardService.newCardHeader()
     .setTitle("AutoColor 대시보드"));
+
+  // Push-active status pill — surfaces silent webhook-path failure to the
+  // user. When inactive, the [지금 연결] button calls /sync/heal-watch to
+  // re-register the watch channel without dragging a full_resync along.
+  var pushSection = CardService.newCardSection();
+  var pushActive = me && me.push_active === true;
+  if (pushActive) {
+    pushSection.addWidget(CardService.newDecoratedText()
+      .setText("🟢 자동 동기화 활성")
+      .setBottomLabel("일정을 만들면 자동으로 색이 적용됩니다."));
+  } else {
+    pushSection.addWidget(CardService.newDecoratedText()
+      .setText("🔴 자동 동기화 비활성")
+      .setBottomLabel("새 일정에 색이 자동 적용되지 않습니다. 다시 연결해 주세요."));
+    pushSection.addWidget(CardService.newTextButton()
+      .setText("지금 연결")
+      .setOnClickAction(CardService.newAction().setFunctionName("actionForceHealWatch")));
+  }
+  builder.addSection(pushSection);
 
   var section = CardService.newCardSection();
 
@@ -242,6 +266,22 @@ function fetchStatsOrError() {
 }
 
 /**
+ * Fetch /me. Used by the home card to read the `push_active` flag for the
+ * "🟢 자동 동기화 활성" / "🔴 자동 동기화 비활성" status pill. Same
+ * error-as-data convention as fetchStatsOrError so the home render path
+ * never throws.
+ */
+function fetchMeOrError() {
+  try {
+    var res = AutoColorAPI.fetchBackend('/me', { method: 'get' });
+    return JSON.parse(res.getContentText() || '{}');
+  } catch (err) {
+    if (err && err.message === 'AUTH_EXPIRED') return { error: 'AUTH_EXPIRED' };
+    return { error: err && err.message ? err.message : 'unknown_error' };
+  }
+}
+
+/**
  * ISO timestamp → "방금" / "N분 전" / "N시간 전" / "N일 전".
  * Used only by the homecard; deliberately coarse so the label stays stable
  * across render/rerender cycles within a minute.
@@ -289,6 +329,37 @@ function actionSyncNow(e) {
     }
     return CardService.newActionResponseBuilder()
       .setNotification(CardService.newNotification().setText("동기화 실패: " + err.message))
+      .build();
+  }
+}
+
+/**
+ * Re-register the user's Watch channel via /sync/heal-watch when the home
+ * card's "🔴 자동 동기화 비활성" pill is showing. Distinct from /sync/run
+ * (which only enqueues a sync) and from /sync/bootstrap (which also fires a
+ * full_resync). Refreshes the home card so the user sees the pill flip.
+ */
+function actionForceHealWatch(e) {
+  try {
+    AutoColorAPI.fetchBackend('/sync/heal-watch', {
+      method: 'post',
+      contentType: 'application/json',
+      payload: '{}'
+    });
+    return CardService.newActionResponseBuilder()
+      .setNotification(CardService.newNotification().setText("자동 동기화를 다시 연결했습니다."))
+      .setNavigation(CardService.newNavigation().updateCard(buildHomeCard()))
+      .build();
+  } catch (err) {
+    if (err.message === 'AUTH_EXPIRED' || err.message.indexOf('reauth') !== -1) {
+      return CardService.newActionResponseBuilder()
+        .setNavigation(CardService.newNavigation().popToRoot().updateCard(buildReconnectCard()))
+        .build();
+    }
+    // Don't expose raw error text to the user — same policy as the
+    // events.ts (manual color override) endpoint.
+    return CardService.newActionResponseBuilder()
+      .setNotification(CardService.newNotification().setText("다시 연결에 실패했습니다. 잠시 후 다시 시도해 주세요."))
       .build();
   }
 }

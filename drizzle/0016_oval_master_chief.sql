@@ -1,0 +1,1 @@
+ALTER TABLE "sync_state" ADD COLUMN "last_self_heal_at" timestamp with time zone;

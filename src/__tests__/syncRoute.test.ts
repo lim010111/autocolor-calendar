@@ -2,6 +2,7 @@ import { Hono } from "hono";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { HonoEnv } from "../env";
+import type * as TokenRefreshModule from "../services/tokenRefresh";
 
 // Mocks must be registered before the import tree of `../routes/sync` resolves.
 
@@ -65,7 +66,34 @@ vi.mock("../queues/syncProducer", () => ({
   SyncQueueUnavailableError: class SyncQueueUnavailableError extends Error {},
 }));
 
+// Default to resolved Promise so /sync/run's `.catch().finally()` chain doesn't
+// blow up in tests that don't explicitly arrange the mock — the helper is
+// always invoked from the finally block on the success path.
+const selfHealMock = vi.fn().mockResolvedValue(undefined);
+vi.mock("../services/watchSelfHeal", () => ({
+  maybeSelfHealWatch: (...args: unknown[]) => selfHealMock(...args),
+}));
+
+const stopWatchMock = vi.fn();
+const registerWatchMock = vi.fn();
+vi.mock("../services/watchChannel", () => ({
+  stopWatchChannel: (...args: unknown[]) => stopWatchMock(...args),
+  registerWatchChannel: (...args: unknown[]) => registerWatchMock(...args),
+}));
+
+const getTokenMock = vi.fn();
+vi.mock("../services/tokenRefresh", async () => {
+  const actual =
+    await vi.importActual<typeof TokenRefreshModule>("../services/tokenRefresh");
+  return {
+    ...actual,
+    getValidAccessToken: (...args: unknown[]) => getTokenMock(...args),
+  };
+});
+
 import { syncRoutes } from "../routes/sync";
+import { CalendarApiError } from "../services/googleCalendar";
+import { ReauthRequiredError } from "../services/tokenRefresh";
 
 const app = new Hono<HonoEnv>();
 app.route("/sync", syncRoutes);
@@ -267,5 +295,162 @@ describe("POST /sync/run — §6.4 last_manual_trigger_at rate limit", () => {
     const body = (await res.json()) as { error?: string };
     expect(body.error).toBe("queue_unavailable");
     expect(updateMock).not.toHaveBeenCalled();
+  });
+});
+
+// /sync/run wires self-heal in the finally block — every successful trigger
+// fires `maybeSelfHealWatch` opportunistically. Coalesce/rate-limit/reauth
+// branches don't (the helper would no-op anyway, and skipping it spares the
+// extra DB round-trip on early exits).
+describe("POST /sync/run — self-heal hook", () => {
+  beforeEach(() => {
+    resetDbMocks();
+    enqueueMock.mockReset().mockResolvedValue(undefined);
+    selfHealMock.mockReset().mockResolvedValue(undefined);
+  });
+  afterEach(() => vi.clearAllMocks());
+
+  it("calls maybeSelfHealWatch on successful enqueue", async () => {
+    selectBatches.push([{ needsReauth: false }]);
+    selectBatches.push([
+      {
+        nextSyncToken: "tok-123",
+        inProgressAt: null,
+        lastManualTriggerAt: new Date(Date.now() - 10 * 60_000),
+        updatedAt: new Date(Date.now() - 10 * 60_000),
+        active: true,
+      },
+    ]);
+
+    const res = await postRun();
+    expect(res.status).toBe(202);
+    expect(selfHealMock).toHaveBeenCalledTimes(1);
+    expect(selfHealMock.mock.calls[0]?.[2]).toBe("u-test");
+  });
+
+  it("does NOT call maybeSelfHealWatch on reauth_required short-circuit", async () => {
+    // /sync/run returns early with 503 when needsReauth=true. self-heal is
+    // pointless there — the helper would also bail at its own needs_reauth
+    // gate, but skipping the call entirely spares a DB round-trip.
+    selectBatches.push([{ needsReauth: true }]);
+
+    const res = await postRun();
+    expect(res.status).toBe(503);
+    expect(selfHealMock).not.toHaveBeenCalled();
+  });
+});
+
+describe("POST /sync/heal-watch", () => {
+  const ENV_WITH_WEBHOOK = {
+    ...BASE_ENV,
+    WEBHOOK_BASE_URL: "https://example.test",
+  } as const;
+
+  beforeEach(() => {
+    resetDbMocks();
+    enqueueMock.mockReset();
+    stopWatchMock.mockReset().mockResolvedValue(undefined);
+    registerWatchMock.mockReset().mockResolvedValue({
+      channelId: "c",
+      resourceId: "r",
+      token: "t",
+      expiration: new Date("2026-06-01T00:00:00.000Z"),
+    });
+    getTokenMock.mockReset().mockResolvedValue({ accessToken: "at-x", expiresAt: 0 });
+  });
+  afterEach(() => vi.clearAllMocks());
+
+  async function postHealWatch(
+    env: Record<string, unknown> = ENV_WITH_WEBHOOK,
+  ): Promise<Response> {
+    return invoke(
+      "/sync/heal-watch",
+      { method: "POST", headers: { authorization: "Bearer x" } },
+      env,
+    );
+  }
+
+  it("returns 200 with expiresAt on success — stop then register order", async () => {
+    selectBatches.push([{ needsReauth: false }]);
+    selectBatches.push([{ calendarId: "primary", active: true }]);
+
+    const callOrder: string[] = [];
+    stopWatchMock.mockImplementation(async () => {
+      callOrder.push("stop");
+    });
+    registerWatchMock.mockImplementation(async () => {
+      callOrder.push("register");
+      return {
+        channelId: "c",
+        resourceId: "r",
+        token: "t",
+        expiration: new Date("2026-06-01T00:00:00.000Z"),
+      };
+    });
+
+    const res = await postHealWatch();
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { ok?: boolean; expiresAt?: string };
+    expect(body.ok).toBe(true);
+    expect(body.expiresAt).toBe("2026-06-01T00:00:00.000Z");
+    expect(callOrder).toEqual(["stop", "register"]);
+  });
+
+  it("returns 503 reauth_required when needs_reauth=true", async () => {
+    selectBatches.push([{ needsReauth: true }]);
+    const res = await postHealWatch();
+    expect(res.status).toBe(503);
+    const body = (await res.json()) as { error?: string };
+    expect(body.error).toBe("reauth_required");
+    expect(stopWatchMock).not.toHaveBeenCalled();
+    expect(registerWatchMock).not.toHaveBeenCalled();
+  });
+
+  it("returns 409 calendar_inactive when sync_state.active=false", async () => {
+    selectBatches.push([{ needsReauth: false }]);
+    selectBatches.push([{ calendarId: "primary", active: false }]);
+
+    const res = await postHealWatch();
+    expect(res.status).toBe(409);
+    const body = (await res.json()) as { error?: string };
+    expect(body.error).toBe("calendar_inactive");
+    expect(registerWatchMock).not.toHaveBeenCalled();
+  });
+
+  it("maps CalendarApiError(server) to 502 upstream_unavailable", async () => {
+    selectBatches.push([{ needsReauth: false }]);
+    selectBatches.push([{ calendarId: "primary", active: true }]);
+    registerWatchMock.mockRejectedValue(
+      new CalendarApiError("server", 503, "backendError", "watch.create 503"),
+    );
+
+    const res = await postHealWatch();
+    expect(res.status).toBe(502);
+    const body = (await res.json()) as { error?: string };
+    expect(body.error).toBe("upstream_unavailable");
+  });
+
+  it("returns 503 webhook_unconfigured when WEBHOOK_BASE_URL is missing (dev)", async () => {
+    // dev env — no WEBHOOK_BASE_URL. Endpoint must fail fast with a distinct
+    // error code so GAS can surface "이 환경에서는 자동 동기화 불가".
+    const res = await postHealWatch(BASE_ENV);
+    expect(res.status).toBe(503);
+    const body = (await res.json()) as { error?: string };
+    expect(body.error).toBe("webhook_unconfigured");
+    expect(stopWatchMock).not.toHaveBeenCalled();
+    expect(registerWatchMock).not.toHaveBeenCalled();
+  });
+
+  it("returns 503 reauth_required when getValidAccessToken throws ReauthRequiredError", async () => {
+    selectBatches.push([{ needsReauth: false }]);
+    selectBatches.push([{ calendarId: "primary", active: true }]);
+    getTokenMock.mockRejectedValue(new ReauthRequiredError("invalid_grant"));
+
+    const res = await postHealWatch();
+    expect(res.status).toBe(503);
+    const body = (await res.json()) as { error?: string };
+    expect(body.error).toBe("reauth_required");
+    expect(stopWatchMock).not.toHaveBeenCalled();
+    expect(registerWatchMock).not.toHaveBeenCalled();
   });
 });

@@ -158,6 +158,16 @@ export const syncState = pgTable(
     // to `updated_at` for those, which preserves the old behavior until they
     // get their first manual trigger.
     lastManualTriggerAt: timestamp("last_manual_trigger_at", { withTimezone: true }),
+    // Watch self-heal cooldown. Stamped only by `maybeSelfHealWatch`
+    // (`src/services/watchSelfHeal.ts`) immediately before each register
+    // attempt, success or failure. The 10-min cooldown gate inside the helper
+    // reads this column to prevent retry storms when registration keeps
+    // failing. NULL = no prior attempt observed → next call attempts
+    // immediately. Sole-writer pattern — `/sync/heal-watch` (user-explicit
+    // action) deliberately ignores cooldown and does NOT stamp this column,
+    // and `/sync/bootstrap` / 6h renewal cron operate on different columns.
+    // See `src/CLAUDE.md` "Watch self-heal" for the writer contract.
+    lastSelfHealAt: timestamp("last_self_heal_at", { withTimezone: true }),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [
