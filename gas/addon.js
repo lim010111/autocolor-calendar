@@ -152,39 +152,25 @@ function buildHomeCard() {
   builder.setHeader(CardService.newCardHeader()
     .setTitle("AutoColor 대시보드"));
 
-  // Push-active status pill — surfaces silent webhook-path failure to the
-  // user. When inactive, the [지금 연결] button calls /sync/heal-watch to
-  // re-register the watch channel without dragging a full_resync along.
-  var pushSection = CardService.newCardSection();
+  // Push-inactive surfaces a silent webhook-path failure with a [지금 연결]
+  // button that calls /sync/heal-watch to re-register the watch channel
+  // without dragging a full_resync along. The active state renders no top
+  // pin — the bottom ℹ️ section carries the 5~10초 expectation instead.
   var pushActive = me && me.push_active === true;
-  if (pushActive) {
-    pushSection.addWidget(CardService.newDecoratedText()
-      .setText("🟢 자동 동기화 활성")
-      .setBottomLabel("일정을 만들면 보통 5~10초 안에 자동으로 색이 적용됩니다."));
-  } else {
+  if (!pushActive) {
+    var pushSection = CardService.newCardSection();
     pushSection.addWidget(CardService.newDecoratedText()
       .setText("🔴 자동 동기화 비활성")
       .setBottomLabel("새 일정에 색이 자동 적용되지 않습니다. 다시 연결해 주세요."));
     pushSection.addWidget(CardService.newTextButton()
       .setText("지금 연결")
       .setOnClickAction(CardService.newAction().setFunctionName("actionForceHealWatch")));
+    builder.addSection(pushSection);
   }
-  builder.addSection(pushSection);
 
   var section = CardService.newCardSection();
 
-  var switchControl = CardService.newSwitch()
-    .setFieldName("auto_color_enabled")
-    .setValue("true")
-    .setSelected(true)
-    .setOnChangeAction(CardService.newAction().setFunctionName("actionToggleAutoColor"));
-
-  section.addWidget(CardService.newDecoratedText()
-    .setText("자동 분류 활성화")
-    .setSwitchControl(switchControl));
-
   var classifiedLine;
-  var aiBottomLabel = null;
   var syncLine;
   if (!stats || stats.error) {
     classifiedLine = "통계를 불러오지 못했습니다";
@@ -192,30 +178,17 @@ function buildHomeCard() {
   } else {
     var updatedCount = (stats.classification && stats.classification.updated) || 0;
     classifiedLine = updatedCount > 0
-      ? "최근 7일 자동 색상 적용: " + updatedCount + "건"
-      : "아직 자동 색상이 적용된 일정이 없습니다";
+      ? "✨ 최근 7일 자동 색상 적용: " + updatedCount + "건"
+      : "✨ 아직 자동 색상이 적용된 일정이 없습니다";
 
     var finishedAt = stats.lastSync && stats.lastSync.finishedAt;
     syncLine = finishedAt
       ? "최근 동기화: " + formatRelativeTime(finishedAt)
       : "아직 동기화하지 않았습니다";
-
-    var hits = stats.llm && stats.llm.hits;
-    var avg = stats.llm && stats.llm.avgLatencyMs;
-    if (hits && hits > 0) {
-      aiBottomLabel = avg != null
-        ? "└ 그 중 AI 분류: " + hits + "건 (평균 " + avg + "ms)"
-        : "└ 그 중 AI 분류: " + hits + "건";
-    }
   }
 
-  var classifiedWidget = CardService.newDecoratedText()
-    .setText(classifiedLine)
-    .setStartIcon(CardService.newIconImage().setIcon(CardService.Icon.BOOKMARK));
-  if (aiBottomLabel) {
-    classifiedWidget.setBottomLabel(aiBottomLabel);
-  }
-  section.addWidget(classifiedWidget);
+  section.addWidget(CardService.newDecoratedText()
+    .setText(classifiedLine));
 
   section.addWidget(CardService.newDecoratedText()
     .setText(syncLine)
@@ -237,11 +210,21 @@ function buildHomeCard() {
     .addButton(ruleButton)
     .addButton(settingsButton));
 
+  actionSection.addWidget(CardService.newDecoratedText()
+    .setText("'지금 모든 일정에 규칙 적용'을 누르면 과거 30일 ~ 미래 365일의 일정을 검사해 규칙을 적용합니다. 직접 지정한 색상은 그대로 유지됩니다.")
+    .setWrapText(true));
+
   builder.addSection(actionSection);
+
+  var infoSection = CardService.newCardSection();
+  infoSection.addWidget(CardService.newDecoratedText()
+    .setText("ℹ️ 새 일정을 만들면 보통 5~10초 안에 자동으로 색이 적용됩니다.")
+    .setWrapText(true));
+  builder.addSection(infoSection);
 
   var fixedFooter = CardService.newFixedFooter()
     .setPrimaryButton(CardService.newTextButton()
-      .setText("지금 즉시 동기화")
+      .setText("지금 모든 일정에 규칙 적용")
       .setTextButtonStyle(CardService.TextButtonStyle.FILLED)
       .setOnClickAction(CardService.newAction().setFunctionName("actionSyncNow")));
 
@@ -296,14 +279,6 @@ function formatRelativeTime(iso) {
   if (hours < 24) return hours + "시간 전";
   var days = Math.floor(hours / 24);
   return days + "일 전";
-}
-
-function actionToggleAutoColor(e) {
-  var isEnabled = e.formInput.auto_color_enabled === "true";
-  var msg = isEnabled ? "자동 분류가 활성화되었습니다." : "자동 분류가 비활성화되었습니다.";
-  return CardService.newActionResponseBuilder()
-    .setNotification(CardService.newNotification().setText(msg))
-    .build();
 }
 
 function actionSyncNow(e) {
