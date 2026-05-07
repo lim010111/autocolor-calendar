@@ -67,3 +67,14 @@ jobs:
         run: pnpm db:generate
       - name: Verify no drift
         run: git diff --exit-code drizzle/
+
+  context-paths:
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Verify CLAUDE.md / README.md path references
+        run: python3 scripts/check-context-paths.py

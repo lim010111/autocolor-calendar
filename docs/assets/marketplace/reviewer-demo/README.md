@@ -25,7 +25,7 @@ see scope prompts on two distinct surfaces; the bundle covers both:
 
 - **Marketplace install consent** — granted once when the user installs
   the Add-on from Workspace Marketplace. Lists 7 scopes declared in
-  `gas/appsscript.json:5-13` — 5 framework scopes
+  the Add-on manifest (`appsscript.json` under `gas/`, lines 5-13) — 5 framework scopes
   (`script.external_request` / `script.locale` /
   `calendar.addons.execute` / `calendar.addons.current.event.read` /
   `calendar.addons.current.event.write`; justifications under
@@ -137,5 +137,5 @@ and re-sync this row, never the reverse.
 - `docs/security-principles.md` Principle 3 — Scope Minimization. The
   conceptual anchor this bundle proves: each requested scope maps to a
   specific scenario whose absence would justify removing the scope.
-- `gas/appsscript.json:5-13` — Marketplace-install scope manifest (the
-  first consent surface).
+- `appsscript.json` under `gas/` (lines 5-13) — Marketplace-install scope
+  manifest (the first consent surface).
