@@ -46,13 +46,13 @@ python3 scripts/check-context-paths.py   # broken CLAUDE.md / README.md path ref
 
 ## Non-obvious rules
 
-- **Why backend-mandatory:** all sync + classification runs on the Worker.
+- **Why:** backend-mandatory — all sync + classification runs on the Worker.
   Local GAS triggers are deprecated and MUST NOT be re-introduced — the
   reasoning chain (PII redaction, daily LLM quota, ownership marker, watch
   renewal lock, token rotation) only holds when the pipeline is centralised.
   See [docs/architecture-guidelines.md](docs/architecture-guidelines.md)
   "E2E Backend Mandatory" / "Halt on Failure".
-- **GAS deployment URL must stay stable.** Never create a *new* deployment
+- **Important:** GAS deployment URL must stay stable. Never create a *new* deployment
   for code changes — mint the same `/exec` URL via "Manage deployments →
   edit existing → New version → Deploy". A new URL invalidates every
   Worker secret + GCP redirect + Script Property. See
@@ -66,10 +66,21 @@ python3 scripts/check-context-paths.py   # broken CLAUDE.md / README.md path ref
   an event is app-owned and re-applicable; never write `autocolor_*` keys
   from any other code path without bumping `autocolor_v`.
 
+## Agent telemetry & evals
+
+Agent-run quality is tracked alongside the human runtime: the Worker's
+**agent log path** for runtime traffic is `src/middleware/logger.ts`
+(query-param redacted, body-blind), and **Claude Code session logs** are
+aggregated by the `improve-token-efficiency` skill out of
+`~/.claude/projects/-home-shine-projects-autocolor-for-calendar/`. The
+durable scoreboard lives in [evals/agent-results.json](evals/agent-results.json);
+the rubric trend point is [docs/ai-readiness-score.json](docs/ai-readiness-score.json).
+
 ## See also
 
 - [TODO.md](TODO.md) — active work tracker
 - [next-todo.md](next-todo.md) — promoted next task
 - [docs/marketplace-readiness.md](docs/marketplace-readiness.md) — launch gate index
 - [docs/ai-readiness-map.html](docs/ai-readiness-map.html) — agent-friendliness dashboard
+- [evals/README.md](evals/README.md) — agent eval methodology + telemetry pointers
 - [wrangler.toml](wrangler.toml) — Worker env / secret split

@@ -10,6 +10,20 @@ legal-reviewer 의 Round 1 redline + Round 2 self-publish 보완을 거쳐
 가 자기 책임 아래 publish 할 수 있는 수준까지 결정사항이 본문에 박혀
 있다.
 
+**중요 (Important):** 본 산출물은 외부 변호사 의견에 갈음하지 못한다.
+self-publish 결정의 근거와 잔존 자문 9건은 [`legal-review-opinion.md`](./legal-review-opinion.md)
+Round 2 본문 결정 트리에 전부 박혀 있으니 publish 전 그 항목들을
+검토하라.
+
+## Publish & verification commands
+
+```bash
+# 1. legal 본문을 HTML로 빌드 (Cloudflare Pages 배포 산출물)
+pnpm legal:build
+# 2. 본문 안의 cross-reference 경로가 살아있는지 확인 (CI gate와 동일)
+python3 scripts/check-context-paths.py
+```
+
 publish 절차:
 
 1. 운영자가 [`privacy-policy.md`](./privacy-policy.md) 와
@@ -31,10 +45,11 @@ publish 절차:
    콜백의 K-12 도메인 자동 차단 로직을 구현하고, 구현 시점에 §9.1 본문을
    사전 차단 진술로 갱신 + §12 의 절차로 통지.
 
-본 디렉터리에는 외부 vendor URL 을 인라인하지 않는다(`docs/assets/marketplace/sub-processors.md` §4 정책).
-단, `privacy-policy.md` §11 의 한국 권익침해 구제기관 enumeration 은 PIPA
-§30 ①항 8호의 처리방침 필수 기재사항으로 본 정책의 명시적 예외에 해당
-한다(privacy-policy §11 본문 참조).
+**주의:** 본 디렉터리에는 외부 vendor URL 을 인라인하지 않는다
+([`../assets/marketplace/sub-processors.md`](../assets/marketplace/sub-processors.md) §4 정책).
+단, [`privacy-policy.md`](./privacy-policy.md) §11 의 한국 권익침해 구제기관
+enumeration 은 PIPA §30 ①항 8호의 처리방침 필수 기재사항으로 본 정책의
+명시적 예외에 해당한다(privacy-policy §11 본문 참조).
 
 ## Index
 

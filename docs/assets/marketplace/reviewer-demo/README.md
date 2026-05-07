@@ -66,11 +66,18 @@ are illustrative, not literal):
 - `"점심 식사 - 매주 화요일"` (recurring event, rule-hit on keyword
   `식사`)
 
-**Real-account event captures are forbidden** in this bundle — both
-literal screenshots and pasted event payload data. The calendar-event
-payload logging ban from `src/CLAUDE.md` "Log redaction contract"
-(specifically the "Calendar event payloads (§4+) must never be logged"
-paragraph) extends to committed documentation: synthetic strings only.
+**Important — Don't** capture real-account events in this bundle: that
+covers both literal screenshots and pasted event payload data. The
+calendar-event payload logging ban from `src/CLAUDE.md` "Log redaction
+contract" (specifically the "Calendar event payloads (§4+) must never be
+logged" paragraph) extends to committed documentation: synthetic strings
+only.
+
+> **Note:** the bundle's "No markdown links" policy (see "Bundle
+> conventions" below) is intentional — every reviewer-facing pointer is a
+> grep-stable `path:line` so future drift is mechanically detectable.
+> **Caveat:** that policy applies to *scenario files*, not to this index
+> README; this file may use links freely.
 
 ## Scenario matrix
 

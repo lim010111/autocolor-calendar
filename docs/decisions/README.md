@@ -8,13 +8,13 @@
 있지 않습니다. 운영 invariant 와 결정의 권위 source-of-truth 는 다음 두
 문서가 보유합니다:
 
-- `src/CLAUDE.md` — 백엔드 운영 룰 (Tenant isolation · Color marker §5.4 ·
-  Observability tables Wave A/B · Watch renewal §6.4 · Manual-trigger rate
-  limit §6.4 · Account deletion §3 · Secret rotation impact · Token
-  rotation §3 후속)
-- `docs/architecture-guidelines.md` — cross-cutting invariants (Source of
-  Truth · Sync Flow · Idempotency · Halt on Failure · Hybrid Classification
-  · E2E Backend Mandatory)
+- [`../../src/CLAUDE.md`](../../src/CLAUDE.md) — 백엔드 운영 룰
+  (Tenant isolation · Color marker §5.4 · Observability tables Wave A/B ·
+  Watch renewal §6.4 · Manual-trigger rate limit §6.4 · Account deletion
+  §3 · Secret rotation impact · Token rotation §3 후속)
+- [`../architecture-guidelines.md`](../architecture-guidelines.md) —
+  cross-cutting invariants (Source of Truth · Sync Flow · Idempotency ·
+  Halt on Failure · Hybrid Classification · E2E Backend Mandatory)
 
 ## ADR 작성 시점
 
@@ -40,6 +40,21 @@
 
 ## Drift 정책
 
-ADR 본문이 src/CLAUDE.md 와 어긋날 경우 **src/CLAUDE.md 가 우위**
-(live invariant). ADR 은 결정 기록 아카이브 — 구현 변경 시 두 곳을 동시에
-갱신할 책임은 변경자에게 있습니다.
+**중요 (Important):** ADR 본문이 [`../../src/CLAUDE.md`](../../src/CLAUDE.md)
+와 어긋날 경우 **`src/CLAUDE.md` 가 우위**(live invariant). ADR 은 결정
+기록 아카이브 — 구현 변경 시 두 곳을 동시에 갱신할 책임은 변경자에게
+있습니다.
+
+**주의:** ADR 본문은 결정 시점의 trade-off 를 *그대로* 박제한다. 후속
+의사결정으로 결론이 뒤집혀도 ADR 본문은 편집하지 않고 새 ADR 을 추가해
+`Status: Superseded by ADR-MMMM` 로 잇는다.
+
+## ADR 작성 / 검증 명령
+
+```bash
+# 새 ADR 파일을 직전 번호 + 1 로 생성 (template 헤더 포함)
+last=$(ls -1 docs/decisions/[0-9]*.md 2>/dev/null | wc -l)
+printf '%04d\n' $((last + 1))
+# 작성 후 path 참조가 살아있는지 확인 (CI / pre-commit gate)
+python3 scripts/check-context-paths.py
+```

@@ -2,25 +2,19 @@
 
 ## Purpose & Owns
 
-The `gas/` directory contains the Google Workspace Add-on (UI) code for
-AutoColor. Its sole purpose is user onboarding, OAuth connection to the
-backend, and configuration UI rendered via `CardService`.
-
-- `addon.js` — `CardService` builders (home / event-open / preferences) +
-  the `actionClassifyWithLlm` flow that re-posts to
-  `/api/classify/preview` with `{ llm: true }`.
-- `api.js` — backend HTTP wrapper (bearer session + retry surface).
-- `auth.js` + `authCallback.html` + `authError.html` — OAuth bounce-back
-  UX from the backend's `/oauth/google/callback`.
-- `config.js` — Script Property keys + frozen Add-on URL constants.
-- `storage.js` — wrappers around `PropertiesService` (per-user state).
-- `appsscript.json` — Add-on manifest (scopes, calendar trigger, runtime).
-
-**The Add-on MUST NOT contain local Calendar event triggers, local rule
-processing, or fallback logic.** All classification + sync work runs on
-the backend; see
+UI-only Google Workspace Add-on (`CardService`): onboarding, OAuth bounce-
+back to the backend, and configuration cards. **No local triggers, rules,
+or fallbacks** — the backend is the source of truth (see
 [../docs/architecture-guidelines.md](../docs/architecture-guidelines.md)
-"E2E Backend Mandatory" / "Halt on Failure".
+"E2E Backend Mandatory" / "Halt on Failure").
+
+- `addon.js` — card builders (home / event-open / preferences) +
+  `actionClassifyWithLlm` (re-posts to `/api/classify/preview`).
+- `api.js` — backend HTTP wrapper (bearer + retry + `needs_reauth`).
+- `auth.js` + `authCallback.html` + `authError.html` — OAuth UX.
+- `config.js` — Script Property keys + frozen Add-on URL constants.
+- `storage.js` — `PropertiesService` per-user wrappers.
+- `appsscript.json` — manifest (scopes / triggers / runtime).
 
 ## Quick commands
 
@@ -36,21 +30,16 @@ clasp logs --watch
 # (NEVER click "New deployment" — see "Non-obvious rules" below.)
 ```
 
-The reviewer-walkthrough scripts in
-[../docs/assets/marketplace/reviewer-demo/](../docs/assets/marketplace/reviewer-demo/)
-exercise each scope live once `clasp push` lands the latest source.
+Reviewer-walkthrough scripts under [../docs/assets/marketplace/reviewer-demo/](../docs/assets/marketplace/reviewer-demo/) exercise each scope live once `clasp push` lands.
 
 ## Common patterns
 
-- **Add a new card surface**: build it in `addon.js` and wire the trigger
-  through `appsscript.json` `addOns.calendar`. Keep API calls behind
-  `api.js` so the bearer/session shape stays in one place.
-- **Add a backend call**: extend `api.js`'s wrapper, never inline `fetch`
-  into a card builder. The wrapper is the only place that knows how to
-  surface `needs_reauth` to the user as a re-login prompt.
-- **Add a Script Property**: declare it in `config.js`, never read raw
-  `PropertiesService` inside a card. `storage.js` is the single layer that
-  understands which keys are per-user vs. document-scoped.
+- **New card surface**: build in `addon.js`, wire trigger via
+  `appsscript.json` `addOns.calendar`, route HTTP through `api.js`.
+- **New backend call**: extend `api.js` (single place that knows how to
+  surface `needs_reauth` as a re-login prompt) — never inline `fetch`.
+- **New Script Property**: declare in `config.js`, mediate via
+  `storage.js` (per-user vs. document-scoped boundary).
 
 ## Non-obvious rules
 
@@ -75,14 +64,13 @@ exercise each scope live once `clasp push` lands the latest source.
 
 ## Cross-module dependencies
 
-- **Calls** the backend Worker: `/oauth/google/start`, `/oauth/google/callback`,
-  `/me`, `/api/categories`, `/api/classify/preview`, `/api/account/delete`.
-  The full route inventory lives in `../src/routes/`.
-- **Sends users to** the backend OAuth surface, then receives them back
-  via `authCallback.html` — the only direct DOM the Add-on owns.
-- **Manifest scopes** in `appsscript.json` (lines 5-13) drive the
-  Marketplace install consent surface; per-scope justifications live in
-  [../docs/assets/marketplace/scope-justifications.md](../docs/assets/marketplace/scope-justifications.md).
+- **Calls** Worker routes: `/oauth/google/start`, `/oauth/google/callback`,
+  `/me`, `/api/categories`, `/api/classify/preview`, `/api/account/delete`
+  (full inventory: `../src/routes/`).
+- **OAuth bounce-back** is the only direct DOM the Add-on owns —
+  `authCallback.html` / `authError.html`.
+- **Manifest scopes** (`appsscript.json` lines 5-13) drive Marketplace
+  install consent — see [../docs/assets/marketplace/scope-justifications.md](../docs/assets/marketplace/scope-justifications.md).
 
 ## See also
 

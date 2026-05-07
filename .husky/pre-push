@@ -1,0 +1,10 @@
+#!/usr/bin/env sh
+# AutoColor — pre-push verification (kept lighter than pre-commit so push
+# stays fast). Mirrors the CI gate so a network-disconnected push still
+# catches the most common drift class.
+
+if ! command -v python3 >/dev/null 2>&1; then
+  exit 0
+fi
+
+python3 scripts/check-context-paths.py

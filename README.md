@@ -43,10 +43,11 @@ sequenceDiagram
     W->>DB: store nextSyncToken + last_run_summary
 ```
 
-Edges are direction-only. The authoritative invariants
+**Note:** edges are direction-only. The authoritative invariants
 (idempotency, color-ownership marker, halt-on-failure, watch-renewal lock,
 token rotation) live in [`docs/architecture-guidelines.md`](docs/architecture-guidelines.md)
-and [`src/CLAUDE.md`](src/CLAUDE.md).
+and [`src/CLAUDE.md`](src/CLAUDE.md). **Don't** treat this diagram as a
+spec — it is an orientation aid only.
 
 ## Start here
 

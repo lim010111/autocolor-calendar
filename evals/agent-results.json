@@ -1,0 +1,35 @@
+{
+  "schema_version": 1,
+  "description": "Append-only ledger of agent-readiness measurements. Each row is a single measurement at a HEAD; rows are never edited or deleted.",
+  "runs": [
+    {
+      "run_id": "2026-05-07-baseline",
+      "timestamp": "2026-05-07T00:00:00Z",
+      "git_sha": "a101b3b",
+      "kind": "rubric_audit",
+      "tool": "ai-readiness-cartography v2-100pt",
+      "score": 76,
+      "max": 100,
+      "grade": "AI-Ready",
+      "categories": {
+        "A_Navigation": "15/15",
+        "B_Context": "12/20",
+        "C_TribalKnowledge": "18/20",
+        "D_Dependencies": "11/15",
+        "E_Verification": "12/15",
+        "F_Freshness": "8/10",
+        "G_AgentOutcomes": "0/5"
+      },
+      "task_pass_rate": null,
+      "notes": "Pre-improvement baseline. Captured before evals/ + .husky hooks landed; subsequent measurements re-score against the same rubric so trend is visible in docs/ai-readiness-map.html."
+    }
+  ],
+  "next": {
+    "task_suites_pending": [
+      "add-category-route",
+      "rotate-token-encryption-key-dry-run",
+      "patch-sync-bug-given-failing-test"
+    ],
+    "owner": "limwoohyun01@gmail.com"
+  }
+}

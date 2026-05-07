@@ -737,3 +737,54 @@ Cross-references:
   secrets, no Hyperdrive binding, and no Supabase project yet. `/oauth/*`,
   `/me`, `/auth/logout` will fail until a prod Supabase project, GCP OAuth
   client, and secret bootstrap are added (separate task).
+
+## Common patterns
+
+The detailed recipes live inside the per-section `§...` blocks above; this
+is the index agents jump from when the task is "extend X without breaking
+Y." If a recipe you want is not listed, the §-section is the source of
+truth, not this index.
+
+- **Add a tenant-scoped query** → `## Tenant isolation` (RLS bypass +
+  mandatory `eq(table.user_id, ctx.userId)`).
+- **Add a sync-pipeline write to Calendar** → `## Color ownership marker
+  (§5.4)` (writes MUST stamp `autocolor_*` keys, MUST bump `autocolor_v`
+  on payload schema change, MUST be idempotent against the §5.4 race).
+- **Add an LLM-touching code path** → `## Preview LLM (§5 후속)` +
+  `## Cost guardrail (§5/§6 후속)` (PII redaction first; then
+  `reserveLlmCall` quota; then prompt + response token caps).
+- **Add a cron / queue handler** → `## Watch renewal concurrency` +
+  `## Token rotation (§3 후속)` (per-row claim vs. observed-not-prevented
+  patterns; idempotency under concurrent ticks).
+- **Add a Worker secret** → `## Secret rotation impact` (rotation impact
+  table; PREV-key window; `needs_reauth` flip rules) + extend
+  `../scripts/sync-secrets.ts` `REQUIRED_SECRETS` + `../.dev.vars.example`.
+- **Add a logger** → `## Log redaction contract` (no event payloads, no
+  query strings, no refresh tokens, AAD = `user:${userId}`).
+
+## Cross-module dependencies
+
+- **Depends on** [`../drizzle/`](../drizzle/) — schema source-of-truth is
+  `./db/schema.ts`; migrations there gate every runtime query above.
+- **Drives** [`../gas/`](../gas/) — the routes referenced under "Common
+  patterns" are the contract the Add-on's `api.js` wraps; renames here
+  must be co-deployed with a `clasp push`.
+- **Read by** [`../scripts/sim-failure.ts`](../scripts/sim-failure.ts) for
+  manual recovery testing; row shapes here are its only stable input.
+- **Mirrored in** [`../docs/architecture-guidelines.md`](../docs/architecture-guidelines.md)
+  (cross-cutting invariants — Source of Truth, Halt on Failure) and
+  [`../docs/ARCHITECTURE.md`](../docs/ARCHITECTURE.md) (module map +
+  sequence diagrams). On drift, this file is authoritative.
+
+## See also
+
+- [`../docs/architecture-guidelines.md`](../docs/architecture-guidelines.md)
+  — cross-cutting invariants
+- [`../docs/ARCHITECTURE.md`](../docs/ARCHITECTURE.md) — module map +
+  diagrams
+- [`../drizzle/CLAUDE.md`](../drizzle/CLAUDE.md) — migration discipline +
+  RLS posture
+- [`../gas/CLAUDE.md`](../gas/CLAUDE.md) — Add-on UI rules (the half of
+  this contract that runs in Apps Script)
+- [`../scripts/CLAUDE.md`](../scripts/CLAUDE.md) — operator-side scripts
+  (rotation drills, failure simulator)

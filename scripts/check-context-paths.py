@@ -31,14 +31,20 @@ IGNORE_DIRS = {
 }
 CONTEXT_FILES = ("CLAUDE.md", "AGENTS.md", "README.md")
 
-# Captures `prefix/path.ext` references. Alternation order intentionally puts
-# longer extensions before shorter ones so e.g. `gas/appsscript.json` is not
-# truncated to `gas/appsscript.js` by leftmost-alternative matching — this is
-# the one place we deliberately diverge from the global scorer's regex (which
-# has the historical `js|jsx|json` ordering).
+# Captures `prefix/path.ext` references. Two intentional divergences from the
+# global scorer's regex:
+#   1. Longer extensions come before shorter ones (`json` before `js`,
+#      `tsx` before `ts`, …) so e.g. `gas/appsscript.json` is not truncated
+#      to `gas/appsscript.js` by leftmost-alternative matching.
+#   2. The path-prefix alternation accepts `../` before `./` so a markdown
+#      link like `[..](../foo.md)` from a nested CLAUDE.md captures the
+#      whole `../foo.md` (the older `\./` would match positions 1-2 and
+#      report `./foo.md`, which always resolves wrong).
+# Order in the prefix alternation matters: `\.\./` must be tried before
+# `\./`, otherwise leftmost-success drops the leading dot.
 RE_PATH_REF = re.compile(
     r"(?<![A-Za-z0-9_/])"
-    r"((?:\./|[A-Za-z0-9_]+/)[A-Za-z0-9_./-]+\."
+    r"((?:\.\./|\./|[A-Za-z0-9_]+/)[A-Za-z0-9_./-]+\."
     r"(?:tsx|jsx|json|yaml|yml|toml|html|java|py|ts|js|md|sql|css|sh|go|rs|kt|rb|php))"
 )
 

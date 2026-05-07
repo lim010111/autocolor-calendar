@@ -54,10 +54,19 @@ Workers·Supabase·GCP·GAS Editor)이 단계 단위로 정리되어 있다. 코
 
 ## 글로벌 컨벤션
 
-- **외부 vendor URL은 인라인하지 않는다** (`docs/assets/marketplace/sub-processors.md` §4).
+- **반드시** 외부 vendor URL은 인라인하지 않는다 (`docs/assets/marketplace/sub-processors.md` §4).
   Cloudflare / Supabase / GCP / OpenAI 콘솔의 메뉴 경로는 명시하지만 직접
   링크는 걸지 않는다 — vendor가 메뉴를 개편할 때 업데이트 비용이 더 크다.
-- **시크릿 / 도메인 / GCP ID 실제 값은 절대 commit하지 않는다.** runbook은
+- **주의:** 시크릿 / 도메인 / GCP ID 실제 값은 절대 commit하지 않는다. runbook은
   자리(예: `<chosen>.app`, `<prod-domain>`)만 명시한다.
-- **상태 라벨**(`미작성` / `초안` / `진행중` / `완료`)은 `docs/marketplace-
-  readiness.md`의 status 표 라벨과 동일.
+- **Note:** **상태 라벨**(`미작성` / `초안` / `진행중` / `완료`)은
+  `docs/marketplace-readiness.md`의 status 표 라벨과 동일.
+
+## Self-checks
+
+```bash
+# Runbook 본문 안의 path 참조가 모두 살아있는지 확인 (CI / pre-commit과 동일)
+python3 scripts/check-context-paths.py
+# Marketplace status 표 row와 본 디렉터리 index가 어긋나지 않았는지 확인 (수동)
+grep -E '^\| (G[1-8]|D[1-9])' docs/marketplace-readiness.md
+```

@@ -1,0 +1,13 @@
+#!/usr/bin/env sh
+# AutoColor — context path validation gate.
+# Why: stale `[text](path)` references in CLAUDE.md / README.md propagate as
+# hallucinated paths to coding agents (Meta benchmark target: 0). Validating
+# at commit time keeps reference accuracy = 1.0 without depending on CI.
+# Also runs in .github/workflows for parity; either gate alone catches drift.
+
+if ! command -v python3 >/dev/null 2>&1; then
+  echo "pre-commit: python3 not found — skipping context-path validation" >&2
+  exit 0
+fi
+
+python3 scripts/check-context-paths.py
