@@ -29,3 +29,6 @@ gas/.clasp.json
 
 # Private
 /private
+
+# .claude
+.claude/worktrees/

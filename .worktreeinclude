@@ -1,0 +1,5 @@
+.dev.vars
+.prod.vars
+.env
+.env.local
+config/secrets.json
