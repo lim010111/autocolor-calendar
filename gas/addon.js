@@ -970,6 +970,7 @@ function buildRuleManagementCard(e) {
     });
   }
 
+  listSection.addWidget(CardService.newDivider());
   listSection.addWidget(CardService.newDecoratedText()
     .setText("ℹ️ 이미 색이 지정된 일정은 자동 변경되지 않습니다. 새 규칙을 기존 일정에 적용하려면 <b>대시보드 → '지금 즉시 동기화'</b>를 눌러주세요.")
     .setWrapText(true));
