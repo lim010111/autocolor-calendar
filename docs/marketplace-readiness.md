@@ -117,7 +117,7 @@ and is not adjudicated here.
 
 | Item | Source of truth | Status | Owner | Notes |
 |---|---|---|---|---|
-| App home page URL | `https://autocolorcal.app/` (`src/routes/home.ts`) | 초안 | Ops | apex `/` landing 라우트 + 테스트 추가(2026-05-08). 컨텐츠 source: `docs/assets/marketplace/description.md` short/long description + `docs/security-principles.md` Principle 2. Worker prod deploy(`pnpm wrangler deploy --env prod`) 후 `https://autocolorcal.app/` 200 active → `완료` 전환 가능. |
+| App home page URL | `https://autocolorcal.app/` (`src/routes/home.ts`) | 완료 | Ops | apex `/` landing 라우트 + 테스트(2026-05-08). 컨텐츠 source: `docs/assets/marketplace/description.md` short/long description + `docs/security-principles.md` Principle 2. Worker prod deploy 완료 (Version `e021b47f`, 2026-05-08) — `https://autocolorcal.app/` 200 + `text/html` active, `/healthz` 회귀 없음. |
 | Privacy Policy URL | https://legal.autocolorcal.app/privacy | 완료 | Legal | Cloudflare Pages publish 2026-05-05 (`docs/legal/privacy-policy.md` → `dist/legal/privacy.html`) |
 | Terms of Service URL | https://legal.autocolorcal.app/terms | 완료 | Legal | Cloudflare Pages publish 2026-05-05 (`docs/legal/terms-of-service.md` → `dist/legal/terms.html`) |
 | Authorized domain(s) | `autocolorcal.app` | 완료 | Ops | OAuth Consent Screen "Authorized domains" 입력값. apex + 모든 subdomain(`legal.autocolorcal.app` 포함) 자동 커버. GSC verified 2026-05-04. |

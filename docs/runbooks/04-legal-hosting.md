@@ -284,9 +284,9 @@ runbook이 정본임을 알리는 cross-reference만 추가.
 - `docs/marketplace-readiness.md` §2 row 121-122 status `초안` → `완료`.
 - §5 row 254-255 동일.
 - §2 row 120 (App home page URL) — apex `/`에 landing 라우트
-  (`src/routes/home.ts`) 추가됨(2026-05-08). prod Worker deploy 후
-  `https://autocolorcal.app/` 200 + HTML active → row 120 `초안` →
-  `완료` 전환.
+  (`src/routes/home.ts`) + prod Worker deploy 완료 (Version
+  `e021b47f`, 2026-05-08). `https://autocolorcal.app/` 200 + `text/html`
+  active, `/healthz` 회귀 없음. row 120 `완료` 전환.
 - §2 row 131 (Onboarding-card 카피 refresh) — 6B에서 처리.
 - `TODO.md:134` 부분 unblock — Marketplace 등록(08 runbook)이 정식 시점.
 - §1 row "App icon 128×128 / 32×32" status `초안` → `완료` (Step 5의 아이콘
