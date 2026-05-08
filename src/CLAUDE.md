@@ -823,12 +823,23 @@ Cross-references:
 
 ## Environments
 
-- `dev`: `autocolor-dev` Worker, `autocolor-dev-db` Hyperdrive, full secrets.
-- `prod`: `autocolor-prod` Worker is a **URL-reserving shell**. It has
-  `GOOGLE_OAUTH_REDIRECT_URI` configured and answers `/healthz`, but has no
-  secrets, no Hyperdrive binding, and no Supabase project yet. `/oauth/*`,
-  `/me`, `/auth/logout` will fail until a prod Supabase project, GCP OAuth
-  client, and secret bootstrap are added (separate task).
+Both `dev` and `prod` are fully bound (Hyperdrive + Supabase + secrets +
+queue + cron). Prod activation executed in PR #43 (`a01bde7`, 2026-05-04)
+— canonical procedure kept at
+[`docs/runbooks/02-prod-environment-activation.md`](../docs/runbooks/02-prod-environment-activation.md)
+as reference for "rebuild from scratch" / "trace which step created which
+binding."
+
+- `dev`: `autocolor-dev` Worker, Hyperdrive `autocolor-dev-db`, full
+  secret set, queue `autocolor-sync-dev` (+ DLQ), cron triggers. **No
+  `WEBHOOK_BASE_URL`** — Google rejects `*.workers.dev` for watch
+  registration, so the watch / push-notification path is intentionally
+  no-op on dev. Sync is exercised end-to-end on prod only.
+- `prod`: `autocolor-prod` Worker on verified `autocolorcal.app` custom
+  domain, prod Hyperdrive (id `fc99980ace44497da83cfa99906f3bcb`) + prod
+  Supabase project, secrets injected via `pnpm sync-secrets prod`, queue
+  `autocolor-sync-prod` (+ DLQ), cron triggers. Routine code rollouts:
+  `pnpm deploy:prod`.
 
 ## Common patterns
 

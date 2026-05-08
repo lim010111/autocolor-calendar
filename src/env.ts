@@ -4,13 +4,13 @@ export type Bindings = {
   ENV: "dev" | "prod";
   GOOGLE_OAUTH_REDIRECT_URI: string;
 
-  // Optional because the prod worker is a URL-reserving shell that does not
-  // yet have a Hyperdrive binding. `getDb` throws a clear error if a caller
-  // tries to use the DB in an environment where it is not configured.
+  // Optional so unit tests can build minimal `Bindings` without a Hyperdrive
+  // shim. Both dev and prod bind it via `wrangler.toml`; `getDb` throws a
+  // clear error if missing at runtime, which only happens under bad config.
   HYPERDRIVE?: Hyperdrive;
 
-  // Queue producer. Absent in the prod shell until Queue bindings are added;
-  // producer code must check for presence.
+  // Queue producer. Optional so test harnesses can omit it; both dev and
+  // prod bind it. Producer code still null-checks before enqueue.
   SYNC_QUEUE?: Queue<SyncJob>;
 
   GOOGLE_CLIENT_ID: string;
@@ -34,10 +34,10 @@ export type Bindings = {
   // sets this to the verified custom domain (§1 prerequisite).
   WEBHOOK_BASE_URL?: string;
 
-  // §5.3 LLM fallback. Optional so the prod URL-reserving shell (no secrets
-  // yet) and dev environments without a key both keep working —
-  // `classifyWithLlm` returns `{ kind: "disabled" }` when absent, which the
-  // chain treats as a rule-miss and silently counts as `no_match`.
+  // §5.3 LLM fallback. Optional so environments without a key (tests / a
+  // local sandbox) keep working — `classifyWithLlm` returns
+  // `{ kind: "disabled" }` when absent, which the chain treats as a
+  // rule-miss and silently counts as `no_match`.
   OPENAI_API_KEY?: string;
 
   // Per-user daily LLM call ceiling. Parsed as a positive integer at runtime

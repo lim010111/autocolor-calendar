@@ -1,16 +1,15 @@
 # 02 — Prod environment activation
 
 > 이 runbook은 [`TODO.md` §3 후속 line 35](../../TODO.md) "Prod 환경 활성화"의
-> 정본 절차다. 현재 `autocolor-prod` Worker는 URL-reserving shell —
-> `[env.prod.vars]`에 `ENV` / `GOOGLE_OAUTH_REDIRECT_URI` 자리만 있고
-> 시크릿 / Hyperdrive / Queue / cron 모두 미주입
-> ([`src/CLAUDE.md` "Environments"](../../src/CLAUDE.md)). runbook이 끝나면
-> `/healthz` / `/oauth/google/callback` / `/me`가 prod에서 200을 응답하고
-> sync 1회가 `sync_runs` 1행 ok로 마무리된다.
+> 정본 절차다. **본 절차는 PR #43 (`a01bde7`, 2026-05-04)에서 1회 실행 완료** —
+> `autocolor-prod` Worker는 verified `autocolorcal.app` 도메인 / Hyperdrive /
+> Queue / cron / 시크릿이 모두 주입된 정상 운영 상태이며, 일반 코드 변경은
+> `pnpm deploy:prod`로 배포한다
+> ([`src/CLAUDE.md` "Environments"](../../src/CLAUDE.md)). 이 문서는
+> (1) 신규 prod 환경을 처음부터 다시 만들어야 할 때, (2) 어떤 단계가 어떤
+> binding / 시크릿을 만든 건지 추적할 때의 reference로 유지된다.
 >
-> Owner: Eng. 시작 시점은 G1 (Domain) Step 1-3 완료 권장 (verified 도메인
-> → Watch API 즉시 활성화). 미완 시 prod도 `WEBHOOK_BASE_URL` 미주입으로
-> 시작 가능 — verified 후 갱신.
+> Owner: Eng.
 
 - **Pre-conditions**:
   - Cloudflare 계정 보유, GCP 콘솔 접근 권한.
@@ -380,7 +379,7 @@ env scoping으로 격리).
 - [`TODO.md` §3 후속 line 38](../../TODO.md) — 세션 GC
 - [`TODO.md` §4 후속 line 52](../../TODO.md) — prod Watch API 활성화 (G1 의존)
 - [`docs/backend-infrastructure-handoff.md`](../backend-infrastructure-handoff.md) — 라이브 카탈로그 / 자격증명 로테이션 이력
-- [`src/CLAUDE.md` "Environments"](../../src/CLAUDE.md) — prod URL-reserving shell 현재 상태
+- [`src/CLAUDE.md` "Environments"](../../src/CLAUDE.md) — dev/prod 바인딩 현황 (PR #43 활성화 이후)
 - `src/CLAUDE.md` "DB connectivity" — Hyperdrive pool 설정 / 마이그레이션 계약
 - `src/CLAUDE.md` "Secret rotation impact" — 시크릿 회전 절차
 - `src/CLAUDE.md` "Account deletion (§3 row 179)" — Step 12 E 검증
