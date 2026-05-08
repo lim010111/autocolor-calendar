@@ -74,9 +74,9 @@ only the index.
 | App icon 128×128 / 32×32 | `docs/assets/marketplace/icons/` (8종 일습) | 초안 | Design | 1024 마스터 + 480/128/32/16 + mono-dark/light + source SVG commit 완료. `scripts/generate-marketplace-icons.py`로 재생성. Cloudflare Pages 호스팅 + `gas/appsscript.json:22` `logoUrl` 교체 pending. **2026-05-08 마스터 디자인 교체 — 바인더 링 / 다크 헤더 + 별 4개 컨셉. 128/480은 LANCZOS 동기화 완료. 32/16/mono 변형은 코드 렌더 유지(Option A) — render_* 재작성은 별도 PR 후속.** |
 | Promotional screenshots (≥ 3) | TBD `docs/assets/marketplace/screenshots/` | 미작성 | Design | Welcome / Home / Rules / Event preview |
 | Promotional video (optional) | TBD | 미작성 | Product | Reusable for the §2 restricted-scope demo |
-| Category | TBD | 미작성 | Product | Candidate: Productivity |
-| Support email | TBD | 미작성 | Ops | Blocked on `TODO.md:8` |
-| Support / help URL | TBD | 미작성 | Ops | Blocked on `TODO.md:8` |
+| Category | Productivity | 완료 | Product | `docs/runbooks/05-marketplace-listing-assets.md` Step 5 권장값. publish 후 Marketplace SDK 콘솔에서 재조정 가능 |
+| Support email | `support@autocolorcal.app` | 완료 | Ops | Cloudflare Email Routing 활성화 (2026-05-08) — MX/SPF Cloudflare 자동 추가, 개인 forward 대상 verified, `support@` custom address rule 송수신 확인 |
+| Support / help URL | https://github.com/lim010111/autocolor-calendar/issues | 완료 | Ops | `docs/runbooks/05-marketplace-listing-assets.md` Step 5 권장. 사용자 베이스 성장 시 정식 support 페이지로 전환 |
 | Developer / publisher identity | TBD (GCP project owner) | 초안 | Ops | Tied to `TODO.md:35` prod activation |
 
 ## 2. OAuth Consent Screen Verification
