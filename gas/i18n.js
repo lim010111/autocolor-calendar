@@ -86,6 +86,7 @@ var MESSAGES = {
     'match.byRule.withKeyword': "Matched rule: '{{name}}' (keyword: '{{keyword}}')",
     'match.byLlm': "🤖 AI classification: '{{name}}'",
     'match.llm.empty': '🤖 No AI classification result',
+    'match.llm.quotaExceeded': '🤖 Daily AI classification quota reached — resets at midnight (UTC)',
     'match.none.willTryLlm': 'No matching rule — AI classification will be tried on next sync',
     'match.fallbackName': 'Rule',
 
@@ -266,6 +267,7 @@ var MESSAGES = {
     'match.byRule.withKeyword': "매칭된 규칙: '{{name}}' (키워드: '{{keyword}}')",
     'match.byLlm': "🤖 AI 분류: '{{name}}'",
     'match.llm.empty': '🤖 AI 분류 결과 없음',
+    'match.llm.quotaExceeded': '🤖 오늘 AI 분류 한도 소진 — 자정(UTC)에 초기화',
     'match.none.willTryLlm': '매칭된 규칙 없음 — 다음 동기화 시 AI 분류 시도',
     'match.fallbackName': '규칙',
 
@@ -431,6 +433,7 @@ var MESSAGES = {
     'match.byRule.withKeyword': "匹配规则: '{{name}}' (关键词: '{{keyword}}')",
     'match.byLlm': "🤖 AI 分类: '{{name}}'",
     'match.llm.empty': '🤖 无 AI 分类结果',
+    'match.llm.quotaExceeded': '🤖 今日 AI 分类配额已用完 — 将于 UTC 午夜重置',
     'match.none.willTryLlm': '无匹配规则 — 下次同步时将尝试 AI 分类',
     'match.fallbackName': '规则',
 
@@ -596,6 +599,7 @@ var MESSAGES = {
     'match.byRule.withKeyword': "相符規則: '{{name}}' (關鍵字: '{{keyword}}')",
     'match.byLlm': "🤖 AI 分類: '{{name}}'",
     'match.llm.empty': '🤖 無 AI 分類結果',
+    'match.llm.quotaExceeded': '🤖 今日 AI 分類額度已用完 — 將於 UTC 午夜重置',
     'match.none.willTryLlm': '無相符規則 — 下次同步時將嘗試 AI 分類',
     'match.fallbackName': '規則',
 

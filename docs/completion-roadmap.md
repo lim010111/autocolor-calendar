@@ -13,7 +13,7 @@ AutoColor for Calendar를 **Workspace Marketplace public listing 활성** 상태
 
 1. **Public listing 활성** — Workspace Marketplace에서 일반 사용자가 검색·설치 가능.
 2. **Prod 백엔드 활성** — `autocolor-prod` Worker가 실제 OAuth/DB 트래픽을 처리.
-   (현재: URL-reserving shell — [`src/CLAUDE.md` "Environments"](../src/CLAUDE.md).)
+   (PR #43 `a01bde7`, 2026-05-04 완료 — [`src/CLAUDE.md` "Environments"](../src/CLAUDE.md).)
 3. **OAuth verification 완료** — Google Restricted Scope 검수 통과
    (스코프 정당화 + 데모 영상 + Privacy/ToS).
 

@@ -130,6 +130,12 @@ classifyRoutes.post("/preview", async (c) => {
     // closure, which this endpoint never produces.
     let llmTried = false;
     let llmCallRecord: LlmCallRecord | null = null;
+    // Mirror `outcome` into a separate slot so the post-classify branch can
+    // read it without tripping TS control-flow narrowing on `llmCallRecord`
+    // (the `if (llmCallRecord !== null)` insert block above narrows the
+    // variable to `never` for the rest of the function — callback writes are
+    // invisible to flow analysis).
+    let llmOutcome: LlmCallRecord["outcome"] | null = null;
     const classifyFn = useLlm
       ? buildDefaultClassifier({
           db,
@@ -140,6 +146,7 @@ classifyRoutes.post("/preview", async (c) => {
           },
           onLlmCall: (rec) => {
             llmCallRecord = rec;
+            llmOutcome = rec.outcome;
           },
         })
       : classifyEvent;
@@ -201,11 +208,20 @@ classifyRoutes.post("/preview", async (c) => {
       );
     }
 
+    // §5/§6 후속 — surface LLM quota exhaustion to the sidebar so users can
+    // tell "AI 분류 한도 소진"과 "AI 분류했지만 매칭 없음"을 구분. quota_exceeded는
+    // OpenAI 호출 자체가 막힌 상태 — 새 프롬프트가 정상이라도 자정(UTC) 전까지
+    // 모든 호출이 동일하게 fail. 다른 outcome(`http_error`/`bad_response`/`timeout`)은
+    // 사용자 입장에서 "AI 분류 시도했지만 실패"라는 일반 문구로 충분 — quota만
+    // 별도 분기.
+    const llmQuotaExceeded = llmOutcome === "quota_exceeded";
+
     if (!classification) {
       return c.json({
         source: "no_match" as const,
         llmAvailable,
         ...(llmTried ? { llmTried: true as const } : {}),
+        ...(llmQuotaExceeded ? { llmQuotaExceeded: true as const } : {}),
       });
     }
 

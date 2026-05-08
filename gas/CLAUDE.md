@@ -62,8 +62,11 @@ Reviewer-walkthrough scripts under [../docs/assets/marketplace/reviewer-demo/](.
   event-open sidebar shares the sync pipeline's per-user `reserveLlmCall`
   daily quota — there is no separate preview cap. The button is gated on
   rule-miss + the backend returning `llmTried: false`, and hides after
-  one click per card render. See [../src/CLAUDE.md](../src/CLAUDE.md)
-  "Preview LLM (§5 후속)".
+  one click per card render. When the quota is exhausted the backend
+  returns `llmQuotaExceeded: true` and `formatMatchLine` renders the
+  `match.llm.quotaExceeded` line so the user can distinguish "한도 소진"
+  from "AI가 매칭 못 찾음" — both are functionally `no_match`. See
+  [../src/CLAUDE.md](../src/CLAUDE.md) "Preview LLM (§5 후속)".
 - **Gotcha:** `CardService` cannot render arbitrary HTML — every card is
   rebuilt on every action, so do NOT cache view state in module-level vars.
   Per-user state belongs in `storage.js`; per-render state belongs in the

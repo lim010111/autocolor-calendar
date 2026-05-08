@@ -7,7 +7,7 @@ export function getDb(env: Bindings) {
   if (!env.HYPERDRIVE) {
     throw new Error(
       `DB unavailable: HYPERDRIVE binding missing in env=${env.ENV}. ` +
-        `The prod worker is a URL-reserving shell until its Hyperdrive config is created.`,
+        `Both dev and prod bind it via wrangler.toml — check the [[env.${env.ENV}.hyperdrive]] block.`,
     );
   }
   // Route through Cloudflare Hyperdrive: it pools PostgreSQL connections at

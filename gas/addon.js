@@ -359,6 +359,9 @@ function formatMatchLine(preview, L) {
     var llmName = preview.category.name || t('match.fallbackName', null, L);
     return t('match.byLlm', { name: llmName }, L);
   }
+  if (preview.source === 'no_match' && preview.llmQuotaExceeded) {
+    return t('match.llm.quotaExceeded', null, L);
+  }
   if (preview.source === 'no_match' && preview.llmTried) {
     return t('match.llm.empty', null, L);
   }

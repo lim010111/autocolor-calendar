@@ -574,4 +574,34 @@ describe("POST /api/classify/preview", () => {
       attempts: 1,
     });
   });
+
+  it("llm:true + quota_exceeded — no_match with llmQuotaExceeded:true", async () => {
+    currentDb.state.rows.push(row({}));
+    vi.mocked(buildDefaultClassifier).mockImplementation(
+      stubChain({
+        result: null,
+        engageLlmLeg: true,
+        llmCallRecord: {
+          outcome: "quota_exceeded",
+          latencyMs: 2,
+          categoryCount: 1,
+          attempts: 0,
+        },
+      }),
+    );
+    const res = await invoke("/api/classify/preview", {
+      method: "POST",
+      userToken: "token-a",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ summary: "아무 이벤트", llm: true }),
+      env: { ...baseEnv, OPENAI_API_KEY: "sk-test" },
+    });
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({
+      source: "no_match",
+      llmAvailable: true,
+      llmTried: true,
+      llmQuotaExceeded: true,
+    });
+  });
 });
