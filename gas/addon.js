@@ -198,8 +198,7 @@ function buildHomeCard(L) {
 
   var infoText = t('home.info', null, L);
   if (inFirstHomeWindow) {
-    infoText = t('home.info.firstConnect', null, L) + "\n\n" + infoText
-      + "\n\n" + t('home.info.firstEventDelay', null, L);
+    infoText = infoText + "\n\n" + t('home.info.firstEventDelay', null, L);
   }
 
   var infoSection = CardService.newCardSection();
