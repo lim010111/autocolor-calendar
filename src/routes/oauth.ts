@@ -11,6 +11,7 @@ import { signState, verifyState } from "../lib/state";
 import { exchangeCode, fetchUserInfo } from "../services/googleOAuth";
 import { saveGoogleRefreshToken } from "../services/oauthTokenService";
 import { issueSession } from "../services/sessionService";
+import { bootstrapUserSync } from "../services/syncBootstrap";
 import { upsertUserByGoogleSub } from "../services/userService";
 
 export const oauthRoutes = new Hono<HonoEnv>();
@@ -82,6 +83,27 @@ oauthRoutes.get("/google/callback", async (c) => {
         userAgent,
       });
       sessionToken = session.token;
+
+      // Onboarding bootstrap — create sync_state, enqueue full_resync,
+      // register Watch channel synchronously so the user's first /me already
+      // reports push_active=true. Without this, the dashboard lands on
+      // "Auto-sync inactive" and "Reconnect now" returns 409 not_bootstrapped
+      // until the user clicks "Apply rules to all events" (which incidentally
+      // creates sync_state via /sync/run + maybeSelfHealWatch). Failure here
+      // is non-fatal — OAuth itself succeeded, and /me's maybeSelfHealWatch
+      // hook will retry on the next dashboard render for any partial state.
+      try {
+        await bootstrapUserSync(db, c.env, user.id);
+      } catch (err) {
+        console.warn(
+          JSON.stringify({
+            level: "warn",
+            msg: "oauth callback: bootstrap failed (non-fatal)",
+            userId: user.id,
+            error: err instanceof Error ? err.message : String(err),
+          }),
+        );
+      }
     } finally {
       c.executionCtx.waitUntil(close());
     }

@@ -189,9 +189,20 @@ function buildHomeCard(L) {
 
   builder.addSection(actionSection);
 
+  // 첫 full_resync가 끝난 사용자(next_sync_token 보유)에게는 "처음 연결 직후
+  // 잠시 걸린다"는 안내가 노이즈가 되므로, sync token이 아직 없는 첫 진입
+  // 사용자에게만 firstConnect 단락을 prepend한다.
+  var firstSyncDone =
+    !!(me && me.last_sync && me.last_sync.next_sync_token_present === true);
+
+  var infoText = t('home.info', null, L);
+  if (!firstSyncDone) {
+    infoText = t('home.info.firstConnect', null, L) + "\n\n" + infoText;
+  }
+
   var infoSection = CardService.newCardSection();
   infoSection.addWidget(CardService.newDecoratedText()
-    .setText(t('home.info', null, L))
+    .setText(infoText)
     .setWrapText(true));
   builder.addSection(infoSection);
 
