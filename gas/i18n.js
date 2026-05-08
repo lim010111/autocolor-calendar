@@ -68,6 +68,7 @@ var MESSAGES = {
     'home.btn.settings': 'More settings',
     'home.info': 'ℹ️ When you add a new event, the color is usually applied within 5–10 seconds.\n\nℹ️ Tap "Apply rules to all events" to scan events from 30 days ago through 365 days ahead and apply rules. Manually-set colors are preserved.',
     'home.info.firstConnect': 'ℹ️ Right after you first connect, it can take a moment for colors to be applied to your existing events.',
+    'home.info.firstEventDelay': 'ℹ️ The first automatic color application can take more than a minute — please wait a moment :)',
     'home.cta.syncNow': 'Apply rules to all events',
 
     // actionSyncNow
@@ -253,6 +254,7 @@ var MESSAGES = {
     'home.btn.settings': '상세 설정',
     'home.info': "ℹ️ 새 일정을 만들면 보통 5~10초 안에 자동으로 색이 적용됩니다.\n\nℹ️ '지금 모든 일정에 규칙 적용'을 누르면 과거 30일 ~ 미래 365일의 일정을 검사해 규칙을 적용합니다. 직접 지정한 색상은 그대로 유지됩니다.",
     'home.info.firstConnect': "ℹ️ 처음 연결한 직후에는 기존 일정에 색이 적용되기까지 잠시 시간이 걸릴 수 있습니다.",
+    'home.info.firstEventDelay': "ℹ️ 첫 색상 자동 적용은 1분이 넘는 시간이 소요될 수 있어요! 조금만 기다려 주세요 :)",
     'home.cta.syncNow': '지금 모든 일정에 규칙 적용',
 
     'sync.toast.running': '규칙을 적용 중입니다. 잠시 후 반영됩니다.',
@@ -420,6 +422,7 @@ var MESSAGES = {
     'home.btn.settings': '更多设置',
     'home.info': "ℹ️ 添加新日程时,通常 5~10 秒内自动应用颜色。\n\nℹ️ 点击「立即对所有日程应用规则」会扫描过去 30 天到未来 365 天的日程并应用规则。手动指定的颜色将保持不变。",
     'home.info.firstConnect': "ℹ️ 首次连接后,需要一点时间才能将颜色应用到现有日程。",
+    'home.info.firstEventDelay': "ℹ️ 首次自动应用颜色可能需要超过 1 分钟,请稍候片刻 :)",
     'home.cta.syncNow': '立即对所有日程应用规则',
 
     'sync.toast.running': '正在应用规则。请稍候。',
@@ -587,6 +590,7 @@ var MESSAGES = {
     'home.btn.settings': '更多設定',
     'home.info': "ℹ️ 新增活動時,通常 5~10 秒內自動套用顏色。\n\nℹ️ 點選「立即將規則套用至所有活動」會掃描過去 30 天到未來 365 天的活動並套用規則。手動指定的顏色將保持不變。",
     'home.info.firstConnect': "ℹ️ 首次連線後,需要稍待片刻才能將顏色套用至既有活動。",
+    'home.info.firstEventDelay': "ℹ️ 首次自動套用顏色可能需要超過 1 分鐘,請稍候片刻 :)",
     'home.cta.syncNow': '立即將規則套用至所有活動',
 
     'sync.toast.running': '正在套用規則。請稍候。',
