@@ -141,8 +141,8 @@ function buildWelcomeCard() {
  * Fetches /api/stats synchronously on every render (UrlFetchApp is blocking
  * in GAS). AUTH_EXPIRED falls through to the reconnect card so homepage
  * entry from an expired session doesn't show a blank dashboard. Empty-state
- * (no syncs yet): classification.updated = 0 + lastSync = null → renders
- * "아직 분류된 일정이 없습니다" + "아직 동기화하지 않았습니다".
+ * (no syncs yet): classification.updated = 0 → renders
+ * "최근 7일 자동 색상 적용: 0건" as the sole status line.
  */
 function buildHomeCard() {
   var stats = fetchStatsOrError();
@@ -179,28 +179,15 @@ function buildHomeCard() {
   var section = CardService.newCardSection();
 
   var classifiedLine;
-  var syncLine;
   if (!stats || stats.error) {
     classifiedLine = "통계를 불러오지 못했습니다";
-    syncLine = "잠시 후 다시 시도해주세요";
   } else {
     var updatedCount = (stats.classification && stats.classification.updated) || 0;
-    classifiedLine = updatedCount > 0
-      ? "✨   최근 7일 자동 색상 적용: " + updatedCount + "건"
-      : "✨   아직 자동 색상이 적용된 일정이 없습니다";
-
-    var finishedAt = stats.lastSync && stats.lastSync.finishedAt;
-    syncLine = finishedAt
-      ? "최근 동기화: " + formatRelativeTime(finishedAt)
-      : "아직 동기화하지 않았습니다";
+    classifiedLine = "✨   최근 7일 자동 색상 적용: " + updatedCount + "건";
   }
 
   section.addWidget(CardService.newDecoratedText()
     .setText(classifiedLine));
-
-  section.addWidget(CardService.newDecoratedText()
-    .setText(syncLine)
-    .setStartIcon(CardService.newIconImage().setIcon(CardService.Icon.CLOCK)));
 
   builder.addSection(section);
 
@@ -268,23 +255,6 @@ function fetchMeOrError() {
   }
 }
 
-/**
- * ISO timestamp → "방금" / "N분 전" / "N시간 전" / "N일 전".
- * Used only by the homecard; deliberately coarse so the label stays stable
- * across render/rerender cycles within a minute.
- */
-function formatRelativeTime(iso) {
-  var ms = Date.now() - Date.parse(iso);
-  if (!isFinite(ms) || ms < 0) return "방금";
-  var minutes = Math.floor(ms / 60000);
-  if (minutes < 1) return "방금";
-  if (minutes < 60) return minutes + "분 전";
-  var hours = Math.floor(minutes / 60);
-  if (hours < 24) return hours + "시간 전";
-  var days = Math.floor(hours / 24);
-  return days + "일 전";
-}
-
 function actionSyncNow(e) {
   try {
     AutoColorAPI.fetchBackend('/sync/run', {
@@ -293,7 +263,7 @@ function actionSyncNow(e) {
       payload: '{}'
     });
     return CardService.newActionResponseBuilder()
-      .setNotification(CardService.newNotification().setText("동기화를 시작했습니다. 잠시 후 반영됩니다."))
+      .setNotification(CardService.newNotification().setText("규칙을 적용 중입니다. 잠시 후 반영됩니다."))
       .build();
   } catch (err) {
     if (err.message === 'AUTH_EXPIRED' || err.message.indexOf('reauth') !== -1) {
@@ -303,11 +273,11 @@ function actionSyncNow(e) {
     }
     if (err.message.indexOf('429') !== -1) {
       return CardService.newActionResponseBuilder()
-        .setNotification(CardService.newNotification().setText("조금 전 동기화했습니다. 잠시 후 다시 시도해주세요."))
+        .setNotification(CardService.newNotification().setText("조금 전에 적용했습니다. 잠시 후 다시 시도해주세요."))
         .build();
     }
     return CardService.newActionResponseBuilder()
-      .setNotification(CardService.newNotification().setText("동기화 실패: " + err.message))
+      .setNotification(CardService.newNotification().setText("규칙 적용 실패: " + err.message))
       .build();
   }
 }
