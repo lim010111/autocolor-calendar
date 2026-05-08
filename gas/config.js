@@ -2,7 +2,8 @@ var ACFC_CONFIG = {
   APP_NAME: 'autocolor-for-calendar',
   APP_VERSION: 'v2',
   PROPERTY_KEYS: {
-    ONBOARDED: 'acfc.onboarded'
+    ONBOARDED: 'acfc.onboarded',
+    HOME_FIRST_SEEN_AT: 'acfc.homeFirstSeenAt'
   },
   PRIVATE_KEYS: {
     MANAGED_BY: 'acfcManagedBy',

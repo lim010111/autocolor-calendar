@@ -189,14 +189,15 @@ function buildHomeCard(L) {
 
   builder.addSection(actionSection);
 
-  // 첫 full_resync가 끝난 사용자(next_sync_token 보유)에게는 "처음 연결 직후
-  // 잠시 걸린다"는 안내가 노이즈가 되므로, sync token이 아직 없는 첫 진입
-  // 사용자에게만 firstConnect 단락을 prepend한다.
-  var firstSyncDone =
-    !!(me && me.last_sync && me.last_sync.next_sync_token_present === true);
+  // 첫 진입 후 24h 동안만 onboarding 안내를 노출. backend의
+  // next_sync_token_present 신호는 bootstrap full_resync가 1~2초에
+  // 끝나면 곧바로 true가 되어 race가 발생하므로, GAS 로컬에 첫 진입
+  // 시각을 stamp하고 그 윈도우 안인지로 분기한다 (자세한 근거는
+  // storage.js isWithinFirstHomeWindow 주석 참조).
+  var inFirstHomeWindow = AutoColorStorage.isWithinFirstHomeWindow();
 
   var infoText = t('home.info', null, L);
-  if (!firstSyncDone) {
+  if (inFirstHomeWindow) {
     infoText = t('home.info.firstConnect', null, L) + "\n\n" + infoText
       + "\n\n" + t('home.info.firstEventDelay', null, L);
   }
@@ -1151,7 +1152,10 @@ function actionConfirmDeleteAccount(e) {
       .build();
   }
   // Clear local state AFTER the 200 so a transient network failure leaves
-  // the GAS client able to retry without a re-login.
+  // the GAS client able to retry without a re-login. clearAllState 도 함께
+  // 호출해 같은 Google 계정으로 즉시 재온보딩할 때 onboarding 안내가
+  // 새 24h 윈도우로 다시 노출되도록 한다.
+  AutoColorStorage.clearAllState();
   AutoColorAuth.clearSessionToken();
   return CardService.newActionResponseBuilder()
     .setNavigation(CardService.newNavigation().popToRoot().updateCard(buildWelcomeCard(L)))
