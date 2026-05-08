@@ -127,6 +127,7 @@ and is not adjudicated here.
 | `calendar.events` (Sensitive) justification | `docs/assets/marketplace/scope-justifications.md` | 완료 | Eng + Product | Same final review |
 | `userinfo.email` justification | `docs/assets/marketplace/scope-justifications.md` | 완료 | Eng | Same final review |
 | Demo video (restricted-scope usage) | https://youtu.be/5hzXGmM_dQc | 완료 | Product | §1 row 76 정본 공유 — YouTube unlisted (2026-05-09). Required by Google's Restricted Scope policy. |
+| Verification status | GCP Console → OAuth consent screen | 진행중 | Ops | 2026-05-09 1차 Submit → brand 거절 3건(홈페이지 privacy 링크 가시성 / 영문 purpose 부재 / OAuth App name `autocolor-dev` ↔ 홈페이지 `AutoColor for Calendar` 미스매치) → `src/routes/home.ts` 보강(commit `c08e2d6`) + Worker prod redeploy(Version `fa63d651`) + GCP App name → "AutoColor for Calendar" 후 재제출 → **Brand verified** (consent screen이 unverified warning 없이 노출). Restricted/Sensitive scope review는 별도 트랙 — 100명 사용자 cap 유지, Marketplace publish는 scope review 통과 후 가능. |
 | CASA security assessment (if required) | TBD | 미작성 | Ops | Only if Google flags |
 | Onboarding-card copy refresh | `gas/addon.js:119` | 완료 | Eng | URL을 `legal.autocolorcal.app/{privacy,terms}` 로 갱신 (2026-05-05). GAS New version 배포 완료 (2026-05-08). |
 
