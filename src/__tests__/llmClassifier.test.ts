@@ -98,6 +98,65 @@ describe("buildPrompt", () => {
     expect(sys.content).toMatch(/category_name/);
   });
 
+  it("system message names the four semantic-matching rules (§5.3)", () => {
+    // Pinned by `src/CLAUDE.md` "LLM semantic matching policy (§5.3)" — the
+    // four named rules are what unblocks user-reported hypernym /
+    // morphology / paraphrase / cross-lingual matches that the previous
+    // surface-token prompt collapsed to "none".
+    const msgs = buildPrompt(ev(), [cat()]);
+    const sys = msgs.find((m) => m.role === "system")!;
+    expect(sys.content).toMatch(/hypernym|hyponym/i);
+    expect(sys.content).toMatch(/morphology|inflection/i);
+    expect(sys.content).toMatch(/paraphrase/i);
+    expect(sys.content).toMatch(/cross-lingual|equivalence/i);
+  });
+
+  it("system message contains anti-overstretch (false-positive) guidance", () => {
+    const msgs = buildPrompt(ev(), [cat()]);
+    const sys = msgs.find((m) => m.role === "system")!;
+    expect(sys.content).toMatch(/different domain/i);
+    expect(sys.content).toMatch(/metaphorical|aspirational/i);
+  });
+
+  it("system message states priority-first tie resolution", () => {
+    // Mirrors `classifierChain`'s (priority ASC, created_at ASC) ordering —
+    // see `src/CLAUDE.md` "LLM semantic matching policy (§5.3)" tie rule.
+    const msgs = buildPrompt(ev(), [cat()]);
+    const sys = msgs.find((m) => m.role === "system")!;
+    expect(sys.content).toMatch(/priority order/i);
+    expect(sys.content).toMatch(/listed first/i);
+  });
+
+  it("few-shot includes user-reported hypernym example (Breakfast → Meal)", () => {
+    const msgs = buildPrompt(ev(), [cat()]);
+    const sys = msgs.find((m) => m.role === "system")!;
+    expect(sys.content).toContain("Breakfast");
+    expect(sys.content).toContain("Meal");
+  });
+
+  it("few-shot includes user-reported morphology example (Getting ready ↔ Get ready)", () => {
+    const msgs = buildPrompt(ev(), [cat()]);
+    const sys = msgs.find((m) => m.role === "system")!;
+    expect(sys.content).toContain("Getting ready");
+    expect(sys.content).toContain("Get ready");
+  });
+
+  it("few-shot includes cross-lingual examples (ko↔en, zh↔en)", () => {
+    // ko→en: 아침식사 → Meal carries the Korean-keywords-with-English-event
+    // case; the zh token covers the upcoming zh-CN/zh-TW launch users.
+    const msgs = buildPrompt(ev(), [cat()]);
+    const sys = msgs.find((m) => m.role === "system")!;
+    expect(sys.content).toContain("아침식사");
+    expect(sys.content).toMatch(/运动|健身|瑜伽/);
+  });
+
+  it("few-shot includes negative example rejecting token-overlap-only match (Team Meeting)", () => {
+    const msgs = buildPrompt(ev(), [cat()]);
+    const sys = msgs.find((m) => m.role === "system")!;
+    expect(sys.content).toContain("Team Meeting");
+    expect(sys.content).toMatch(/"category_name":"none"/);
+  });
+
   it("serializes missing description/location as empty strings", () => {
     const msgs = buildPrompt(ev({ summary: "only summary" }), [cat()]);
     const user = msgs.find((m) => m.role === "user")!;
@@ -562,6 +621,95 @@ describe("classifyWithLlm", () => {
       { db: {} as never, env: makeEnv(), userId: USER, reserve: mkReserve(true) },
     );
     assertNoPiiLogged(["매우비밀회의", "password=hunter2", "hunter2", "server error body"]);
+  });
+
+  // §5.3 semantic matching — mocked outcome, deterministic. These verify the
+  // wiring stays correct (categoryId mapping, miss/hit shapes) for the four
+  // user-report cases. Whether the real model actually returns these names
+  // for these prompts is the job of `evals/scripts/run-classification-eval.ts`.
+
+  it("hypernym: Meal category + Breakfast event → hit (user-report case)", async () => {
+    globalThis.fetch = vi.fn(async () => openAiJson("Meal")) as unknown as typeof fetch;
+    const out = await classifyWithLlm(
+      ev({ summary: "Breakfast with mom" }),
+      [cat({ name: "Meal", keywords: ["Meal", "식사"] })],
+      { db: {} as never, env: makeEnv(), userId: USER, reserve: mkReserve(true) },
+    );
+    expect(out).toEqual({
+      kind: "hit",
+      classification: { colorId: "9", categoryId: "c-1", reason: "llm_match:Meal" },
+    });
+  });
+
+  it("hypernym: Meal category + Lunch event → hit (user-report case)", async () => {
+    globalThis.fetch = vi.fn(async () => openAiJson("Meal")) as unknown as typeof fetch;
+    const out = await classifyWithLlm(
+      ev({ summary: "Lunch on Wednesday" }),
+      [cat({ name: "Meal", keywords: ["Meal"] })],
+      { db: {} as never, env: makeEnv(), userId: USER, reserve: mkReserve(true) },
+    );
+    expect(out.kind).toBe("hit");
+    if (out.kind === "hit") expect(out.classification.reason).toBe("llm_match:Meal");
+  });
+
+  it("morphology+paraphrase: Move category + 'Getting ready to go out' → hit (user-report case)", async () => {
+    globalThis.fetch = vi.fn(async () => openAiJson("Move")) as unknown as typeof fetch;
+    const out = await classifyWithLlm(
+      ev({ summary: "Getting ready to go out" }),
+      [cat({ name: "Move", keywords: ["Get ready", "move"] })],
+      { db: {} as never, env: makeEnv(), userId: USER, reserve: mkReserve(true) },
+    );
+    expect(out.kind).toBe("hit");
+    if (out.kind === "hit") expect(out.classification.reason).toBe("llm_match:Move");
+  });
+
+  it("cross-lingual ko→en: Meal category + 아침식사 event → hit", async () => {
+    globalThis.fetch = vi.fn(async () => openAiJson("Meal")) as unknown as typeof fetch;
+    const out = await classifyWithLlm(
+      ev({ summary: "아침식사 약속" }),
+      [cat({ name: "Meal", keywords: ["Meal"] })],
+      { db: {} as never, env: makeEnv(), userId: USER, reserve: mkReserve(true) },
+    );
+    expect(out.kind).toBe("hit");
+  });
+
+  it("cross-lingual en→ko: 식사 category + Breakfast event → hit", async () => {
+    globalThis.fetch = vi.fn(async () => openAiJson("식사")) as unknown as typeof fetch;
+    const out = await classifyWithLlm(
+      ev({ summary: "Breakfast" }),
+      [cat({ name: "식사", keywords: ["식사"] })],
+      { db: {} as never, env: makeEnv(), userId: USER, reserve: mkReserve(true) },
+    );
+    expect(out.kind).toBe("hit");
+    if (out.kind === "hit") expect(out.classification.reason).toBe("llm_match:식사");
+  });
+
+  it("anti-overstretch: Meal category + 'Team Meeting' event → miss when model says 'none' (user-report case)", async () => {
+    globalThis.fetch = vi.fn(async () => openAiJson("none")) as unknown as typeof fetch;
+    const out = await classifyWithLlm(
+      ev({ summary: "Team Meeting tomorrow" }),
+      [cat({ name: "Meal", keywords: ["Meal"] })],
+      { db: {} as never, env: makeEnv(), userId: USER, reserve: mkReserve(true) },
+    );
+    expect(out).toEqual({ kind: "miss" });
+  });
+
+  it("priority-first: tie between Meeting and Meal → hit on first listed (Meeting)", async () => {
+    // The chain delivers categories sorted by (priority ASC, created_at ASC),
+    // and the prompt instructs the model to prefer the first listed when two
+    // are equally good. This pins the wiring; whether the real model actually
+    // picks the first listed is verified by the offline eval suite.
+    globalThis.fetch = vi.fn(async () => openAiJson("Meeting")) as unknown as typeof fetch;
+    const out = await classifyWithLlm(
+      ev({ summary: "Lunch meeting with the design team" }),
+      [
+        cat({ id: "c-1", name: "Meeting", keywords: ["meeting"], priority: 100 }),
+        cat({ id: "c-2", name: "Meal", keywords: ["meal"], priority: 200 }),
+      ],
+      { db: {} as never, env: makeEnv(), userId: USER, reserve: mkReserve(true) },
+    );
+    expect(out.kind).toBe("hit");
+    if (out.kind === "hit") expect(out.classification.categoryId).toBe("c-1");
   });
 });
 

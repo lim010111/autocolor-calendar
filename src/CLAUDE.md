@@ -370,6 +370,43 @@ Retention: no TTL in Wave B. The `(user_id, finished_at)` btree keeps
 recent-window reads fast, but `sync_runs` grows monotonically. A pg_cron
 purge lands with the §3-후속 "세션 GC" job.
 
+## LLM semantic matching policy (§5.3)
+
+The §5.3 fallback runs only on rule-miss events (`classifierChain`'s second
+leg) and is configured to match by *meaning*, not surface-token containment.
+`buildPrompt` (`src/services/llmClassifier.ts`) names four matching rules —
+hypernym / hyponym, morphology / inflection, paraphrase, cross-lingual
+equivalence — so an event titled `"Breakfast"` matches a category whose only
+keyword is `"Meal"` (or `"식사"`), and `"Getting ready to go out"` matches
+keyword `"Get ready"`. Anti-overstretch is explicit: token-overlap-only
+domain mismatches (`"Meeting"` ↔ `"Meal"`) and metaphorical / aspirational
+matches are rejected.
+
+**Tie-resolution: priority-first, then `none`.** Categories arrive
+pre-sorted by `(priority ASC, created_at ASC)` from `classifierChain`, and
+the prompt instructs the model to prefer the first listed category when two
+are equally good — falling through to `"none"` only on real ambiguity. This
+mirrors the rule leg's `priority` first-win so behavior across the two legs
+stays consistent.
+
+**Cross-lingual coverage is carried by the prompt rule + user-authored
+keywords; `users.locale` is NOT transmitted to the model.** The few-shot
+covers ko↔en and zh↔en pairs explicitly. A category whose keywords already
+include multiple languages (e.g. `["Meal", "식사"]`) is the recommended UX
+shape — no DB or route change is needed for additional locales.
+
+Response schema stays single-field (`{ "category_name": string }`). Adding
+a `confidence` or `reasoning` field would push verbose Korean category
+names + side text past `LLM_MAX_COMPLETION_TOKENS = 64` and trip
+`bad_response` truncation; per-event debugging context is already preserved
+verbatim in `llm_calls.raw_response` (§6.3).
+
+Regression suite: `evals/tasks/classification-semantic.json` +
+`evals/scripts/run-classification-eval.ts`. Manual operator-side run that
+bypasses `reserveLlmCall` (budget separate from the per-user runtime cap)
+and appends one ledger row to `evals/agent-results.json` with
+`kind: "task_pass_rate"` / `tool: "classification-semantic-eval"`.
+
 ## Preview LLM (§5 후속)
 
 `POST /api/classify/preview` accepts an optional `{ llm: true }` body flag.
@@ -805,9 +842,10 @@ truth, not this index.
 - **Add a sync-pipeline write to Calendar** → `## Color ownership marker
   (§5.4)` (writes MUST stamp `autocolor_*` keys, MUST bump `autocolor_v`
   on payload schema change, MUST be idempotent against the §5.4 race).
-- **Add an LLM-touching code path** → `## Preview LLM (§5 후속)` +
-  `## Cost guardrail (§5/§6 후속)` (PII redaction first; then
-  `reserveLlmCall` quota; then prompt + response token caps).
+- **Add an LLM-touching code path** → `## LLM semantic matching policy (§5.3)`
+  + `## Preview LLM (§5 후속)` + `## Cost guardrail (§5/§6 후속)` (PII
+  redaction first; then `reserveLlmCall` quota; then prompt + response token
+  caps; consult the matching policy when editing the prompt or few-shot).
 - **Add a cron / queue handler** → `## Watch renewal concurrency` +
   `## Token rotation (§3 후속)` (per-row claim vs. observed-not-prevented
   patterns; idempotency under concurrent ticks).
