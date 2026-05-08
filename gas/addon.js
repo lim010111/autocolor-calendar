@@ -100,25 +100,19 @@ function buildWelcomeCard() {
   
   builder.setHeader(CardService.newCardHeader()
     .setTitle("AutoColor 사용 가이드")
-    .setSubtitle("AI가 캘린더를 예쁘게 정리해 드립니다.")
+    .setSubtitle("AI가 일정의 색상을 자동으로 입혀 드립니다!")
     .setImageUrl("https://legal.autocolorcal.app/icon-128.png"));
     
   var tutorialSection = CardService.newCardSection().setHeader("💡 이렇게 사용해보세요!");
   
-  tutorialSection.addWidget(CardService.newDecoratedText()
-    .setTopLabel("1단계. 규칙 만들기")
-    .setText("키워드(예: '회의')와 원하는 색상을 선택해 나만의 규칙을 만드세요.")
-    .setWrapText(true));
-    
-  tutorialSection.addWidget(CardService.newDecoratedText()
-    .setTopLabel("2단계. 일정 등록하기")
-    .setText("평소처럼 캘린더에 일정을 등록합니다. 제목이나 설명에 키워드가 포함되면 됩니다.")
-    .setWrapText(true));
-    
-  tutorialSection.addWidget(CardService.newDecoratedText()
-    .setTopLabel("3단계. 자동 색상 적용")
-    .setText("일정을 등록하면 보통 5~10초 안에 자동으로 색상이 적용됩니다. ✨ 사이드바를 열지 않아도 백그라운드에서 동작하고, 모바일 Google 캘린더 앱에서 만든 일정도 동일하게 적용돼요.")
-    .setWrapText(true));
+  tutorialSection.addWidget(CardService.newTextParagraph()
+    .setText("<b>1단계. 규칙 만들기</b><br>키워드(예: '회의')와 원하는 색상을 선택해 나만의 규칙을 만드세요."));
+
+  tutorialSection.addWidget(CardService.newTextParagraph()
+    .setText("<b>2단계. 일정 등록하기</b><br>평소처럼 캘린더에 일정을 등록합니다. 제목이나 설명에 키워드가 포함되면 됩니다."));
+
+  tutorialSection.addWidget(CardService.newTextParagraph()
+    .setText("<b>3단계. 자동 색상 적용</b><br>일정을 등록하면 보통 5~10초 안에 자동으로 색상이 적용됩니다. ✨ 사이드바를 열지 않아도 백그라운드에서 동작하고, 모바일 Google 캘린더 앱에서 만든 일정도 동일하게 적용돼요."));
     
   builder.addSection(tutorialSection);
 
