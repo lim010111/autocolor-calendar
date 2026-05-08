@@ -117,7 +117,7 @@ function buildWelcomeCard() {
     
   tutorialSection.addWidget(CardService.newDecoratedText()
     .setTopLabel("3단계. 자동 색상 적용")
-    .setText("일정을 등록하면 보통 5~10초 안에 자동으로 색상이 적용됩니다. ✨ 사이드바를 열지 않아도 백그라운드에서 동작합니다.")
+    .setText("일정을 등록하면 보통 5~10초 안에 자동으로 색상이 적용됩니다. ✨ 사이드바를 열지 않아도 백그라운드에서 동작하고, 모바일 Google 캘린더 앱에서 만든 일정도 동일하게 적용돼요.")
     .setWrapText(true));
     
   builder.addSection(tutorialSection);
