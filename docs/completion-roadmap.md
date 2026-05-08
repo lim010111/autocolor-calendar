@@ -89,8 +89,8 @@ AutoColor for Calendar를 **Workspace Marketplace public listing 활성** 상태
 | Rate limit 통합 §6.4 | [`TODO.md` line 123`](../TODO.md) | 트래픽 증가 전까지 후순위 |
 | 팀/공유 캘린더 ownership §5 후속 | [`TODO.md` line 98`](../TODO.md) | 설계 선행; 코드 직진 불가 |
 | GAS UX — 와이어프레임 / 별도 Web UI | [`TODO.md` line 6, 16`](../TODO.md) | line 16은 사용자 명시 후순위 |
-| Onboarding card 카피 refresh | [`marketplace-readiness.md` §2 row 131](marketplace-readiness.md) | 게이트 4 (Privacy URL) 후 |
-| CASA 보안 평가 | [`marketplace-readiness.md` §2 row 130](marketplace-readiness.md) | Google 요청 시에만 발동 |
+| Onboarding card 카피 refresh | [`marketplace-readiness.md` §2 row 132](marketplace-readiness.md) | 게이트 4 (Privacy URL) 후 |
+| CASA 보안 평가 | [`marketplace-readiness.md` §2 row 131](marketplace-readiness.md) | 2026-05-09 questionnaire 제출 → Google CASA Tier 결정 대기 |
 
 ## 의존성 그래프
 
