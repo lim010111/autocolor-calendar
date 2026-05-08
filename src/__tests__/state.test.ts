@@ -20,7 +20,8 @@ describe("OAuth state HMAC", () => {
     const key = b64key();
     const state = await signState(key);
     const [body, sig] = state.split(".") as [string, string];
-    const tampered = `${body}.${sig.slice(0, -2)}AA`;
+    const replacement = sig.endsWith("AA") ? "BB" : "AA";
+    const tampered = `${body}.${sig.slice(0, -2)}${replacement}`;
     expect(await verifyState(key, tampered)).toBe(false);
   });
 
