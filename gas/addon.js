@@ -220,17 +220,11 @@ function buildHomeCard() {
 
   builder.addSection(actionSection);
 
-  var pushInfoSection = CardService.newCardSection();
-  pushInfoSection.addWidget(CardService.newDecoratedText()
-    .setText("ℹ️ 새 일정을 만들면 보통 5~10초 안에 자동으로 색이 적용됩니다.")
+  var infoSection = CardService.newCardSection();
+  infoSection.addWidget(CardService.newDecoratedText()
+    .setText("ℹ️ 새 일정을 만들면 보통 5~10초 안에 자동으로 색이 적용됩니다.\n\nℹ️ '지금 모든 일정에 규칙 적용'을 누르면 과거 30일 ~ 미래 365일의 일정을 검사해 규칙을 적용합니다. 직접 지정한 색상은 그대로 유지됩니다.")
     .setWrapText(true));
-  builder.addSection(pushInfoSection);
-
-  var syncInfoSection = CardService.newCardSection();
-  syncInfoSection.addWidget(CardService.newDecoratedText()
-    .setText("ℹ️ '지금 모든 일정에 규칙 적용'을 누르면 과거 30일 ~ 미래 365일의 일정을 검사해 규칙을 적용합니다. 직접 지정한 색상은 그대로 유지됩니다.")
-    .setWrapText(true));
-  builder.addSection(syncInfoSection);
+  builder.addSection(infoSection);
 
   var fixedFooter = CardService.newFixedFooter()
     .setPrimaryButton(CardService.newTextButton()
