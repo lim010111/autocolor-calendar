@@ -291,8 +291,9 @@ publish 전에는 영향 없음.
 - row 121-122 (Privacy / ToS URL) — 이미 [04 runbook]에서 갱신.
 - row 124-128 (Scope list / 정당화) — 본 runbook에서 `초안` → `완료`.
 - row 129 (Demo video) — `미작성` → `완료` + URL 인라인.
-- row 130 (CASA assessment) — Google이 별도 요청한 적 없으면 `미작성` 유지.
-- row 131 (Onboarding-card 카피 refresh) — [04 runbook] Step 6B와 묶음.
+- row 130 (Verification status) — questionnaire 제출 후 Google scope review/CASA Tier 결정 대기 동안 `진행중` 유지.
+- row 131 (CASA assessment) — questionnaire의 CASA acknowledgement 체크로 트리거됨 → `미작성` → `진행중`. Tier 통보 시 본 runbook §(참고) CASA 보안 평가 절로 분기.
+- row 132 (Onboarding-card 카피 refresh) — [04 runbook] Step 6B와 묶음.
 
 §5 status 표:
 - row 256 (Scope justifications) — `초안` → `완료`.
@@ -302,16 +303,20 @@ publish 전에는 영향 없음.
 
 ## (참고) CASA 보안 평가
 
-`docs/marketplace-readiness.md` §2 row 130. Google이 검수 도중 별도 요청
-시에만 발동되며, 평가 본인 부담(통상 USD 수천~수만 단위 + 수개월 리드
-타임). 본 서비스는 다음 경우에만 요청 받을 가능성:
+`docs/marketplace-readiness.md` §2 row 131. 2026-05-09 OAuth Verification
+Questionnaire 제출 시 CASA acknowledgement 체크로 트리거됨 — Google이 Tier 2
+(Self-assessment Workbook) vs Tier 3 (third-party Letter of Assessment, 평가
+본인 부담 USD 수천~수만 단위 + 수개월 리드타임) 중 어느 쪽인지 통보 대기.
+
+Tier 결정에 영향을 줄 수 있는 요인:
 
 - 사용자 수가 분기 단위로 100,000+ 이상.
 - Restricted scope 외에 더 민감한 scope 사용 (예: Drive full).
 
-본 서비스 현재 design은 Restricted `calendar` 1개만 사용 + PII 마스킹
-계약이 명확해 CASA 요청 가능성 낮음. 요청 받으면 `TODO.md`에 별도 line
-추가 후 처리.
+본 서비스의 risk profile (Restricted `calendar` 1개만 사용 + PII 마스킹 계약
+명확) 기준으로 Tier 2 (Self-assessment Workbook) 통보 가능성이 더 높음. Tier
+결정 메일 수신 시 본 절을 정식 procedure로 승격하고, 작업 단계는 `TODO.md`에
+별도 line으로 분리.
 
 ## 롤백 시나리오
 

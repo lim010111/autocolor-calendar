@@ -186,8 +186,9 @@ publish 통과 후 본 서비스 long-running 운영 책임:
   impact" 절차. 운영자 procedure를 1년 단위로 재실행.
 - **OAuth 검수 만료 갱신** — Google이 검수 만료를 자동 통지하면 본
   메일 받고 [06 runbook]의 자료를 최신화 + 재제출.
-- **CASA 보안 평가 트리거 점검** — 사용자 수가 100K+ 도달 시 Google이
-  요청 가능. 별도 budget / lead time 마련.
+- **CASA 재인증** — Tier 통보 후 1년마다 self-assessment workbook 또는
+  third-party Letter of Assessment 갱신. 만료 통지 수신 시 본 절 + [06 runbook]
+  (참고) CASA 보안 평가 절 동시 갱신. 트리거/Tier 상태는 [`docs/marketplace-readiness.md` §2 row 131](../marketplace-readiness.md) 정본.
 
 ### 사고 발생 시
 

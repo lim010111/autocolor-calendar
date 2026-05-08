@@ -71,12 +71,12 @@ only the index.
 | App display name | `gas/appsscript.json:16` | 완료 | — | "AutoColor" confirmed |
 | Short description (KR / EN) | `docs/assets/marketplace/description.md` | 완료 | Product | KR 41자 / EN 65 chars; tone-review pending pre-publish |
 | Long description (KR / EN) | `docs/assets/marketplace/description.md` | 완료 | Product | Derived from `docs/add-on-ui-plan.md` Screen 1·2 + `gas/addon.js:95-115` 3-step copy |
-| App icon 128×128 / 32×32 | `docs/assets/marketplace/icons/` (8종 일습) | 초안 | Design | 1024 마스터 + 480/128/32/16 + mono-dark/light + source SVG commit 완료. `scripts/generate-marketplace-icons.py`로 재생성. Cloudflare Pages 호스팅 + `gas/appsscript.json:22` `logoUrl` 교체 pending. **2026-05-08 마스터 디자인 교체 — 바인더 링 / 다크 헤더 + 별 4개 컨셉. 128/480은 LANCZOS 동기화 완료. 32/16/mono 변형은 코드 렌더 유지(Option A) — render_* 재작성은 별도 PR 후속.** |
-| Promotional screenshots (≥ 3) | TBD `docs/assets/marketplace/screenshots/` | 미작성 | Design | Welcome / Home / Rules / Event preview |
-| Promotional video (optional) | TBD | 미작성 | Product | Reusable for the §2 restricted-scope demo |
-| Category | TBD | 미작성 | Product | Candidate: Productivity |
-| Support email | TBD | 미작성 | Ops | Blocked on `TODO.md:8` |
-| Support / help URL | TBD | 미작성 | Ops | Blocked on `TODO.md:8` |
+| App icon 128×128 / 32×32 | `docs/assets/marketplace/icons/` (8종 일습) | 완료 | Design | 1024 마스터 + 480/128/32/16 + mono-dark/light + source SVG commit. `scripts/generate-marketplace-icons.py`로 재생성. Cloudflare Pages 호스팅 라이브 (`https://legal.autocolorcal.app/icon-128.png` 200) + `gas/appsscript.json:22` `logoUrl` 교체 + GAS New version 배포 완료 (2026-05-08). 마스터 디자인: 바인더 링 / 다크 헤더 + 별 4개 컨셉. 32/16/mono 변형은 코드 렌더 유지(Option A) — render_* 재작성은 별도 PR 후속. |
+| Promotional screenshots (≥ 3) | `docs/assets/marketplace/screenshots/` (01-onboarding-guide / 02-rule-management / 03-home-dashboard) | 완료 | Design | repo의 png 3장이 master 정본. Marketplace SDK Configuration > Promotional screenshots에 업로드 완료 (2026-05-09). |
+| Promotional video (optional) | https://youtu.be/5hzXGmM_dQc | 완료 | Product | YouTube unlisted 업로드 (2026-05-09). §2 row 129 / §6 row 257 정본 공유 — `docs/runbooks/06-oauth-verification.md` Step 2 시나리오 기반. |
+| Category | Productivity | 완료 | Product | `docs/runbooks/05-marketplace-listing-assets.md` Step 5 권장값. publish 후 Marketplace SDK 콘솔에서 재조정 가능 |
+| Support email | `support@autocolorcal.app` | 완료 | Ops | Cloudflare Email Routing 활성화 (2026-05-08) — MX/SPF Cloudflare 자동 추가, 개인 forward 대상 verified, `support@` custom address rule 송수신 확인 |
+| Support / help URL | https://github.com/lim010111/autocolor-calendar/issues | 완료 | Ops | `docs/runbooks/05-marketplace-listing-assets.md` Step 5 권장. 사용자 베이스 성장 시 정식 support 페이지로 전환 |
 | Developer / publisher identity | TBD (GCP project owner) | 초안 | Ops | Tied to `TODO.md:35` prod activation |
 
 ## 2. OAuth Consent Screen Verification
@@ -117,18 +117,19 @@ and is not adjudicated here.
 
 | Item | Source of truth | Status | Owner | Notes |
 |---|---|---|---|---|
-| App home page URL | TBD (owned domain) | 미작성 | Ops | Blocked on `TODO.md:8` |
+| App home page URL | `https://autocolorcal.app/` (`src/routes/home.ts`) | 완료 | Ops | apex `/` landing 라우트 + 테스트(2026-05-08). 컨텐츠 source: `docs/assets/marketplace/description.md` short/long description + `docs/security-principles.md` Principle 2. Worker prod deploy 완료 (Version `e021b47f`, 2026-05-08) — `https://autocolorcal.app/` 200 + `text/html` active, `/healthz` 회귀 없음. |
 | Privacy Policy URL | https://legal.autocolorcal.app/privacy | 완료 | Legal | Cloudflare Pages publish 2026-05-05 (`docs/legal/privacy-policy.md` → `dist/legal/privacy.html`) |
 | Terms of Service URL | https://legal.autocolorcal.app/terms | 완료 | Legal | Cloudflare Pages publish 2026-05-05 (`docs/legal/terms-of-service.md` → `dist/legal/terms.html`) |
-| Authorized domain(s) | TBD | 미작성 | Ops | Must match home / privacy / ToS |
+| Authorized domain(s) | `autocolorcal.app` | 완료 | Ops | OAuth Consent Screen "Authorized domains" 입력값. apex + 모든 subdomain(`legal.autocolorcal.app` 포함) 자동 커버. GSC verified 2026-05-04. |
 | Scope list (backend) | `src/config/constants.ts:1-8` | 완료 | Eng | Matches `OAUTH_SCOPES` |
 | Scope list (GAS manifest) | `gas/appsscript.json:5-12` | 완료 | Eng | |
 | `calendar` (Restricted) justification | `docs/assets/marketplace/scope-justifications.md` | 완료 | Eng + Product | Final per `docs/runbooks/06-oauth-verification.md` Step 1 (2026-05-04) |
 | `calendar.events` (Sensitive) justification | `docs/assets/marketplace/scope-justifications.md` | 완료 | Eng + Product | Same final review |
 | `userinfo.email` justification | `docs/assets/marketplace/scope-justifications.md` | 완료 | Eng | Same final review |
-| Demo video (restricted-scope usage) | TBD `docs/assets/marketplace/oauth-verification-video.mp4` | 미작성 | Product | Required by Google's Restricted Scope policy |
-| CASA security assessment (if required) | TBD | 미작성 | Ops | Only if Google flags |
-| Onboarding-card copy refresh | `gas/addon.js:119` | 완료 | Eng | URL을 `legal.autocolorcal.app/{privacy,terms}` 로 갱신 (2026-05-05). GAS New version 배포 필요. |
+| Demo video (restricted-scope usage) | https://youtu.be/5hzXGmM_dQc | 완료 | Product | §1 row 76 정본 공유 — YouTube unlisted (2026-05-09). Required by Google's Restricted Scope policy. |
+| Verification status | GCP Console → OAuth consent screen | 진행중 | Ops | 2026-05-09 1차 Submit → brand 거절 3건(홈페이지 privacy 링크 가시성 / 영문 purpose 부재 / OAuth App name `autocolor-dev` ↔ 홈페이지 `AutoColor for Calendar` 미스매치) → `src/routes/home.ts` 보강(commit `c08e2d6`) + Worker prod redeploy(Version `fa63d651`) + GCP App name → "AutoColor for Calendar" 후 재제출 → **Brand verified** (consent screen이 unverified warning 없이 노출). Restricted/Sensitive scope review는 별도 트랙 — 100명 사용자 cap 유지, Marketplace publish는 scope review 통과 후 가능. 2026-05-09 오후 OAuth Verification Questionnaire 제출(personal/internal/dev/wordpress 모두 No + CASA acknowledgement 체크) → sensitive scope justification 통합 본문 + demo video URL 입력 완료. Google CASA Tier 결정 + scope review 통보 대기. |
+| CASA security assessment | TBD (Tier 결정 통보 후 확정) | 진행중 | Ops | 2026-05-09 OAuth Verification Questionnaire 제출 시 CASA acknowledgement 체크 → Google이 Tier 2 (Self-assessment Workbook) 또는 Tier 3 (third-party Letter of Assessment, 펜테스트 업체) 통보 대기. 매년 재인증 필요. Restricted scope `calendar` 사용으로 트리거됨. |
+| Onboarding-card copy refresh | `gas/addon.js:119` | 완료 | Eng | URL을 `legal.autocolorcal.app/{privacy,terms}` 로 갱신 (2026-05-05). GAS New version 배포 완료 (2026-05-08). |
 
 ## 3. Data Handling Agreement (Workspace Admin Perspective)
 
@@ -250,11 +251,11 @@ a gate, edit the owning source first and then the status here.
 |---|---|---|---|---|
 | Owned domain + Search Console verification | Prod Watch API, support URL, privacy URL, home URL | Ops | 완료 | `TODO.md:8` + `docs/runbooks/01-domain-and-search-console.md` (`autocolorcal.app` GSC verified 2026-05-04, GCP Consent Screen Authorized domains 등록 완료) |
 | Prod Supabase + Worker activated | OAuth verification (prod client), Marketplace listing | Eng | 완료 | `TODO.md:35` + `docs/runbooks/02-prod-environment-activation.md` (PR #43 `a01bde7` — Hyperdrive / Queue / cron bindings 활성화 완료) |
-| Listing assets bundle | Marketplace submission | Product + Design | 미작성 | §1 + `docs/runbooks/05-marketplace-listing-assets.md` |
+| Listing assets bundle | Marketplace submission | Product + Design | 완료 | §1 (description / icon / screenshots / video / category / support email·URL 모두 완료, 2026-05-09) + `docs/runbooks/05-marketplace-listing-assets.md` |
 | Privacy Policy published | Consent screen, listing | Legal | 완료 | §2 → https://legal.autocolorcal.app/privacy (Cloudflare Pages publish 2026-05-05) + `docs/runbooks/04-legal-hosting.md` |
 | Terms of Service published | Consent screen, listing | Legal | 완료 | §2 → https://legal.autocolorcal.app/terms (Cloudflare Pages publish 2026-05-05) + `docs/runbooks/04-legal-hosting.md` |
 | Scope justifications written | OAuth verification | Eng + Product | 완료 | §2 → `docs/assets/marketplace/scope-justifications.md` (final 2026-05-04) + `docs/runbooks/06-oauth-verification.md` |
-| Restricted-scope demo video | OAuth verification | Product | 미작성 | §2 + `docs/runbooks/06-oauth-verification.md` |
+| Restricted-scope demo video | OAuth verification | Product | 완료 | §2 → https://youtu.be/5hzXGmM_dQc (YouTube unlisted, 2026-05-09) + `docs/runbooks/06-oauth-verification.md` |
 | Data handling / Admin answers drafted | Marketplace submission | Eng + Ops | 초안 | §3 |
 | Account-deletion endpoint live | Marketplace submission | Eng | 완료 | §3 → `POST /api/account/delete` (`src/routes/account.ts`) — FK cascade로 9개 user-scoped 테이블 정리 + Google revoke + watch-stop. 계약은 `src/CLAUDE.md` "Account deletion (§3 row 179)" |
 | Reviewer demo bundle | OAuth verification | Product + Eng | 초안 | §4 |

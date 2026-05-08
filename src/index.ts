@@ -13,6 +13,7 @@ import { categoriesRoutes } from "./routes/categories";
 import { classifyRoutes } from "./routes/classify";
 import { eventsRoutes } from "./routes/events";
 import { healthRoutes } from "./routes/health";
+import { homeRoutes } from "./routes/home";
 import { llmCallsRoutes } from "./routes/llmCalls";
 import { meRoutes } from "./routes/me";
 import { oauthRoutes } from "./routes/oauth";
@@ -42,6 +43,7 @@ app.use("*", loggerMiddleware);
 app.onError(errorHandler);
 
 app.route("/", healthRoutes);
+app.route("/", homeRoutes);
 app.route("/oauth", oauthRoutes);
 app.route("/auth", authRoutes);
 app.route("/me", meRoutes);
