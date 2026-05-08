@@ -19,7 +19,7 @@ export default [
   },
   js.configs.recommended,
   {
-    files: ["src/**/*.ts", "scripts/**/*.ts"],
+    files: ["src/**/*.ts", "scripts/**/*.ts", "evals/scripts/**/*.ts"],
     languageOptions: {
       parser: tsParser,
       parserOptions: {
@@ -49,6 +49,9 @@ export default [
         MessageBatch: "readonly",
         ScheduledEvent: "readonly",
         AbortSignal: "readonly",
+        AbortController: "readonly",
+        setTimeout: "readonly",
+        clearTimeout: "readonly",
         structuredClone: "readonly",
       },
     },

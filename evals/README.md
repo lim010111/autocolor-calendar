@@ -29,6 +29,73 @@ correct over time.
 4. Append a row to `agent-results.json` (do not overwrite — the file is a
    ledger). Keep the prior rows so drift is visible.
 
+## Layer 3 — semantic-classification eval
+
+Reproducible regression suite for the §5.3 LLM matching policy (see
+`src/CLAUDE.md` "LLM semantic matching policy (§5.3)"). Each case in
+`tasks/classification-semantic.json` is fired against the live OpenAI API
+using the production prompt builder + parser (`src/services/llmClassifier.ts`),
+so any prompt regression — surface-level lapse, false-positive
+anti-overstretch break, cross-lingual drop — is visible the moment it lands.
+
+### Run
+
+```bash
+# OPENAI_API_KEY can come from env or .dev.vars
+pnpm tsx evals/scripts/run-classification-eval.ts
+```
+
+Prints `PASS` / `FAIL` per case and appends one row to `agent-results.json`.
+Exit code is `1` when any case tagged `user-report-*` fails OR overall
+pass-rate falls below 90% — suitable as a manual pre-merge gate for prompt
+edits. Otherwise `0`.
+
+### Cost
+
+Per run: ~20 cases × (~3K input + ≤64 completion tokens) ≈ 60K input +
+1.3K output tokens. With current `gpt-5.4-nano` pricing this is well under
+$0.02 per run. The script **bypasses `reserveLlmCall`** (the per-user
+runtime quota) — operator OpenAI budget is metered separately and does
+not consume `llm_usage_global_daily` / `llm_usage_daily` rows.
+
+### Adding cases
+
+Append to `tasks/classification-semantic.json#cases`. Each case is:
+
+- `id` — slug used in the per-row PASS/FAIL line.
+- `tag` — comma-separated labels (e.g. `hypernym,user-report-2026-05-08`).
+  Cases tagged `user-report-*` are merge-blocking.
+- `categories` — `{name, keywords[], colorId}[]`, ordered by user-defined
+  priority (the chain delivers them this way).
+- `event` — `{summary?, description?, location?}`. Same fields the prompt
+  builder reads; PII redaction is automatically applied through
+  `buildPrompt`.
+- `expected.category_name` — `"Meal"` / `"none"` / etc. Compared with
+  strict equality against the parsed model response (`parseCategoryName`
+  reused from the runtime path).
+
+### Ledger row shape
+
+The script appends to the existing append-only `agent-results.json` ledger
+using the schema below. Don't overwrite earlier rows — prompt drift over
+time is the entire point.
+
+```json
+{
+  "run_id": "2026-05-08-classification-semantic",
+  "timestamp": "2026-05-08T...",
+  "git_sha": "<short HEAD>",
+  "kind": "task_pass_rate",
+  "tool": "classification-semantic-eval",
+  "score": 18,
+  "max": 20,
+  "grade": null,
+  "categories": null,
+  "task_pass_rate": 0.9,
+  "notes": "model=gpt-5.4-nano; cases tagged user-report-2026-05-08 must all pass"
+}
+```
+
 ## Telemetry
 
 - **Session log.** Claude Code session JSONLs live under

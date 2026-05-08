@@ -1,0 +1,150 @@
+{
+  "schema_version": 1,
+  "task": "classification-semantic-matching",
+  "description": "Regression dataset for §5.3 LLM semantic matching policy. Each case sets up categories + an event and asserts the expected category_name. Run via `pnpm tsx evals/scripts/run-classification-eval.ts`. Cases tagged with `user-report-2026-05-08` map to the original user-reported failure modes and MUST all pass before merging prompt changes.",
+  "cases": [
+    {
+      "id": "user-report-meal-breakfast",
+      "tag": "hypernym,user-report-2026-05-08",
+      "categories": [{"name": "Meal", "keywords": ["Meal", "식사"], "colorId": "5"}],
+      "event": {"summary": "Breakfast with mom"},
+      "expected": {"category_name": "Meal"}
+    },
+    {
+      "id": "user-report-meal-lunch",
+      "tag": "hypernym,user-report-2026-05-08",
+      "categories": [{"name": "Meal", "keywords": ["Meal"], "colorId": "5"}],
+      "event": {"summary": "Lunch on Wednesday"},
+      "expected": {"category_name": "Meal"}
+    },
+    {
+      "id": "user-report-move-getting-ready",
+      "tag": "morphology,paraphrase,user-report-2026-05-08",
+      "categories": [{"name": "Move", "keywords": ["Get ready", "move"], "colorId": "7"}],
+      "event": {"summary": "Getting ready to go out"},
+      "expected": {"category_name": "Move"}
+    },
+    {
+      "id": "user-report-meal-meeting-negative",
+      "tag": "negative,user-report-2026-05-08",
+      "categories": [{"name": "Meal", "keywords": ["Meal"], "colorId": "5"}],
+      "event": {"summary": "Team Meeting tomorrow"},
+      "expected": {"category_name": "none"}
+    },
+    {
+      "id": "hypernym-meal-dinner",
+      "tag": "hypernym",
+      "categories": [{"name": "Meal", "keywords": ["Meal"], "colorId": "5"}],
+      "event": {"summary": "Dinner with family"},
+      "expected": {"category_name": "Meal"}
+    },
+    {
+      "id": "hypernym-exercise-yoga",
+      "tag": "hypernym",
+      "categories": [{"name": "Exercise", "keywords": ["exercise", "workout"], "colorId": "7"}],
+      "event": {"summary": "Yoga class at 7pm"},
+      "expected": {"category_name": "Exercise"}
+    },
+    {
+      "id": "hypernym-travel-flight",
+      "tag": "hypernym",
+      "categories": [{"name": "Travel", "keywords": ["travel", "trip"], "colorId": "3"}],
+      "event": {"summary": "Flight to Seoul"},
+      "expected": {"category_name": "Travel"}
+    },
+    {
+      "id": "morphology-run-running",
+      "tag": "morphology",
+      "categories": [{"name": "Run", "keywords": ["run"], "colorId": "7"}],
+      "event": {"summary": "Morning running session"},
+      "expected": {"category_name": "Run"}
+    },
+    {
+      "id": "morphology-study-studied",
+      "tag": "morphology",
+      "categories": [{"name": "Study", "keywords": ["study"], "colorId": "9"}],
+      "event": {"summary": "Studied algorithms"},
+      "expected": {"category_name": "Study"}
+    },
+    {
+      "id": "paraphrase-move-going-out",
+      "tag": "paraphrase",
+      "categories": [{"name": "Move", "keywords": ["move"], "colorId": "7"}],
+      "event": {"summary": "Going out to the cafe"},
+      "expected": {"category_name": "Move"}
+    },
+    {
+      "id": "paraphrase-meal-eat",
+      "tag": "paraphrase",
+      "categories": [{"name": "Meal", "keywords": ["meal"], "colorId": "5"}],
+      "event": {"summary": "Eating with the team"},
+      "expected": {"category_name": "Meal"}
+    },
+    {
+      "id": "cross-lingual-en-ko-meal-breakfast",
+      "tag": "cross-lingual",
+      "categories": [{"name": "식사", "keywords": ["식사"], "colorId": "5"}],
+      "event": {"summary": "Breakfast"},
+      "expected": {"category_name": "식사"}
+    },
+    {
+      "id": "cross-lingual-ko-en-meal-asachimsiksa",
+      "tag": "cross-lingual",
+      "categories": [{"name": "Meal", "keywords": ["Meal"], "colorId": "5"}],
+      "event": {"summary": "아침식사 약속"},
+      "expected": {"category_name": "Meal"}
+    },
+    {
+      "id": "cross-lingual-zh-en-exercise-yoga",
+      "tag": "cross-lingual",
+      "categories": [{"name": "运动", "keywords": ["运动", "健身"], "colorId": "7"}],
+      "event": {"summary": "Morning yoga session"},
+      "expected": {"category_name": "运动"}
+    },
+    {
+      "id": "cross-lingual-en-ko-meeting",
+      "tag": "cross-lingual",
+      "categories": [{"name": "회의", "keywords": ["회의"], "colorId": "9"}],
+      "event": {"summary": "Sprint kickoff meeting"},
+      "expected": {"category_name": "회의"}
+    },
+    {
+      "id": "negative-exercise-coffee",
+      "tag": "negative",
+      "categories": [{"name": "Exercise", "keywords": ["exercise", "workout"], "colorId": "7"}],
+      "event": {"summary": "Coffee with Anna"},
+      "expected": {"category_name": "none"}
+    },
+    {
+      "id": "negative-meal-news",
+      "tag": "negative",
+      "categories": [{"name": "Meal", "keywords": ["Meal"], "colorId": "5"}],
+      "event": {"summary": "Read morning news"},
+      "expected": {"category_name": "none"}
+    },
+    {
+      "id": "negative-aspirational-not-actual",
+      "tag": "negative,metaphorical",
+      "categories": [{"name": "Run", "keywords": ["run"], "colorId": "7"}],
+      "event": {"summary": "Plan to run for president"},
+      "expected": {"category_name": "none"}
+    },
+    {
+      "id": "priority-tie-meeting-first",
+      "tag": "priority,tie-resolution",
+      "categories": [
+        {"name": "Meeting", "keywords": ["meeting"], "colorId": "9"},
+        {"name": "Meal", "keywords": ["meal"], "colorId": "5"}
+      ],
+      "event": {"summary": "Lunch meeting with the design team"},
+      "expected": {"category_name": "Meeting"}
+    },
+    {
+      "id": "smoke-single-category-clear-fit",
+      "tag": "smoke",
+      "categories": [{"name": "Meeting", "keywords": ["meeting", "sync"], "colorId": "9"}],
+      "event": {"summary": "Sync with backend team"},
+      "expected": {"category_name": "Meeting"}
+    }
+  ]
+}

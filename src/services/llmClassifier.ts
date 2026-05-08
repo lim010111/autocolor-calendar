@@ -170,18 +170,54 @@ export function buildPrompt(
 
   const system = `You classify a calendar event into one of the user's categories, or return "none".
 
-Rules:
-1. Read the event fields: summary, description, location.
-2. Compare against each category's name and keywords.
-3. If exactly one category clearly fits, output its exact "name" from the provided list.
-4. If NO category clearly fits, output "none".
-5. [email], [url], [phone] are opaque placeholders — do not guess their contents.
-6. Do not invent category names. Choose only from the provided list or "none".
-7. Output must be JSON of the form {"category_name": string}.
+The event's title or description may not literally contain the category's name or keywords. Match by MEANING, not by surface tokens. Use these matching rules:
 
-Example:
-Categories: [{"name":"Meeting","keywords":["meeting","sync"]}]
-Event: {"summary":"team sync 10am"}
+1. Hypernym / hyponym: a more specific instance of a category fits. E.g. "Breakfast", "Lunch", "Dinner" all fit a "Meal" category.
+2. Morphology / inflection: word-form variation still counts. E.g. "Getting ready" matches a keyword "Get ready".
+3. Paraphrase: a different way of saying the same activity fits. E.g. "Going out" or "Travel" can match a "Move" category.
+4. Cross-lingual equivalence: the event language may differ from the category language. Korean "아침식사" matches an English "Meal" category; English "Breakfast" matches a Korean "식사" category; Chinese "瑜伽" matches a Korean "운동" category. Treat languages as equivalent when meaning aligns.
+
+But do NOT stretch matches. Reject when:
+- The category is about a different domain even if some tokens overlap. E.g. an event "Meeting" must NOT match a "Meal" category despite the shared "Me" prefix.
+- The match is only metaphorical or aspirational, not the actual activity.
+
+Categories are listed in user-defined priority order — if two are equally good, prefer the one listed first; if still ambiguous, return "none".
+
+Other rules:
+- Read only the provided event fields: summary, description, location.
+- [email], [url], [phone] are opaque placeholders; do not guess their content.
+- Output the exact "name" string from the provided list, or "none".
+- Do not invent category names.
+- Output JSON: {"category_name": string}.
+
+Examples:
+
+Categories: [{"name":"Meal","keywords":["Meal","식사"]}]
+Event: {"summary":"Breakfast with mom"}
+Output: {"category_name":"Meal"}
+
+Categories: [{"name":"Meal","keywords":["Meal"]}]
+Event: {"summary":"Lunch on Wednesday"}
+Output: {"category_name":"Meal"}
+
+Categories: [{"name":"Move","keywords":["Get ready","move"]}]
+Event: {"summary":"Getting ready to go out"}
+Output: {"category_name":"Move"}
+
+Categories: [{"name":"Meal","keywords":["Meal"]}]
+Event: {"summary":"아침식사 약속"}
+Output: {"category_name":"Meal"}
+
+Categories: [{"name":"运动","keywords":["运动","健身"]}]
+Event: {"summary":"Morning yoga session"}
+Output: {"category_name":"运动"}
+
+Categories: [{"name":"Meal","keywords":["Meal"]}]
+Event: {"summary":"Team Meeting tomorrow"}
+Output: {"category_name":"none"}
+
+Categories: [{"name":"Meeting","keywords":["meeting"]},{"name":"Meal","keywords":["meal"]}]
+Event: {"summary":"Lunch meeting with the design team"}
 Output: {"category_name":"Meeting"}`;
 
   // Cost guardrail (§5/§6 후속) — slice each user-authored field so a
@@ -367,7 +403,10 @@ function extractUserMessage(messages: ChatMessage[]): string | undefined {
   return messages.find((m) => m.role === "user")?.content;
 }
 
-function parseCategoryName(content: string): string | null | undefined {
+// Pure, exported for testing and for the offline eval script
+// (`evals/scripts/run-classification-eval.ts`) which reuses the production
+// parser to keep parsing parity with the runtime path.
+export function parseCategoryName(content: string): string | null | undefined {
   // Returns:
   //   string   — category name candidate (caller validates via map)
   //   null     — explicit "none" miss
