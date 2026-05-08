@@ -71,7 +71,7 @@ only the index.
 | App display name | `gas/appsscript.json:16` | 완료 | — | "AutoColor" confirmed |
 | Short description (KR / EN) | `docs/assets/marketplace/description.md` | 완료 | Product | KR 41자 / EN 65 chars; tone-review pending pre-publish |
 | Long description (KR / EN) | `docs/assets/marketplace/description.md` | 완료 | Product | Derived from `docs/add-on-ui-plan.md` Screen 1·2 + `gas/addon.js:95-115` 3-step copy |
-| App icon 128×128 / 32×32 | `docs/assets/marketplace/icons/` (8종 일습) | 초안 | Design | 1024 마스터 + 480/128/32/16 + mono-dark/light + source SVG commit 완료. `scripts/generate-marketplace-icons.py`로 재생성. Cloudflare Pages 호스팅 + `gas/appsscript.json:22` `logoUrl` 교체 pending. **2026-05-08 마스터 디자인 교체 — 바인더 링 / 다크 헤더 + 별 4개 컨셉. 128/480은 LANCZOS 동기화 완료. 32/16/mono 변형은 코드 렌더 유지(Option A) — render_* 재작성은 별도 PR 후속.** |
+| App icon 128×128 / 32×32 | `docs/assets/marketplace/icons/` (8종 일습) | 완료 | Design | 1024 마스터 + 480/128/32/16 + mono-dark/light + source SVG commit. `scripts/generate-marketplace-icons.py`로 재생성. Cloudflare Pages 호스팅 라이브 (`https://legal.autocolorcal.app/icon-128.png` 200) + `gas/appsscript.json:22` `logoUrl` 교체 + GAS New version 배포 완료 (2026-05-08). 마스터 디자인: 바인더 링 / 다크 헤더 + 별 4개 컨셉. 32/16/mono 변형은 코드 렌더 유지(Option A) — render_* 재작성은 별도 PR 후속. |
 | Promotional screenshots (≥ 3) | TBD `docs/assets/marketplace/screenshots/` | 미작성 | Design | Welcome / Home / Rules / Event preview |
 | Promotional video (optional) | TBD | 미작성 | Product | Reusable for the §2 restricted-scope demo |
 | Category | Productivity | 완료 | Product | `docs/runbooks/05-marketplace-listing-assets.md` Step 5 권장값. publish 후 Marketplace SDK 콘솔에서 재조정 가능 |
@@ -117,10 +117,10 @@ and is not adjudicated here.
 
 | Item | Source of truth | Status | Owner | Notes |
 |---|---|---|---|---|
-| App home page URL | TBD (owned domain) | 미작성 | Ops | Blocked on `TODO.md:8` |
+| App home page URL | TBD — apex landing 미호스팅 | 미작성 | Ops | 도메인은 `autocolorcal.app` 확정(Authorized domain row 참조)이나 apex(`https://autocolorcal.app/`)는 현재 404. OAuth Consent Screen home URL은 라이브 페이지여야 reviewer 통과 — `docs/runbooks/04-legal-hosting.md` Cloudflare Pages 빌드 확장(apex landing 추가) 또는 별도 Pages 프로젝트로 처리 필요. |
 | Privacy Policy URL | https://legal.autocolorcal.app/privacy | 완료 | Legal | Cloudflare Pages publish 2026-05-05 (`docs/legal/privacy-policy.md` → `dist/legal/privacy.html`) |
 | Terms of Service URL | https://legal.autocolorcal.app/terms | 완료 | Legal | Cloudflare Pages publish 2026-05-05 (`docs/legal/terms-of-service.md` → `dist/legal/terms.html`) |
-| Authorized domain(s) | TBD | 미작성 | Ops | Must match home / privacy / ToS |
+| Authorized domain(s) | `autocolorcal.app` | 완료 | Ops | OAuth Consent Screen "Authorized domains" 입력값. apex + 모든 subdomain(`legal.autocolorcal.app` 포함) 자동 커버. GSC verified 2026-05-04. |
 | Scope list (backend) | `src/config/constants.ts:1-8` | 완료 | Eng | Matches `OAUTH_SCOPES` |
 | Scope list (GAS manifest) | `gas/appsscript.json:5-12` | 완료 | Eng | |
 | `calendar` (Restricted) justification | `docs/assets/marketplace/scope-justifications.md` | 완료 | Eng + Product | Final per `docs/runbooks/06-oauth-verification.md` Step 1 (2026-05-04) |
@@ -128,7 +128,7 @@ and is not adjudicated here.
 | `userinfo.email` justification | `docs/assets/marketplace/scope-justifications.md` | 완료 | Eng | Same final review |
 | Demo video (restricted-scope usage) | TBD `docs/assets/marketplace/oauth-verification-video.mp4` | 미작성 | Product | Required by Google's Restricted Scope policy |
 | CASA security assessment (if required) | TBD | 미작성 | Ops | Only if Google flags |
-| Onboarding-card copy refresh | `gas/addon.js:119` | 완료 | Eng | URL을 `legal.autocolorcal.app/{privacy,terms}` 로 갱신 (2026-05-05). GAS New version 배포 필요. |
+| Onboarding-card copy refresh | `gas/addon.js:119` | 완료 | Eng | URL을 `legal.autocolorcal.app/{privacy,terms}` 로 갱신 (2026-05-05). GAS New version 배포 완료 (2026-05-08). |
 
 ## 3. Data Handling Agreement (Workspace Admin Perspective)
 
