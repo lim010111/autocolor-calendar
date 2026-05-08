@@ -1,23 +1,9 @@
-function getCalendarColors() {
-  return [
-    { id: "11", label: "토마토", url: "https://placehold.co/48x48/D50000/D50000.png?text=%20&radius=24", selectedUrl: "https://placehold.co/48x48/D50000/FFFFFF.png?text=%E2%88%9A&radius=24" },
-    { id: "4", label: "플라밍고", url: "https://placehold.co/48x48/E67C73/E67C73.png?text=%20&radius=24", selectedUrl: "https://placehold.co/48x48/E67C73/FFFFFF.png?text=%E2%88%9A&radius=24" },
-    { id: "6", label: "귤", url: "https://placehold.co/48x48/F4511E/F4511E.png?text=%20&radius=24", selectedUrl: "https://placehold.co/48x48/F4511E/FFFFFF.png?text=%E2%88%9A&radius=24" },
-    { id: "5", label: "바나나", url: "https://placehold.co/48x48/F6BF26/F6BF26.png?text=%20&radius=24", selectedUrl: "https://placehold.co/48x48/F6BF26/333333.png?text=%E2%88%9A&radius=24" },
-    { id: "2", label: "세이지", url: "https://placehold.co/48x48/33B679/33B679.png?text=%20&radius=24", selectedUrl: "https://placehold.co/48x48/33B679/FFFFFF.png?text=%E2%88%9A&radius=24" },
-    { id: "10", label: "바질", url: "https://placehold.co/48x48/0B8043/0B8043.png?text=%20&radius=24", selectedUrl: "https://placehold.co/48x48/0B8043/FFFFFF.png?text=%E2%88%9A&radius=24" },
-    { id: "7", label: "공작", url: "https://placehold.co/48x48/039BE5/039BE5.png?text=%20&radius=24", selectedUrl: "https://placehold.co/48x48/039BE5/FFFFFF.png?text=%E2%88%9A&radius=24" },
-    { id: "9", label: "블루베리", url: "https://placehold.co/48x48/3F51B5/3F51B5.png?text=%20&radius=24", selectedUrl: "https://placehold.co/48x48/3F51B5/FFFFFF.png?text=%E2%88%9A&radius=24" },
-    { id: "1", label: "라벤더", url: "https://placehold.co/48x48/7986CB/7986CB.png?text=%20&radius=24", selectedUrl: "https://placehold.co/48x48/7986CB/FFFFFF.png?text=%E2%88%9A&radius=24" },
-    { id: "3", label: "포도", url: "https://placehold.co/48x48/8E24AA/8E24AA.png?text=%20&radius=24", selectedUrl: "https://placehold.co/48x48/8E24AA/FFFFFF.png?text=%E2%88%9A&radius=24" },
-    { id: "8", label: "회연필", url: "https://placehold.co/48x48/616161/616161.png?text=%20&radius=24", selectedUrl: "https://placehold.co/48x48/616161/FFFFFF.png?text=%E2%88%9A&radius=24" }
-  ];
-}
+// `getCalendarColors(locale)` and `COLOR_PALETTE` live in gas/i18n.js — both
+// are exposed as global functions/vars in Apps Script's flat scope.
 
 function getColorOrderIndex(colorId) {
-  var colors = getCalendarColors();
-  for (var i = 0; i < colors.length; i++) {
-    if (colors[i].id === colorId) return i;
+  for (var i = 0; i < COLOR_PALETTE.length; i++) {
+    if (COLOR_PALETTE[i].id === colorId) return i;
   }
   return Number.MAX_SAFE_INTEGER;
 }
@@ -29,26 +15,28 @@ function getColorOrderIndex(colorId) {
  * @return {CardService.Card} The constructed Card.
  */
 function buildAddOn(e) {
+  var L = pickLocale(e);
+
   var missing = missingBackendProperties();
   if (missing.length > 0) {
-    return buildConfigNeededCard(missing);
+    return buildConfigNeededCard(missing, L);
   }
 
   if (!AutoColorAuth.isAuthenticated()) {
-    return buildWelcomeCard();
+    return buildWelcomeCard(L);
   }
 
-  // 백엔드 연동된 상태에서는 로컬 스토리지 상의 온보딩 여부도 true로 강제 설정 (하위 호환 및 일관성)
+  // backend connected → force local onboarding flag for backwards compat.
   AutoColorStorage.setOnboarded(true);
 
-  return buildHomeCard();
+  return buildHomeCard(L);
 }
 
 /**
  * Returns the list of required ScriptProperties that are not set. The
  * Add-on needs both to reach the backend: BACKEND_BASE_URL for every API
- * call in gas/api.js, and OAUTH_AUTH_URL for the "로그인" button to open
- * the right /oauth/google endpoint.
+ * call in gas/api.js, and OAUTH_AUTH_URL for the login button to open the
+ * right /oauth/google endpoint.
  */
 function missingBackendProperties() {
   var props = PropertiesService.getScriptProperties();
@@ -66,16 +54,16 @@ function missingBackendProperties() {
  * configuration before end-users can reach the OAuth flow. Shown instead
  * of the welcome/home card when ScriptProperties are incomplete.
  */
-function buildConfigNeededCard(missingKeys) {
+function buildConfigNeededCard(missingKeys, L) {
   var builder = CardService.newCardBuilder();
 
   builder.setHeader(CardService.newCardHeader()
-    .setTitle("백엔드 구성 필요")
-    .setSubtitle("관리자 설정이 완료되지 않았습니다"));
+    .setTitle(t('config.title', null, L))
+    .setSubtitle(t('config.subtitle', null, L)));
 
   var section = CardService.newCardSection();
   section.addWidget(CardService.newDecoratedText()
-    .setText("이 애드온은 외부 백엔드에 연결되어 동작합니다. Apps Script 프로젝트의 스크립트 속성에서 아래 값이 설정되어야 합니다:")
+    .setText(t('config.body', null, L))
     .setWrapText(true));
 
   for (var i = 0; i < missingKeys.length; i++) {
@@ -85,7 +73,7 @@ function buildConfigNeededCard(missingKeys) {
   }
 
   section.addWidget(CardService.newDecoratedText()
-    .setText("설정 위치: Apps Script 편집기 → 프로젝트 설정(⚙) → 스크립트 속성 → 스크립트 속성 추가")
+    .setText(t('config.where', null, L))
     .setWrapText(true));
 
   builder.addSection(section);
@@ -93,79 +81,79 @@ function buildConfigNeededCard(missingKeys) {
 }
 
 /**
- * Screen 1: Welcome Card (온보딩 및 권한 부여)
+ * Screen 1: Welcome Card (onboarding + OAuth grant).
  */
-function buildWelcomeCard() {
+function buildWelcomeCard(L) {
   var builder = CardService.newCardBuilder();
-  
+
   builder.setHeader(CardService.newCardHeader()
-    .setTitle("AutoColor 사용 가이드")
-    .setSubtitle("AI가 일정의 색상을 자동으로 입혀 드립니다!")
+    .setTitle(t('welcome.title', null, L))
+    .setSubtitle(t('welcome.subtitle', null, L))
     .setImageUrl("https://legal.autocolorcal.app/icon-128.png"));
-    
-  var tutorialSection = CardService.newCardSection().setHeader("💡 이렇게 사용해보세요!");
-  
-  tutorialSection.addWidget(CardService.newTextParagraph()
-    .setText("<b>1단계. 규칙 만들기</b><br>키워드(예: '회의')와 원하는 색상을 선택해 나만의 규칙을 만드세요."));
+
+  var tutorialSection = CardService.newCardSection().setHeader(t('welcome.section', null, L));
 
   tutorialSection.addWidget(CardService.newTextParagraph()
-    .setText("<b>2단계. 일정 등록하기</b><br>평소처럼 캘린더에 일정을 등록합니다. 제목이나 설명에 키워드가 포함되면 됩니다."));
+    .setText(t('welcome.step1', null, L)));
 
   tutorialSection.addWidget(CardService.newTextParagraph()
-    .setText("<b>3단계. 자동 색상 적용</b><br>일정을 등록하면 보통 5~10초 안에 자동으로 색상이 적용됩니다. ✨ 사이드바를 열지 않아도 백그라운드에서 동작하고, 모바일 Google 캘린더 앱에서 만든 일정도 동일하게 적용돼요."));
-    
+    .setText(t('welcome.step2', null, L)));
+
+  tutorialSection.addWidget(CardService.newTextParagraph()
+    .setText(t('welcome.step3', null, L)));
+
   builder.addSection(tutorialSection);
 
   var fixedFooter = CardService.newFixedFooter()
     .setPrimaryButton(CardService.newTextButton()
-      .setText("Google 계정으로 시작하기")
+      .setText(t('welcome.cta.login', null, L))
       .setTextButtonStyle(CardService.TextButtonStyle.FILLED)
       .setOnClickAction(CardService.newAction().setFunctionName("actionStartOAuth")));
-      
+
   builder.setFixedFooter(fixedFooter);
-  
+
   return builder.build();
 }
 
 
 
 /**
- * Screen 2: Home Card (메인 대시보드 - homepageTrigger)
+ * Screen 2: Home Card (main dashboard - homepageTrigger).
  *
  * Fetches /api/stats synchronously on every render (UrlFetchApp is blocking
  * in GAS). AUTH_EXPIRED falls through to the reconnect card so homepage
  * entry from an expired session doesn't show a blank dashboard. Empty-state
- * (no syncs yet): classification.updated = 0 → renders
- * "최근 7일 자동 색상 적용: 0건" as the sole status line.
+ * (no syncs yet): classification.updated = 0 → renders the "applied: 0"
+ * line as the sole status line.
  */
-function buildHomeCard() {
+function buildHomeCard(L) {
   var stats = fetchStatsOrError();
   if (stats && stats.error === 'AUTH_EXPIRED') {
-    return buildReconnectCard();
+    return buildReconnectCard(null, L);
   }
 
   var me = fetchMeOrError();
   if (me && me.error === 'AUTH_EXPIRED') {
-    return buildReconnectCard();
+    return buildReconnectCard(null, L);
   }
 
   var builder = CardService.newCardBuilder();
 
   builder.setHeader(CardService.newCardHeader()
-    .setTitle("AutoColor 대시보드"));
+    .setTitle(t('home.title', null, L)));
 
-  // Push-inactive surfaces a silent webhook-path failure with a [지금 연결]
+  // Push-inactive surfaces a silent webhook-path failure with a "reconnect now"
   // button that calls /sync/heal-watch to re-register the watch channel
   // without dragging a full_resync along. The active state renders no top
-  // pin — the bottom ℹ️ section carries the 5~10초 expectation instead.
+  // pin — the bottom info section carries the 5~10s expectation instead.
   var pushActive = me && me.push_active === true;
   if (!pushActive) {
     var pushSection = CardService.newCardSection();
     pushSection.addWidget(CardService.newDecoratedText()
-      .setText("🔴 자동 동기화 비활성")
-      .setBottomLabel("새 일정에 색이 자동 적용되지 않습니다. 다시 연결해 주세요."));
+      .setText(t('home.push.inactive', null, L))
+      .setBottomLabel(t('home.push.inactive.detail', null, L)));
     pushSection.addWidget(CardService.newTextButton()
-      .setText("지금 연결")
+      .setText(t('home.push.reconnect', null, L))
       .setOnClickAction(CardService.newAction().setFunctionName("actionForceHealWatch")));
     builder.addSection(pushSection);
   }
@@ -174,10 +162,10 @@ function buildHomeCard() {
 
   var classifiedLine;
   if (!stats || stats.error) {
-    classifiedLine = "통계를 불러오지 못했습니다";
+    classifiedLine = t('home.stats.failed', null, L);
   } else {
     var updatedCount = (stats.classification && stats.classification.updated) || 0;
-    classifiedLine = "✨   최근 7일 자동 색상 적용: " + updatedCount + "건";
+    classifiedLine = t('home.stats.applied', { count: updatedCount }, L);
   }
 
   section.addWidget(CardService.newDecoratedText()
@@ -188,11 +176,11 @@ function buildHomeCard() {
   var actionSection = CardService.newCardSection();
 
   var ruleButton = CardService.newTextButton()
-    .setText("색상 규칙 관리")
+    .setText(t('home.btn.rules', null, L))
     .setOnClickAction(CardService.newAction().setFunctionName("actionGoToRuleManagement"));
 
   var settingsButton = CardService.newTextButton()
-    .setText("상세 설정")
+    .setText(t('home.btn.settings', null, L))
     .setOnClickAction(CardService.newAction().setFunctionName("actionGoToSettings"));
 
   actionSection.addWidget(CardService.newButtonSet()
@@ -203,13 +191,13 @@ function buildHomeCard() {
 
   var infoSection = CardService.newCardSection();
   infoSection.addWidget(CardService.newDecoratedText()
-    .setText("ℹ️ 새 일정을 만들면 보통 5~10초 안에 자동으로 색이 적용됩니다.\n\nℹ️ '지금 모든 일정에 규칙 적용'을 누르면 과거 30일 ~ 미래 365일의 일정을 검사해 규칙을 적용합니다. 직접 지정한 색상은 그대로 유지됩니다.")
+    .setText(t('home.info', null, L))
     .setWrapText(true));
   builder.addSection(infoSection);
 
   var fixedFooter = CardService.newFixedFooter()
     .setPrimaryButton(CardService.newTextButton()
-      .setText("지금 모든 일정에 규칙 적용")
+      .setText(t('home.cta.syncNow', null, L))
       .setTextButtonStyle(CardService.TextButtonStyle.FILLED)
       .setOnClickAction(CardService.newAction().setFunctionName("actionSyncNow")));
 
@@ -235,9 +223,8 @@ function fetchStatsOrError() {
 
 /**
  * Fetch /me. Used by the home card to read the `push_active` flag for the
- * "🟢 자동 동기화 활성" / "🔴 자동 동기화 비활성" status pill. Same
- * error-as-data convention as fetchStatsOrError so the home render path
- * never throws.
+ * auto-sync status pill. Same error-as-data convention as
+ * fetchStatsOrError so the home render path never throws.
  */
 function fetchMeOrError() {
   try {
@@ -250,6 +237,7 @@ function fetchMeOrError() {
 }
 
 function actionSyncNow(e) {
+  var L = pickLocale(e);
   try {
     AutoColorAPI.fetchBackend('/sync/run', {
       method: 'post',
@@ -257,32 +245,33 @@ function actionSyncNow(e) {
       payload: '{}'
     });
     return CardService.newActionResponseBuilder()
-      .setNotification(CardService.newNotification().setText("규칙을 적용 중입니다. 잠시 후 반영됩니다."))
+      .setNotification(CardService.newNotification().setText(t('sync.toast.running', null, L)))
       .build();
   } catch (err) {
     if (err.message === 'AUTH_EXPIRED' || err.message.indexOf('reauth') !== -1) {
       return CardService.newActionResponseBuilder()
-        .setNavigation(CardService.newNavigation().popToRoot().updateCard(buildReconnectCard()))
+        .setNavigation(CardService.newNavigation().popToRoot().updateCard(buildReconnectCard(null, L)))
         .build();
     }
     if (err.message.indexOf('429') !== -1) {
       return CardService.newActionResponseBuilder()
-        .setNotification(CardService.newNotification().setText("조금 전에 적용했습니다. 잠시 후 다시 시도해주세요."))
+        .setNotification(CardService.newNotification().setText(t('sync.toast.throttled', null, L)))
         .build();
     }
     return CardService.newActionResponseBuilder()
-      .setNotification(CardService.newNotification().setText("규칙 적용 실패: " + err.message))
+      .setNotification(CardService.newNotification().setText(t('sync.toast.failed', { message: err.message }, L)))
       .build();
   }
 }
 
 /**
  * Re-register the user's Watch channel via /sync/heal-watch when the home
- * card's "🔴 자동 동기화 비활성" pill is showing. Distinct from /sync/run
+ * card's auto-sync inactive pill is showing. Distinct from /sync/run
  * (which only enqueues a sync) and from /sync/bootstrap (which also fires a
  * full_resync). Refreshes the home card so the user sees the pill flip.
  */
 function actionForceHealWatch(e) {
+  var L = pickLocale(e);
   try {
     AutoColorAPI.fetchBackend('/sync/heal-watch', {
       method: 'post',
@@ -290,24 +279,24 @@ function actionForceHealWatch(e) {
       payload: '{}'
     });
     return CardService.newActionResponseBuilder()
-      .setNotification(CardService.newNotification().setText("자동 동기화를 다시 연결했습니다."))
-      .setNavigation(CardService.newNavigation().updateCard(buildHomeCard()))
+      .setNotification(CardService.newNotification().setText(t('heal.toast.success', null, L)))
+      .setNavigation(CardService.newNavigation().updateCard(buildHomeCard(L)))
       .build();
   } catch (err) {
     if (err.message === 'AUTH_EXPIRED' || err.message.indexOf('reauth') !== -1) {
       return CardService.newActionResponseBuilder()
-        .setNavigation(CardService.newNavigation().popToRoot().updateCard(buildReconnectCard()))
+        .setNavigation(CardService.newNavigation().popToRoot().updateCard(buildReconnectCard(null, L)))
         .build();
     }
     // Don't expose raw error text to the user — same policy as the
     // events.ts (manual color override) endpoint.
     return CardService.newActionResponseBuilder()
-      .setNotification(CardService.newNotification().setText("다시 연결에 실패했습니다. 잠시 후 다시 시도해 주세요."))
+      .setNotification(CardService.newNotification().setText(t('heal.toast.failed', null, L)))
       .build();
   }
 }
 
-function actionGoBack(e) {
+function actionGoBack(_e) {
   return CardService.newActionResponseBuilder()
     .setNavigation(CardService.newNavigation().popCard())
     .build();
@@ -315,13 +304,14 @@ function actionGoBack(e) {
 
 function actionGoToRuleManagement(e) {
   return CardService.newActionResponseBuilder()
-    .setNavigation(CardService.newNavigation().pushCard(buildRuleManagementCard()))
+    .setNavigation(CardService.newNavigation().pushCard(buildRuleManagementCard(e)))
     .build();
 }
 
 function actionGoToSettings(e) {
+  var L = pickLocale(e);
   return CardService.newActionResponseBuilder()
-    .setNavigation(CardService.newNavigation().pushCard(buildSettingsCard()))
+    .setNavigation(CardService.newNavigation().pushCard(buildSettingsCard(L)))
     .build();
 }
 
@@ -347,35 +337,35 @@ function fetchPreviewOrError(payload) {
 }
 
 /**
- * Builds the "매칭된 규칙" status line. Mirrors the preview-endpoint
+ * Builds the matched-rule status line. Mirrors the preview-endpoint
  * outcomes (rule / llm / no_match ± llmTried) plus the network-error
  * fallback. Kept as a pure formatter so UI copy tweaks don't require
  * reaching into onEventOpen's control flow.
  */
-function formatMatchLine(preview) {
-  if (!preview) return "매칭된 규칙 없음";
+function formatMatchLine(preview, L) {
+  if (!preview) return t('match.none', null, L);
   if (preview.error) {
-    if (preview.error === 'AUTH_EXPIRED') return "재로그인이 필요합니다";
-    return "분류 정보를 가져오지 못했습니다";
+    if (preview.error === 'AUTH_EXPIRED') return t('match.reauth', null, L);
+    return t('match.fetchFailed', null, L);
   }
   if (preview.source === 'rule' && preview.category) {
-    var name = preview.category.name || "규칙";
+    var name = preview.category.name || t('match.fallbackName', null, L);
     if (preview.matchedKeyword) {
-      return "매칭된 규칙: '" + name + "' (키워드: '" + preview.matchedKeyword + "')";
+      return t('match.byRule.withKeyword', { name: name, keyword: preview.matchedKeyword }, L);
     }
-    return "매칭된 규칙: '" + name + "'";
+    return t('match.byRule', { name: name }, L);
   }
   if (preview.source === 'llm' && preview.category) {
-    var llmName = preview.category.name || "규칙";
-    return "🤖 AI 분류: '" + llmName + "'";
+    var llmName = preview.category.name || t('match.fallbackName', null, L);
+    return t('match.byLlm', { name: llmName }, L);
   }
   if (preview.source === 'no_match' && preview.llmTried) {
-    return "🤖 AI 분류 결과 없음";
+    return t('match.llm.empty', null, L);
   }
   if (preview.llmAvailable) {
-    return "매칭된 규칙 없음 — 다음 동기화 시 AI 분류 시도";
+    return t('match.none.willTryLlm', null, L);
   }
-  return "매칭된 규칙 없음";
+  return t('match.none', null, L);
 }
 
 /**
@@ -404,17 +394,18 @@ function fetchCategoriesOrError() {
 }
 
 /**
- * Screen 3: Event Insight Card (일정 상세 - eventOpenTrigger)
+ * Screen 3: Event Insight Card (event detail - eventOpenTrigger).
  *
  * Status section renders three live facts: event title (from CalendarApp),
  * applied colorId (from event.getColor()), and the current classification
  * (via POST /api/classify/preview). Preview is rule-only — if it misses,
- * we surface "다음 동기화 시 AI 분류 시도" when the backend has
- * OPENAI_API_KEY, otherwise "매칭된 규칙 없음".
+ * we surface the will-try-LLM line when the backend has OPENAI_API_KEY,
+ * otherwise the no-match line.
  */
 function onEventOpen(e) {
-  var title = "선택된 일정 없음";
-  var appliedColorLabel = "기본";
+  var L = pickLocale(e);
+  var title = t('event.empty', null, L);
+  var appliedColorLabel = t('colors.default', null, L);
   var previewResult = null; // { source, category?, matchedKeyword?, llmAvailable?, llmTried?, error? }
 
   // §5 후속 — if actionClassifyWithLlm stashed an on-demand LLM preview in
@@ -428,9 +419,9 @@ function onEventOpen(e) {
     var event = null;
     try {
       event = CalendarApp.getCalendarById(e.calendar.calendarId).getEventById(e.calendar.id);
-      title = event.getTitle() || "제목 없음";
+      title = event.getTitle() || t('event.untitled', null, L);
     } catch (err) {
-      // Calendar event inaccessible — title stays "선택된 일정 없음",
+      // Calendar event inaccessible — title stays as the empty fallback,
       // preview won't be fetched.
     }
 
@@ -440,7 +431,7 @@ function onEventOpen(e) {
       try {
         var rawColorId = event.getColor();
         if (rawColorId) {
-          var colors = getCalendarColors();
+          var colors = getCalendarColors(L);
           for (var ci = 0; ci < colors.length; ci++) {
             if (colors[ci].id === rawColorId) {
               appliedColorLabel = colors[ci].label;
@@ -465,24 +456,24 @@ function onEventOpen(e) {
       }
 
       if (previewResult && previewResult.error === 'AUTH_EXPIRED') {
-        return buildReconnectCard();
+        return buildReconnectCard(null, L);
       }
     }
   }
 
   var builder = CardService.newCardBuilder();
   builder.setHeader(CardService.newCardHeader()
-    .setTitle("일정 색상 분석")
+    .setTitle(t('event.title', null, L))
     .setSubtitle(title));
 
   var statusSection = CardService.newCardSection()
-    .setHeader("현재 상태");
+    .setHeader(t('event.section.status', null, L));
 
   statusSection.addWidget(CardService.newDecoratedText()
-    .setText("적용된 색상: " + appliedColorLabel));
+    .setText(t('event.appliedColor', { label: appliedColorLabel }, L)));
 
   statusSection.addWidget(CardService.newDecoratedText()
-    .setText(formatMatchLine(previewResult))
+    .setText(formatMatchLine(previewResult, L))
     .setWrapText(true));
 
   // §5 후속 — opt-in LLM preview button appears only on rule-miss when the
@@ -497,24 +488,24 @@ function onEventOpen(e) {
     e && e.calendar && e.calendar.id
   ) {
     statusSection.addWidget(CardService.newTextButton()
-      .setText("🤖 AI 분류 확인")
+      .setText(t('event.btn.classifyLlm', null, L))
       .setOnClickAction(CardService.newAction().setFunctionName("actionClassifyWithLlm")));
   }
 
   builder.addSection(statusSection);
-  
+
   var overrideSection = CardService.newCardSection()
-    .setHeader("수동 오버라이드 및 상태 변경");
-    
+    .setHeader(t('event.section.override', null, L));
+
   // Use Grid widget for visualizing colors
   var colorGrid = CardService.newGrid()
-    .setTitle("색상 선택")
+    .setTitle(t('event.colorPicker', null, L))
     .setNumColumns(6)
     .setOnClickAction(CardService.newAction().setFunctionName("actionSelectColor"));
-    
+
   // Mock placeholders for color icons
-  var colors = getCalendarColors();
-  
+  var colors = getCalendarColors(L);
+
   var selectedColorId = null;
   if (e && e.parameters && e.parameters.selectedColorId) {
     selectedColorId = e.parameters.selectedColorId;
@@ -532,35 +523,26 @@ function onEventOpen(e) {
   });
 
   overrideSection.addWidget(colorGrid);
-  
+
   overrideSection.addWidget(CardService.newTextButton()
-    .setText("이 일정은 자동 분류에서 제외")
+    .setText(t('event.btn.exclude', null, L))
     .setOnClickAction(CardService.newAction().setFunctionName("actionExcludeEvent")));
-    
+
   builder.addSection(overrideSection);
-  
-  // Example of Error State section
-  // var errorSection = CardService.newCardSection();
-  // errorSection.addWidget(CardService.newDecoratedText()
-  //   .setText("⚠️ AI 서버 응답이 지연되고 있습니다.")
-  //   .setWrapText(true));
-  // errorSection.addWidget(CardService.newTextButton()
-  //   .setText("다시 시도")
-  //   .setOnClickAction(CardService.newAction().setFunctionName("actionRetryAnalysis")));
-  // builder.addSection(errorSection);
-  
+
   var fixedFooter = CardService.newFixedFooter()
     .setPrimaryButton(CardService.newTextButton()
-      .setText("변경사항 저장")
+      .setText(t('event.btn.save', null, L))
       .setTextButtonStyle(CardService.TextButtonStyle.FILLED)
       .setOnClickAction(CardService.newAction().setFunctionName("actionSaveEventOverride")));
-      
+
   builder.setFixedFooter(fixedFooter);
-  
+
   return builder.build();
 }
 
 function actionSelectColor(e) {
+  var L = pickLocale(e);
   // See actionSelectColorForRule comment for why `grid_item_identifier`
   // is the documented-by-empiricism key for GAS Grid click callbacks.
   var p1 = (e && e.parameters) || {};
@@ -573,12 +555,12 @@ function actionSelectColor(e) {
 
   if (!selectedColorId) {
     return CardService.newActionResponseBuilder()
-      .setNotification(CardService.newNotification().setText("색상을 인식하지 못했습니다. 다시 시도해주세요."))
+      .setNotification(CardService.newNotification().setText(t('color.toast.unrecognized', null, L)))
       .build();
   }
 
-  var colors = getCalendarColors();
-  var selectedLabel = "색상";
+  var colors = getCalendarColors(L);
+  var selectedLabel = t('colors.fallback', null, L);
   for (var i = 0; i < colors.length; i++) {
     if (colors[i].id === selectedColorId) {
       selectedLabel = colors[i].label;
@@ -591,13 +573,14 @@ function actionSelectColor(e) {
 
   return CardService.newActionResponseBuilder()
     .setNavigation(CardService.newNavigation().updateCard(onEventOpen(e)))
-    .setNotification(CardService.newNotification().setText(selectedLabel + " 색상이 선택되었습니다."))
+    .setNotification(CardService.newNotification().setText(t('color.toast.selected', { label: selectedLabel }, L)))
     .build();
 }
 
 function actionExcludeEvent(e) {
+  var L = pickLocale(e);
   return CardService.newActionResponseBuilder()
-    .setNotification(CardService.newNotification().setText("자동 분류에서 제외되었습니다."))
+    .setNotification(CardService.newNotification().setText(t('exclude.toast.done', null, L)))
     .build();
 }
 
@@ -638,9 +621,10 @@ function readStashedLlmPreview(e) {
  * Shares the backend's per-user daily LLM quota with the sync pipeline.
  */
 function actionClassifyWithLlm(e) {
+  var L = pickLocale(e);
   if (!e || !e.calendar || !e.calendar.id) {
     return CardService.newActionResponseBuilder()
-      .setNotification(CardService.newNotification().setText("선택된 일정을 찾지 못했습니다."))
+      .setNotification(CardService.newNotification().setText(t('llm.toast.noEvent', null, L)))
       .build();
   }
 
@@ -652,11 +636,11 @@ function actionClassifyWithLlm(e) {
   }
   if (!event) {
     return CardService.newActionResponseBuilder()
-      .setNotification(CardService.newNotification().setText("일정 정보를 읽지 못했습니다."))
+      .setNotification(CardService.newNotification().setText(t('llm.toast.readFail', null, L)))
       .build();
   }
 
-  var title = event.getTitle() || "제목 없음";
+  var title = event.getTitle() || t('event.untitled', null, L);
   var description = (function () {
     try { return event.getDescription() || ""; } catch (_) { return ""; }
   })();
@@ -673,13 +657,13 @@ function actionClassifyWithLlm(e) {
 
   if (preview && preview.error === 'AUTH_EXPIRED') {
     return CardService.newActionResponseBuilder()
-      .setNavigation(CardService.newNavigation().popToRoot().updateCard(buildReconnectCard()))
+      .setNavigation(CardService.newNavigation().popToRoot().updateCard(buildReconnectCard(null, L)))
       .build();
   }
 
   if (preview && preview.error) {
     return CardService.newActionResponseBuilder()
-      .setNotification(CardService.newNotification().setText("AI 분류 중 오류가 발생했습니다."))
+      .setNotification(CardService.newNotification().setText(t('llm.toast.error', null, L)))
       .build();
   }
 
@@ -688,9 +672,10 @@ function actionClassifyWithLlm(e) {
 
   var toastText;
   if (preview && preview.source === 'llm' && preview.category) {
-    toastText = "AI 분류 완료: '" + (preview.category.name || "규칙") + "'";
+    var name = preview.category.name || t('match.fallbackName', null, L);
+    toastText = t('llm.toast.success', { name: name }, L);
   } else {
-    toastText = "AI 분류 결과 없음";
+    toastText = t('llm.toast.empty', null, L);
   }
 
   return CardService.newActionResponseBuilder()
@@ -700,8 +685,9 @@ function actionClassifyWithLlm(e) {
 }
 
 function actionRetryAnalysis(e) {
+  var L = pickLocale(e);
   return CardService.newActionResponseBuilder()
-    .setNotification(CardService.newNotification().setText("재분석을 요청했습니다."))
+    .setNotification(CardService.newNotification().setText(t('retry.toast.requested', null, L)))
     .build();
 }
 
@@ -717,13 +703,14 @@ function actionRetryAnalysis(e) {
  * succeeded when it didn't.
  */
 function actionSaveEventOverride(e) {
+  var L = pickLocale(e);
   var p1 = (e && e.parameters) || {};
   var p2 = (e && e.commonEventObject && e.commonEventObject.parameters) || {};
   var selectedColorId = p1.selectedColorId || p2.selectedColorId || null;
 
   if (!selectedColorId) {
     return CardService.newActionResponseBuilder()
-      .setNotification(CardService.newNotification().setText("색상을 먼저 선택해주세요."))
+      .setNotification(CardService.newNotification().setText(t('override.toast.pickFirst', null, L)))
       .build();
   }
 
@@ -731,7 +718,7 @@ function actionSaveEventOverride(e) {
   var eventId = e && e.calendar && e.calendar.id;
   if (!calendarId || !eventId) {
     return CardService.newActionResponseBuilder()
-      .setNotification(CardService.newNotification().setText("선택된 일정을 찾지 못했습니다."))
+      .setNotification(CardService.newNotification().setText(t('llm.toast.noEvent', null, L)))
       .build();
   }
 
@@ -752,22 +739,20 @@ function actionSaveEventOverride(e) {
     var msg = (err && err.message) || '';
     if (msg === 'AUTH_EXPIRED' || msg.indexOf('reauth') !== -1) {
       return CardService.newActionResponseBuilder()
-        .setNavigation(CardService.newNavigation().popToRoot().updateCard(buildReconnectCard()))
+        .setNavigation(CardService.newNavigation().popToRoot().updateCard(buildReconnectCard(null, L)))
         .build();
     }
     var notice;
     if (msg.indexOf('event_not_found') !== -1 || msg.indexOf('CLIENT_ERROR: 404') === 0) {
-      notice = "일정을 찾지 못했습니다. 새로고침 후 다시 시도해주세요.";
+      notice = t('override.toast.notFound', null, L);
     } else if (msg.indexOf('forbidden') !== -1 || msg.indexOf('CLIENT_ERROR: 403') === 0) {
-      notice = "이 일정의 색상을 변경할 권한이 없습니다.";
+      notice = t('override.toast.forbidden', null, L);
     } else if (msg.indexOf('rate_limited') !== -1 || msg.indexOf('429') !== -1) {
-      notice = "잠시 후 다시 시도해주세요.";
-    } else if (msg.indexOf('CLIENT_ERROR') === 0) {
-      notice = "색상 적용에 실패했습니다. 잠시 후 다시 시도해주세요.";
+      notice = t('override.toast.rateLimited', null, L);
     } else {
-      // SERVER_ERROR / Fetch failed after N attempts / 그 외 — raw 메시지를
-      // 사용자에게 노출하지 않고 친화적으로 매핑.
-      notice = "색상 적용에 실패했습니다. 잠시 후 다시 시도해주세요.";
+      // CLIENT_ERROR / SERVER_ERROR / Fetch failed after N attempts / 그 외 —
+      // raw 메시지를 사용자에게 노출하지 않고 친화적으로 매핑.
+      notice = t('override.toast.failed', null, L);
     }
     return CardService.newActionResponseBuilder()
       .setNotification(CardService.newNotification().setText(notice))
@@ -776,8 +761,8 @@ function actionSaveEventOverride(e) {
 
   // 200 응답 이후에만 success toast 출력. 색상 라벨 포함해서 어떤 색이
   // 적용됐는지 사용자에게 명확히 표시.
-  var colors = getCalendarColors();
-  var label = "색상";
+  var colors = getCalendarColors(L);
+  var label = t('colors.fallback', null, L);
   for (var i = 0; i < colors.length; i++) {
     if (colors[i].id === selectedColorId) {
       label = colors[i].label;
@@ -785,32 +770,33 @@ function actionSaveEventOverride(e) {
     }
   }
   return CardService.newActionResponseBuilder()
-    .setNotification(CardService.newNotification().setText(label + " 색상을 적용했습니다."))
+    .setNotification(CardService.newNotification().setText(t('override.toast.success', { label: label }, L)))
     .build();
 }
 
 /**
- * Screen 4: Rule Management Card (규칙 관리)
+ * Screen 4: Rule Management Card.
  */
 function buildRuleManagementCard(e) {
+  var L = pickLocale(e);
   // Session check up front — AUTH_EXPIRED short-circuits to the reconnect
   // card so the user gets an OAuth re-login button instead of being stranded
   // on an inline error. Mirrors actionSyncNow / actionAddRule / actionDeleteRule.
   var fetched = fetchCategoriesOrError();
   if (fetched.error === 'AUTH_EXPIRED') {
-    return buildReconnectCard();
+    return buildReconnectCard(null, L);
   }
 
   var builder = CardService.newCardBuilder();
 
   var navSection = CardService.newCardSection();
   navSection.addWidget(CardService.newButtonSet().addButton(CardService.newTextButton()
-    .setText("⬅ 뒤로 가기")
+    .setText(t('common.back', null, L))
     .setOnClickAction(CardService.newAction().setFunctionName("actionGoBack"))));
   builder.addSection(navSection);
-  
+
   var addSection = CardService.newCardSection()
-    .setHeader("키워드 입력");
+    .setHeader(t('rules.section.add', null, L));
 
   var priorKeyword = "";
   if (e && e.formInput && e.formInput.rule_keyword) {
@@ -825,16 +811,16 @@ function buildRuleManagementCard(e) {
 
   addSection.addWidget(CardService.newTextInput()
     .setFieldName("rule_keyword")
-    .setTitle("예: 회의, 미팅")
+    .setTitle(t('rules.input.placeholder', null, L))
     .setValue(priorKeyword));
 
   var colorGrid = CardService.newGrid()
-    .setTitle("일정 색상 선택")
+    .setTitle(t('rules.colorPicker', null, L))
     .setNumColumns(6)
     .setOnClickAction(CardService.newAction().setFunctionName("actionSelectColorForRule"));
-    
-  var colors = getCalendarColors();
-  
+
+  var colors = getCalendarColors(L);
+
   var selectedColorId = null;
   if (e && e.parameters && e.parameters.selectedColorIdForRule) {
     selectedColorId = e.parameters.selectedColorIdForRule;
@@ -858,27 +844,26 @@ function buildRuleManagementCard(e) {
     addAction = addAction.setParameters({ selectedColorIdForRule: selectedColorId });
   }
   addSection.addWidget(CardService.newTextButton()
-    .setText("규칙 추가")
+    .setText(t('rules.btn.add', null, L))
     .setTextButtonStyle(CardService.TextButtonStyle.FILLED)
     .setOnClickAction(addAction));
 
   builder.addSection(addSection);
 
   var listSection = CardService.newCardSection()
-    .setHeader("내 규칙 목록");
+    .setHeader(t('rules.section.list', null, L));
 
   // AUTH_EXPIRED already short-circuited above; only non-auth errors land here.
   var rules = fetched.rules || [];
   if (fetched.error) {
     listSection.addWidget(CardService.newDecoratedText()
-      .setText('⚠️ 규칙 목록을 불러오지 못했습니다: ' + fetched.error)
+      .setText(t('rules.list.loadFailed', { error: fetched.error }, L))
       .setWrapText(true));
   } else if (rules.length === 0) {
     listSection.addWidget(CardService.newDecoratedText()
-      .setText("아직 등록된 규칙이 없습니다. 위에서 첫 규칙을 만들어보세요.")
+      .setText(t('rules.list.empty', null, L))
       .setWrapText(true));
   } else {
-    var colors = getCalendarColors();
     rules.sort(function(a, b) {
       return getColorOrderIndex(a.colorId) - getColorOrderIndex(b.colorId);
     });
@@ -893,7 +878,7 @@ function buildRuleManagementCard(e) {
       var colorUrl = colorObj ? colorObj.url : "";
 
       var deleteButton = CardService.newTextButton()
-        .setText("삭제")
+        .setText(t('rules.btn.delete', null, L))
         .setOnClickAction(CardService.newAction()
           .setFunctionName("actionDeleteRule")
           .setParameters({id: rule.id}));
@@ -907,7 +892,7 @@ function buildRuleManagementCard(e) {
 
   listSection.addWidget(CardService.newDivider());
   listSection.addWidget(CardService.newDecoratedText()
-    .setText("ℹ️ 이미 색이 지정된 일정은 자동 변경되지 않습니다. 새 규칙을 기존 일정에 적용하려면 <b>대시보드 → '지금 즉시 동기화'</b>를 눌러주세요.")
+    .setText(t('rules.list.note', null, L))
     .setWrapText(true));
 
   builder.addSection(listSection);
@@ -916,6 +901,7 @@ function buildRuleManagementCard(e) {
 }
 
 function actionSelectColorForRule(e) {
+  var L = pickLocale(e);
   // GAS CardService Grid clicks deliver the GridItem.setIdentifier() value
   // under the key `grid_item_identifier` (verified empirically — the docs
   // do not name the key). `selectedColorIdForRule` is also accepted for
@@ -930,12 +916,12 @@ function actionSelectColorForRule(e) {
 
   if (!selectedColorId) {
     return CardService.newActionResponseBuilder()
-      .setNotification(CardService.newNotification().setText("색상을 인식하지 못했습니다. 다시 시도해주세요."))
+      .setNotification(CardService.newNotification().setText(t('color.toast.unrecognized', null, L)))
       .build();
   }
 
-  var colors = getCalendarColors();
-  var selectedLabel = "색상";
+  var colors = getCalendarColors(L);
+  var selectedLabel = t('colors.fallback', null, L);
   for (var i = 0; i < colors.length; i++) {
     if (colors[i].id === selectedColorId) {
       selectedLabel = colors[i].label;
@@ -948,15 +934,16 @@ function actionSelectColorForRule(e) {
 
   return CardService.newActionResponseBuilder()
     .setNavigation(CardService.newNavigation().updateCard(buildRuleManagementCard(e)))
-    .setNotification(CardService.newNotification().setText(selectedLabel + " 색상이 선택되었습니다."))
+    .setNotification(CardService.newNotification().setText(t('color.toast.selected', { label: selectedLabel }, L)))
     .build();
 }
 
 function actionAddRule(e) {
+  var L = pickLocale(e);
   var keywordRaw = e.formInput && e.formInput.rule_keyword;
   if (!keywordRaw || !keywordRaw.trim()) {
     return CardService.newActionResponseBuilder()
-      .setNotification(CardService.newNotification().setText("키워드를 입력해주세요."))
+      .setNotification(CardService.newNotification().setText(t('rules.toast.keywordRequired', null, L)))
       .build();
   }
 
@@ -969,7 +956,7 @@ function actionAddRule(e) {
     .filter(function (k) { return k.length > 0; });
   if (keywords.length === 0) {
     return CardService.newActionResponseBuilder()
-      .setNotification(CardService.newNotification().setText("키워드를 입력해주세요."))
+      .setNotification(CardService.newNotification().setText(t('rules.toast.keywordRequired', null, L)))
       .build();
   }
 
@@ -979,7 +966,7 @@ function actionAddRule(e) {
         : null);
   if (!selectedColorId) {
     return CardService.newActionResponseBuilder()
-      .setNotification(CardService.newNotification().setText("색상을 먼저 선택해주세요."))
+      .setNotification(CardService.newNotification().setText(t('rules.toast.colorFirst', null, L)))
       .build();
   }
 
@@ -994,31 +981,32 @@ function actionAddRule(e) {
       })
     });
     return CardService.newActionResponseBuilder()
-      .setNavigation(CardService.newNavigation().updateCard(buildRuleManagementCard()))
-      .setNotification(CardService.newNotification().setText("새 규칙이 저장되었습니다."))
+      .setNavigation(CardService.newNavigation().updateCard(buildRuleManagementCard(e)))
+      .setNotification(CardService.newNotification().setText(t('rules.toast.added', null, L)))
       .build();
   } catch (err) {
     if (err.message === 'AUTH_EXPIRED') {
       return CardService.newActionResponseBuilder()
-        .setNavigation(CardService.newNavigation().popToRoot().updateCard(buildReconnectCard()))
+        .setNavigation(CardService.newNavigation().popToRoot().updateCard(buildReconnectCard(null, L)))
         .build();
     }
     if (err.message.indexOf('duplicate_name') !== -1 || err.message.indexOf('409') !== -1) {
       return CardService.newActionResponseBuilder()
-        .setNotification(CardService.newNotification().setText("이미 같은 이름의 규칙이 있습니다."))
+        .setNotification(CardService.newNotification().setText(t('rules.toast.duplicate', null, L)))
         .build();
     }
     return CardService.newActionResponseBuilder()
-      .setNotification(CardService.newNotification().setText("규칙 저장 실패: " + err.message))
+      .setNotification(CardService.newNotification().setText(t('rules.toast.saveFailed', { message: err.message }, L)))
       .build();
   }
 }
 
 function actionDeleteRule(e) {
+  var L = pickLocale(e);
   var id = e.parameters && e.parameters.id;
   if (!id) {
     return CardService.newActionResponseBuilder()
-      .setNotification(CardService.newNotification().setText("삭제할 규칙을 찾을 수 없습니다."))
+      .setNotification(CardService.newNotification().setText(t('rules.toast.deleteIdMissing', null, L)))
       .build();
   }
   try {
@@ -1027,48 +1015,48 @@ function actionDeleteRule(e) {
     });
     return CardService.newActionResponseBuilder()
       .setNavigation(CardService.newNavigation().updateCard(buildRuleManagementCard(e)))
-      .setNotification(CardService.newNotification().setText("규칙이 삭제되었습니다. 적용된 색상은 곧 원상복구됩니다."))
+      .setNotification(CardService.newNotification().setText(t('rules.toast.deleted', null, L)))
       .build();
   } catch (err) {
     if (err.message === 'AUTH_EXPIRED') {
       return CardService.newActionResponseBuilder()
-        .setNavigation(CardService.newNavigation().popToRoot().updateCard(buildReconnectCard()))
+        .setNavigation(CardService.newNavigation().popToRoot().updateCard(buildReconnectCard(null, L)))
         .build();
     }
     return CardService.newActionResponseBuilder()
-      .setNotification(CardService.newNotification().setText("규칙 삭제 실패: " + err.message))
+      .setNotification(CardService.newNotification().setText(t('rules.toast.deleteFailed', { message: err.message }, L)))
       .build();
   }
 }
 
 /**
- * Screen 5: Settings Card (상세 설정)
+ * Screen 5: Settings Card.
  */
-function buildSettingsCard() {
+function buildSettingsCard(L) {
   var builder = CardService.newCardBuilder();
-  
+
   var navSection = CardService.newCardSection();
   navSection.addWidget(CardService.newButtonSet().addButton(CardService.newTextButton()
-    .setText("⬅ 뒤로 가기")
+    .setText(t('common.back', null, L))
     .setOnClickAction(CardService.newAction().setFunctionName("actionGoBack"))));
   builder.addSection(navSection);
-  
+
   var section = CardService.newCardSection()
-    .setHeader("정책 설정");
-    
+    .setHeader(t('settings.section.policy', null, L));
+
   var policyGroup = CardService.newSelectionInput()
     .setType(CardService.SelectionInputType.CHECK_BOX)
     .setFieldName("policy_settings");
-    
-  policyGroup.addItem("수동 색상 덮어쓰기 방지", "prevent_overwrite", true);
-  policyGroup.addItem("AI 색상 자동 분류", "use_llm", true);
-  policyGroup.addItem("설명(일정 세부 정보) 분석에 포함", "use_description", false);
-  
+
+  policyGroup.addItem(t('settings.policy.preventOverwrite', null, L), "prevent_overwrite", true);
+  policyGroup.addItem(t('settings.policy.useLlm', null, L), "use_llm", true);
+  policyGroup.addItem(t('settings.policy.useDescription', null, L), "use_description", false);
+
   section.addWidget(policyGroup);
   builder.addSection(section);
-  
+
   var accountSection = CardService.newCardSection()
-    .setHeader("계정 관리");
+    .setHeader(t('settings.section.account', null, L));
 
   var email = "user@example.com";
   try {
@@ -1080,11 +1068,11 @@ function buildSettingsCard() {
     .setStartIcon(CardService.newIconImage().setIcon(CardService.Icon.PERSON)));
 
   accountSection.addWidget(CardService.newTextButton()
-    .setText("로그아웃")
+    .setText(t('settings.btn.logout', null, L))
     .setOnClickAction(CardService.newAction().setFunctionName("actionLogout")));
 
   accountSection.addWidget(CardService.newTextButton()
-    .setText("서비스 해지 및 계정 삭제")
+    .setText(t('settings.btn.deleteAccount', null, L))
     .setTextButtonStyle(CardService.TextButtonStyle.TEXT)
     .setOnClickAction(CardService.newAction().setFunctionName("actionGoToAccountDeleteConfirm")));
 
@@ -1094,30 +1082,31 @@ function buildSettingsCard() {
 }
 
 function actionLogout(e) {
-  // 로그아웃 시 토큰 폐기
+  var L = pickLocale(e);
   AutoColorAuth.clearSessionToken();
   return CardService.newActionResponseBuilder()
-    .setNavigation(CardService.newNavigation().popToRoot().updateCard(buildWelcomeCard()))
-    .setNotification(CardService.newNotification().setText("로그아웃 되었습니다."))
+    .setNavigation(CardService.newNavigation().popToRoot().updateCard(buildWelcomeCard(L)))
+    .setNotification(CardService.newNotification().setText(t('auth.toast.loggedOut', null, L)))
     .build();
 }
 
 function actionGoToAccountDeleteConfirm(e) {
+  var L = pickLocale(e);
   return CardService.newActionResponseBuilder()
-    .setNavigation(CardService.newNavigation().pushCard(buildAccountDeleteConfirmCard()))
+    .setNavigation(CardService.newNavigation().pushCard(buildAccountDeleteConfirmCard(L)))
     .build();
 }
 
-function buildAccountDeleteConfirmCard() {
+function buildAccountDeleteConfirmCard(L) {
   var builder = CardService.newCardBuilder();
 
   builder.setHeader(CardService.newCardHeader()
-    .setTitle("서비스 해지 및 계정 삭제")
-    .setSubtitle("정말 진행하시겠습니까?"));
+    .setTitle(t('delete.title', null, L))
+    .setSubtitle(t('delete.subtitle', null, L)));
 
   var warningSection = CardService.newCardSection();
   warningSection.addWidget(CardService.newDecoratedText()
-    .setText("⚠️ <b>주의</b>: 모든 데이터가 영구 삭제되며 즉시 서비스가 해지됩니다. 카테고리·동기화 상태·OAuth 연결·세션이 모두 제거되며, 이 작업은 되돌릴 수 없습니다.")
+    .setText(t('delete.warning', null, L))
     .setWrapText(true));
 
   builder.addSection(warningSection);
@@ -1125,10 +1114,10 @@ function buildAccountDeleteConfirmCard() {
   var actionSection = CardService.newCardSection();
   actionSection.addWidget(CardService.newButtonSet()
     .addButton(CardService.newTextButton()
-      .setText("⬅ 취소")
+      .setText(t('delete.btn.cancel', null, L))
       .setOnClickAction(CardService.newAction().setFunctionName("actionGoBack")))
     .addButton(CardService.newTextButton()
-      .setText("네, 진행합니다")
+      .setText(t('delete.btn.confirm', null, L))
       .setTextButtonStyle(CardService.TextButtonStyle.FILLED)
       .setOnClickAction(CardService.newAction().setFunctionName("actionConfirmDeleteAccount"))));
 
@@ -1138,27 +1127,29 @@ function buildAccountDeleteConfirmCard() {
 }
 
 function actionConfirmDeleteAccount(e) {
+  var L = pickLocale(e);
   try {
     AutoColorAPI.fetchBackend('/api/account/delete', { method: 'post' });
   } catch (err) {
     return CardService.newActionResponseBuilder()
-      .setNotification(CardService.newNotification().setText("계정 삭제 실패: " + err.message))
+      .setNotification(CardService.newNotification().setText(t('delete.toast.failed', { message: err.message }, L)))
       .build();
   }
   // Clear local state AFTER the 200 so a transient network failure leaves
   // the GAS client able to retry without a re-login.
   AutoColorAuth.clearSessionToken();
   return CardService.newActionResponseBuilder()
-    .setNavigation(CardService.newNavigation().popToRoot().updateCard(buildWelcomeCard()))
-    .setNotification(CardService.newNotification().setText("서비스가 해지되고 계정이 삭제되었습니다."))
+    .setNavigation(CardService.newNavigation().popToRoot().updateCard(buildWelcomeCard(L)))
+    .setNotification(CardService.newNotification().setText(t('delete.toast.done', null, L)))
     .build();
 }
 
 function actionStartOAuth(e) {
+  var L = pickLocale(e);
   if (AutoColorAuth.isAuthenticated()) {
     return CardService.newActionResponseBuilder()
-      .setNavigation(CardService.newNavigation().updateCard(buildHomeCard()))
-      .setNotification(CardService.newNotification().setText("인증이 완료되었습니다."))
+      .setNavigation(CardService.newNavigation().updateCard(buildHomeCard(L)))
+      .setNotification(CardService.newNotification().setText(t('auth.toast.loggedIn', null, L)))
       .build();
   }
 
@@ -1173,32 +1164,46 @@ function actionStartOAuth(e) {
     .build();
 }
 
+/**
+ * doGet renders the OAuth bounce-back HTML (callback success or error).
+ * Locale comes from Session.getActiveUserLocale() since the bounce-back
+ * page is served outside the add-on event flow. The HTML files are
+ * `HtmlTemplate`s with scriptlets that pull translations via t() at
+ * render time — see authCallback.html / authError.html.
+ */
 function doGet(e) {
-  var token = e.parameter.token;
+  var L = pickLocale(null);
+  var token = e && e.parameter && e.parameter.token;
   if (token) {
     AutoColorAuth.saveSessionToken(token);
-    return HtmlService.createHtmlOutputFromFile('authCallback');
+    var okTpl = HtmlService.createTemplateFromFile('authCallback');
+    okTpl.locale = L;
+    return okTpl.evaluate();
   }
-  return HtmlService.createHtmlOutputFromFile('authError');
+  var errTpl = HtmlService.createTemplateFromFile('authError');
+  errTpl.locale = L;
+  errTpl.errorBundle = getAuthErrorBundle(L);
+  return errTpl.evaluate();
 }
 
-function buildReconnectCard(errorMsg) {
+function buildReconnectCard(errorMsg, L) {
+  L = L || 'en';
   var builder = CardService.newCardBuilder();
 
   builder.setHeader(CardService.newCardHeader()
-    .setTitle("재연결 필요")
-    .setSubtitle("권한 부족 또는 토큰 만료"));
+    .setTitle(t('reconnect.title', null, L))
+    .setSubtitle(t('reconnect.subtitle', null, L)));
 
   var msgSection = CardService.newCardSection();
   msgSection.addWidget(CardService.newDecoratedText()
-    .setText(errorMsg || "세션이 만료되었거나 권한이 부족합니다. 다시 연결해주세요.")
+    .setText(errorMsg || t('reconnect.body', null, L))
     .setWrapText(true));
 
   builder.addSection(msgSection);
 
   var fixedFooter = CardService.newFixedFooter()
     .setPrimaryButton(CardService.newTextButton()
-      .setText("OAuth 연동 (재로그인)")
+      .setText(t('reconnect.cta', null, L))
       .setTextButtonStyle(CardService.TextButtonStyle.FILLED)
       .setOnClickAction(CardService.newAction().setFunctionName("actionReconnectOAuth")));
 
@@ -1211,18 +1216,20 @@ function actionReconnectOAuth(e) {
   // Reconnect logic delegates to normal OAuth flow
   return actionStartOAuth(e);
 }
+
 /**
  * Event Update Trigger
  */
 function onEventUpdate(e) {
+  var L = pickLocale(e);
   var builder = CardService.newCardBuilder();
-  builder.setHeader(CardService.newCardHeader().setTitle("일정 업데이트"));
-  
+  builder.setHeader(CardService.newCardHeader().setTitle(t('eventUpdate.title', null, L)));
+
   var section = CardService.newCardSection();
   section.addWidget(CardService.newDecoratedText()
-    .setText("일정 변경 사항이 적용되었습니다.")
+    .setText(t('eventUpdate.body', null, L))
     .setWrapText(true));
-    
+
   builder.addSection(section);
   return builder.build();
 }

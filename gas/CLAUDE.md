@@ -14,7 +14,10 @@ or fallbacks** — the backend is the source of truth (see
 - `auth.js` + `authCallback.html` + `authError.html` — OAuth UX.
 - `config.js` — Script Property keys + frozen Add-on URL constants.
 - `storage.js` — `PropertiesService` per-user wrappers.
-- `appsscript.json` — manifest (scopes / triggers / runtime).
+- `i18n.js` — `pickLocale` / `t` / `MESSAGES` (en, ko, zh-CN, zh-TW) +
+  `COLOR_PALETTE` / `getCalendarColors(locale)` / `getAuthErrorBundle`.
+- `appsscript.json` — manifest (scopes / triggers / runtime; already
+  declares `useLocaleFromApp: true` + `script.locale` scope).
 
 ## Quick commands
 
@@ -40,6 +43,12 @@ Reviewer-walkthrough scripts under [../docs/assets/marketplace/reviewer-demo/](.
   surface `needs_reauth` as a re-login prompt) — never inline `fetch`.
 - **New Script Property**: declare in `config.js`, mediate via
   `storage.js` (per-user vs. document-scoped boundary).
+- **User-facing strings**: never inline literals in `addon.js` or HTML
+  files. Add the key to ALL FOUR bundles in `i18n.js` (`en`, `ko`,
+  `zh-CN`, `zh-TW`) and call `t('key', params, L)`. Each card / action
+  builder starts with `var L = pickLocale(e);` (HTML render paths use
+  `pickLocale(null)` which falls back to `Session.getActiveUserLocale`).
+  English is the fallback for unsupported locales.
 
 ## Non-obvious rules
 
@@ -49,11 +58,12 @@ Reviewer-walkthrough scripts under [../docs/assets/marketplace/reviewer-demo/](.
   has to be rewired — re-auth spike included. The correct path is
   Editor → Deploy → Manage deployments → ✏️ → "New version" → Deploy. See
   [../src/CLAUDE.md](../src/CLAUDE.md) "GAS deployment URL must stay stable".
-- **Note:** the "🤖 AI 분류 확인" button on the event-open sidebar shares the
-  sync pipeline's per-user `reserveLlmCall` daily quota — there is no
-  separate preview cap. The button is gated on rule-miss + the backend
-  returning `llmTried: false`, and hides after one click per card render.
-  See [../src/CLAUDE.md](../src/CLAUDE.md) "Preview LLM (§5 후속)".
+- **Note:** the AI classification button (`event.btn.classifyLlm`) on the
+  event-open sidebar shares the sync pipeline's per-user `reserveLlmCall`
+  daily quota — there is no separate preview cap. The button is gated on
+  rule-miss + the backend returning `llmTried: false`, and hides after
+  one click per card render. See [../src/CLAUDE.md](../src/CLAUDE.md)
+  "Preview LLM (§5 후속)".
 - **Gotcha:** `CardService` cannot render arbitrary HTML — every card is
   rebuilt on every action, so do NOT cache view state in module-level vars.
   Per-user state belongs in `storage.js`; per-render state belongs in the
