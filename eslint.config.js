@@ -15,6 +15,7 @@ export default [
       "private/",
       "docs/",
       "*.config.js",
+      "evals/dataset-builder/",
     ],
   },
   js.configs.recommended,

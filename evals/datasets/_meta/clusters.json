@@ -1,0 +1,323 @@
+{
+  "k": 10,
+  "model": "gpt-5.5",
+  "reasoning_effort": "low",
+  "k_sweep_silhouette": {
+    "7": 0.0258,
+    "8": 0.0249,
+    "9": 0.0286,
+    "10": 0.0307
+  },
+  "selected_silhouette": 0.0307,
+  "seed": 42,
+  "categories": [
+    {
+      "cluster_id": "c0",
+      "name": "Tech Talks",
+      "keywords": [
+        "quantum",
+        "language model",
+        "llm",
+        "artificial intelligence",
+        "keynote",
+        "python",
+        "async",
+        "chess"
+      ],
+      "colorId": "1",
+      "size": 5,
+      "members": [
+        "Quantum computing guest talk",
+        "Small Language Models talk",
+        "AI keynote",
+        "Async Python talk",
+        "Chess with Daniel"
+      ],
+      "silhouette_per_member": {
+        "Quantum computing guest talk": 0.0219,
+        "Small Language Models talk": 0.0309,
+        "AI keynote": -0.0091,
+        "Async Python talk": 0.018,
+        "Chess with Daniel": -0.0234
+      }
+    },
+    {
+      "cluster_id": "c1",
+      "name": "Nightlife Entertainment",
+      "keywords": [
+        "disco",
+        "dj",
+        "dance party",
+        "nightclub",
+        "rave",
+        "firework",
+        "pyro",
+        "light show"
+      ],
+      "colorId": "2",
+      "size": 3,
+      "members": [
+        "Silent disco party",
+        "David Guetta DJ set",
+        "Fireworks"
+      ],
+      "silhouette_per_member": {
+        "Silent disco party": 0.0797,
+        "David Guetta DJ set": 0.0374,
+        "Fireworks": 0.0497
+      }
+    },
+    {
+      "cluster_id": "c2",
+      "name": "Home Wellness",
+      "keywords": [
+        "housework",
+        "tidy",
+        "scrub",
+        "meal prep",
+        "dinner",
+        "mindfulness",
+        "unplug",
+        "screen free",
+        "relaxation"
+      ],
+      "colorId": "3",
+      "size": 3,
+      "members": [
+        "Deep cleaning the kitchen",
+        "Cooking pasta",
+        "Digital detox meditation session"
+      ],
+      "silhouette_per_member": {
+        "Deep cleaning the kitchen": 0.1122,
+        "Cooking pasta": 0.0223,
+        "Digital detox meditation session": -0.0162
+      }
+    },
+    {
+      "cluster_id": "c3",
+      "name": "Collaborative Sessions",
+      "keywords": [
+        "collab",
+        "ideation",
+        "hack session",
+        "pair programming",
+        "coding session",
+        "tech meetup",
+        "developer meetup",
+        "whiteboard"
+      ],
+      "colorId": "4",
+      "size": 4,
+      "members": [
+        "Jam session",
+        "Brainstorming with Luke and Patrick",
+        "Networking with engineers",
+        "Live coding on Rust"
+      ],
+      "silhouette_per_member": {
+        "Jam session": 0.0213,
+        "Brainstorming with Luke and Patrick": -0.0012,
+        "Networking with engineers": 0.0138,
+        "Live coding on Rust": 0.0174
+      }
+    },
+    {
+      "cluster_id": "c4",
+      "name": "Outdoor Errands",
+      "keywords": [
+        "market",
+        "jogging",
+        "park",
+        "planting",
+        "flowers",
+        "garden",
+        "library",
+        "food truck"
+      ],
+      "colorId": "5",
+      "size": 5,
+      "members": [
+        "Shopping at farmer's market",
+        "Jogging at the park",
+        "Planting flowers in the garden",
+        "Researching in library",
+        "Korean BBQ food trucks"
+      ],
+      "silhouette_per_member": {
+        "Shopping at farmer's market": 0.0183,
+        "Jogging at the park": -0.0187,
+        "Planting flowers in the garden": 0.0309,
+        "Researching in library": -0.0091,
+        "Korean BBQ food trucks": -0.0153
+      }
+    },
+    {
+      "cluster_id": "c5",
+      "name": "Concert Events",
+      "keywords": [
+        "live music",
+        "gig",
+        "band",
+        "artist",
+        "tribute",
+        "vip pass",
+        "backstage",
+        "tour"
+      ],
+      "colorId": "6",
+      "size": 5,
+      "members": [
+        "Avril Lavigne concert",
+        "The Killers concert",
+        "Sum 41 concert",
+        "David Bowie tribute concert",
+        "Backstage tour VIP pass"
+      ],
+      "silhouette_per_member": {
+        "Avril Lavigne concert": 0.1231,
+        "The Killers concert": 0.0928,
+        "Sum 41 concert": 0.1187,
+        "David Bowie tribute concert": 0.0583,
+        "Backstage tour VIP pass": 0.0558
+      }
+    },
+    {
+      "cluster_id": "c6",
+      "name": "Work Activities",
+      "keywords": [
+        "client",
+        "manager",
+        "report",
+        "email",
+        "handover",
+        "workshop",
+        "hackathon",
+        "website",
+        "product",
+        "business"
+      ],
+      "colorId": "7",
+      "size": 12,
+      "members": [
+        "Marketing standup on Zoom",
+        "Web3 panel discussion",
+        "Q1 revenue report writing",
+        "One-on-one with manager",
+        "Client call with Acme Corp",
+        "Replying to emails",
+        "Preparing PTO handover",
+        "3D printing workshop",
+        "Analyzing product performance",
+        "Updating website content",
+        "Drone building hackathon",
+        "Trying new VR headset"
+      ],
+      "silhouette_per_member": {
+        "Marketing standup on Zoom": -0.0029,
+        "Web3 panel discussion": -0.0232,
+        "Q1 revenue report writing": 0.0363,
+        "One-on-one with manager": -0.0239,
+        "Client call with Acme Corp": -0.0049,
+        "Replying to emails": 0.0111,
+        "Preparing PTO handover": 0.0159,
+        "3D printing workshop": -0.0297,
+        "Analyzing product performance": -0.0021,
+        "Updating website content": 0.0129,
+        "Drone building hackathon": -0.0524,
+        "Trying new VR headset": -0.0182
+      }
+    },
+    {
+      "cluster_id": "c7",
+      "name": "Social Plans",
+      "keywords": [
+        "meetup",
+        "meet up",
+        "hangout",
+        "catch up",
+        "coffee with",
+        "study with",
+        "call family",
+        "walk with",
+        "class with"
+      ],
+      "colorId": "8",
+      "size": 6,
+      "members": [
+        "Meeting with Emma and Jake",
+        "Study session with Sarah and Mike",
+        "Meeting with Lisa at café",
+        "Yoga class with Emily",
+        "Walking with Bella",
+        "Calling Mom and Dad"
+      ],
+      "silhouette_per_member": {
+        "Meeting with Emma and Jake": 0.0817,
+        "Study session with Sarah and Mike": 0.0295,
+        "Meeting with Lisa at café": 0.0409,
+        "Yoga class with Emily": 0.0555,
+        "Walking with Bella": 0.036,
+        "Calling Mom and Dad": 0.0386
+      }
+    },
+    {
+      "cluster_id": "c8",
+      "name": "Media Consumption",
+      "keywords": [
+        "read",
+        "watch",
+        "movie",
+        "film",
+        "book",
+        "novel",
+        "episode",
+        "series",
+        "audiobook",
+        "cinema"
+      ],
+      "colorId": "9",
+      "size": 2,
+      "members": [
+        "Reading 'Dune'",
+        "Watching 'Inception'"
+      ],
+      "silhouette_per_member": {
+        "Reading 'Dune'": 0.085,
+        "Watching 'Inception'": 0.0774
+      }
+    },
+    {
+      "cluster_id": "c9",
+      "name": "Academic Classes",
+      "keywords": [
+        "class",
+        "lecture",
+        "professor",
+        "study",
+        "office hours",
+        "lab",
+        "experiment",
+        "physics",
+        "chemistry",
+        "calculus"
+      ],
+      "colorId": "10",
+      "size": 5,
+      "members": [
+        "Calculus lecture with Prof. Adams",
+        "Group study for physics test",
+        "Office hours with Prof. Chen",
+        "Structural Dynamics lecture",
+        "Chemistry experiment"
+      ],
+      "silhouette_per_member": {
+        "Calculus lecture with Prof. Adams": 0.0937,
+        "Group study for physics test": 0.1112,
+        "Office hours with Prof. Chen": 0.0477,
+        "Structural Dynamics lecture": 0.0453,
+        "Chemistry experiment": 0.0458
+      }
+    }
+  ]
+}

@@ -1,0 +1,393 @@
+{
+  "k": 10,
+  "k_sweep_silhouette": {
+    "7": 0.0258,
+    "8": 0.0249,
+    "9": 0.0286,
+    "10": 0.0307
+  },
+  "selected_silhouette": 0.0307,
+  "seed": 42,
+  "clusters": [
+    {
+      "cluster_id": "c0",
+      "size": 5,
+      "medoid_titles": [
+        "Quantum computing guest talk",
+        "Small Language Models talk",
+        "AI keynote",
+        "Async Python talk",
+        "Chess with Daniel"
+      ],
+      "members": [
+        {
+          "title": "Quantum computing guest talk",
+          "silhouette": 0.0219,
+          "centroid_distance": 0.6962
+        },
+        {
+          "title": "Small Language Models talk",
+          "silhouette": 0.0309,
+          "centroid_distance": 0.7413
+        },
+        {
+          "title": "AI keynote",
+          "silhouette": -0.0091,
+          "centroid_distance": 0.7508
+        },
+        {
+          "title": "Async Python talk",
+          "silhouette": 0.018,
+          "centroid_distance": 0.8028
+        },
+        {
+          "title": "Chess with Daniel",
+          "silhouette": -0.0234,
+          "centroid_distance": 0.818
+        }
+      ]
+    },
+    {
+      "cluster_id": "c1",
+      "size": 3,
+      "medoid_titles": [
+        "Silent disco party",
+        "David Guetta DJ set",
+        "Fireworks"
+      ],
+      "members": [
+        {
+          "title": "Silent disco party",
+          "silhouette": 0.0797,
+          "centroid_distance": 0.6129
+        },
+        {
+          "title": "David Guetta DJ set",
+          "silhouette": 0.0374,
+          "centroid_distance": 0.6322
+        },
+        {
+          "title": "Fireworks",
+          "silhouette": 0.0497,
+          "centroid_distance": 0.7011
+        }
+      ]
+    },
+    {
+      "cluster_id": "c2",
+      "size": 3,
+      "medoid_titles": [
+        "Deep cleaning the kitchen",
+        "Cooking pasta",
+        "Digital detox meditation session"
+      ],
+      "members": [
+        {
+          "title": "Deep cleaning the kitchen",
+          "silhouette": 0.1122,
+          "centroid_distance": 0.6121
+        },
+        {
+          "title": "Cooking pasta",
+          "silhouette": 0.0223,
+          "centroid_distance": 0.7231
+        },
+        {
+          "title": "Digital detox meditation session",
+          "silhouette": -0.0162,
+          "centroid_distance": 0.7413
+        }
+      ]
+    },
+    {
+      "cluster_id": "c3",
+      "size": 4,
+      "medoid_titles": [
+        "Jam session",
+        "Brainstorming with Luke and Patrick",
+        "Networking with engineers",
+        "Live coding on Rust"
+      ],
+      "members": [
+        {
+          "title": "Jam session",
+          "silhouette": 0.0213,
+          "centroid_distance": 0.6626
+        },
+        {
+          "title": "Brainstorming with Luke and Patrick",
+          "silhouette": -0.0012,
+          "centroid_distance": 0.7214
+        },
+        {
+          "title": "Networking with engineers",
+          "silhouette": 0.0138,
+          "centroid_distance": 0.7423
+        },
+        {
+          "title": "Live coding on Rust",
+          "silhouette": 0.0174,
+          "centroid_distance": 0.754
+        }
+      ]
+    },
+    {
+      "cluster_id": "c4",
+      "size": 5,
+      "medoid_titles": [
+        "Shopping at farmer's market",
+        "Jogging at the park",
+        "Planting flowers in the garden",
+        "Researching in library",
+        "Korean BBQ food trucks"
+      ],
+      "members": [
+        {
+          "title": "Shopping at farmer's market",
+          "silhouette": 0.0183,
+          "centroid_distance": 0.7038
+        },
+        {
+          "title": "Jogging at the park",
+          "silhouette": -0.0187,
+          "centroid_distance": 0.7739
+        },
+        {
+          "title": "Planting flowers in the garden",
+          "silhouette": 0.0309,
+          "centroid_distance": 0.7977
+        },
+        {
+          "title": "Researching in library",
+          "silhouette": -0.0091,
+          "centroid_distance": 0.8127
+        },
+        {
+          "title": "Korean BBQ food trucks",
+          "silhouette": -0.0153,
+          "centroid_distance": 0.8485
+        }
+      ]
+    },
+    {
+      "cluster_id": "c5",
+      "size": 5,
+      "medoid_titles": [
+        "Avril Lavigne concert",
+        "The Killers concert",
+        "Sum 41 concert",
+        "David Bowie tribute concert",
+        "Backstage tour VIP pass"
+      ],
+      "members": [
+        {
+          "title": "Avril Lavigne concert",
+          "silhouette": 0.1231,
+          "centroid_distance": 0.6413
+        },
+        {
+          "title": "The Killers concert",
+          "silhouette": 0.0928,
+          "centroid_distance": 0.6494
+        },
+        {
+          "title": "Sum 41 concert",
+          "silhouette": 0.1187,
+          "centroid_distance": 0.6553
+        },
+        {
+          "title": "David Bowie tribute concert",
+          "silhouette": 0.0583,
+          "centroid_distance": 0.7024
+        },
+        {
+          "title": "Backstage tour VIP pass",
+          "silhouette": 0.0558,
+          "centroid_distance": 0.776
+        }
+      ]
+    },
+    {
+      "cluster_id": "c6",
+      "size": 12,
+      "medoid_titles": [
+        "Marketing standup on Zoom",
+        "Web3 panel discussion",
+        "Q1 revenue report writing",
+        "One-on-one with manager",
+        "Client call with Acme Corp",
+        "Replying to emails",
+        "Preparing PTO handover",
+        "3D printing workshop",
+        "Analyzing product performance",
+        "Updating website content",
+        "Drone building hackathon",
+        "Trying new VR headset"
+      ],
+      "members": [
+        {
+          "title": "Marketing standup on Zoom",
+          "silhouette": -0.0029,
+          "centroid_distance": 0.7341
+        },
+        {
+          "title": "Web3 panel discussion",
+          "silhouette": -0.0232,
+          "centroid_distance": 0.8136
+        },
+        {
+          "title": "Q1 revenue report writing",
+          "silhouette": 0.0363,
+          "centroid_distance": 0.8172
+        },
+        {
+          "title": "One-on-one with manager",
+          "silhouette": -0.0239,
+          "centroid_distance": 0.8247
+        },
+        {
+          "title": "Client call with Acme Corp",
+          "silhouette": -0.0049,
+          "centroid_distance": 0.8359
+        },
+        {
+          "title": "Replying to emails",
+          "silhouette": 0.0111,
+          "centroid_distance": 0.8418
+        },
+        {
+          "title": "Preparing PTO handover",
+          "silhouette": 0.0159,
+          "centroid_distance": 0.8419
+        },
+        {
+          "title": "3D printing workshop",
+          "silhouette": -0.0297,
+          "centroid_distance": 0.8443
+        },
+        {
+          "title": "Analyzing product performance",
+          "silhouette": -0.0021,
+          "centroid_distance": 0.8546
+        },
+        {
+          "title": "Updating website content",
+          "silhouette": 0.0129,
+          "centroid_distance": 0.8551
+        },
+        {
+          "title": "Drone building hackathon",
+          "silhouette": -0.0524,
+          "centroid_distance": 0.8675
+        },
+        {
+          "title": "Trying new VR headset",
+          "silhouette": -0.0182,
+          "centroid_distance": 0.868
+        }
+      ]
+    },
+    {
+      "cluster_id": "c7",
+      "size": 6,
+      "medoid_titles": [
+        "Meeting with Emma and Jake",
+        "Study session with Sarah and Mike",
+        "Meeting with Lisa at café",
+        "Yoga class with Emily",
+        "Walking with Bella",
+        "Calling Mom and Dad"
+      ],
+      "members": [
+        {
+          "title": "Meeting with Emma and Jake",
+          "silhouette": 0.0817,
+          "centroid_distance": 0.6724
+        },
+        {
+          "title": "Study session with Sarah and Mike",
+          "silhouette": 0.0295,
+          "centroid_distance": 0.704
+        },
+        {
+          "title": "Meeting with Lisa at café",
+          "silhouette": 0.0409,
+          "centroid_distance": 0.7352
+        },
+        {
+          "title": "Yoga class with Emily",
+          "silhouette": 0.0555,
+          "centroid_distance": 0.76
+        },
+        {
+          "title": "Walking with Bella",
+          "silhouette": 0.036,
+          "centroid_distance": 0.786
+        },
+        {
+          "title": "Calling Mom and Dad",
+          "silhouette": 0.0386,
+          "centroid_distance": 0.8053
+        }
+      ]
+    },
+    {
+      "cluster_id": "c8",
+      "size": 2,
+      "medoid_titles": [
+        "Reading 'Dune'",
+        "Watching 'Inception'"
+      ],
+      "members": [
+        {
+          "title": "Reading 'Dune'",
+          "silhouette": 0.085,
+          "centroid_distance": 0.5814
+        },
+        {
+          "title": "Watching 'Inception'",
+          "silhouette": 0.0774,
+          "centroid_distance": 0.5814
+        }
+      ]
+    },
+    {
+      "cluster_id": "c9",
+      "size": 5,
+      "medoid_titles": [
+        "Calculus lecture with Prof. Adams",
+        "Group study for physics test",
+        "Office hours with Prof. Chen",
+        "Structural Dynamics lecture",
+        "Chemistry experiment"
+      ],
+      "members": [
+        {
+          "title": "Calculus lecture with Prof. Adams",
+          "silhouette": 0.0937,
+          "centroid_distance": 0.6855
+        },
+        {
+          "title": "Group study for physics test",
+          "silhouette": 0.1112,
+          "centroid_distance": 0.6915
+        },
+        {
+          "title": "Office hours with Prof. Chen",
+          "silhouette": 0.0477,
+          "centroid_distance": 0.7285
+        },
+        {
+          "title": "Structural Dynamics lecture",
+          "silhouette": 0.0453,
+          "centroid_distance": 0.7286
+        },
+        {
+          "title": "Chemistry experiment",
+          "silhouette": 0.0458,
+          "centroid_distance": 0.7911
+        }
+      ]
+    }
+  ]
+}

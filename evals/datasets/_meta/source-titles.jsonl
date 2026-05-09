@@ -1,0 +1,50 @@
+{"title": "Small Language Models talk", "split": "train", "source_index": 0, "event_index": 0}
+{"title": "Async Python talk", "split": "train", "source_index": 0, "event_index": 1}
+{"title": "Drone building hackathon", "split": "train", "source_index": 0, "event_index": 2}
+{"title": "Digital detox meditation session", "split": "train", "source_index": 0, "event_index": 3}
+{"title": "Quantum computing guest talk", "split": "train", "source_index": 1, "event_index": 0}
+{"title": "Group study for physics test", "split": "train", "source_index": 1, "event_index": 1}
+{"title": "Study session with Sarah and Mike", "split": "train", "source_index": 1, "event_index": 2}
+{"title": "Chemistry experiment", "split": "train", "source_index": 1, "event_index": 3}
+{"title": "Updating website content", "split": "train", "source_index": 2, "event_index": 0}
+{"title": "Meeting with Lisa at café", "split": "train", "source_index": 2, "event_index": 1}
+{"title": "Preparing PTO handover", "split": "train", "source_index": 2, "event_index": 2}
+{"title": "Replying to emails", "split": "train", "source_index": 2, "event_index": 3}
+{"title": "Brainstorming with Luke and Patrick", "split": "train", "source_index": 2, "event_index": 4}
+{"title": "Q1 revenue report writing", "split": "train", "source_index": 2, "event_index": 5}
+{"title": "Analyzing product performance", "split": "train", "source_index": 2, "event_index": 6}
+{"title": "Marketing standup on Zoom", "split": "train", "source_index": 3, "event_index": 1}
+{"title": "One-on-one with manager", "split": "train", "source_index": 3, "event_index": 2}
+{"title": "Client call with Acme Corp", "split": "train", "source_index": 3, "event_index": 4}
+{"title": "Researching in library", "split": "train", "source_index": 4, "event_index": 0}
+{"title": "Office hours with Prof. Chen", "split": "train", "source_index": 4, "event_index": 2}
+{"title": "Calculus lecture with Prof. Adams", "split": "train", "source_index": 4, "event_index": 3}
+{"title": "Meeting with Emma and Jake", "split": "train", "source_index": 4, "event_index": 5}
+{"title": "Chess with Daniel", "split": "train", "source_index": 4, "event_index": 7}
+{"title": "Shopping at farmer's market", "split": "train", "source_index": 5, "event_index": 0}
+{"title": "Planting flowers in the garden", "split": "train", "source_index": 5, "event_index": 1}
+{"title": "Jogging at the park", "split": "train", "source_index": 5, "event_index": 2}
+{"title": "Reading 'Dune'", "split": "train", "source_index": 5, "event_index": 3}
+{"title": "Calling Mom and Dad", "split": "train", "source_index": 5, "event_index": 4}
+{"title": "Watching 'Inception'", "split": "train", "source_index": 5, "event_index": 5}
+{"title": "Web3 panel discussion", "split": "train", "source_index": 6, "event_index": 0}
+{"title": "AI keynote", "split": "train", "source_index": 6, "event_index": 1}
+{"title": "Live coding on Rust", "split": "train", "source_index": 6, "event_index": 2}
+{"title": "3D printing workshop", "split": "train", "source_index": 6, "event_index": 4}
+{"title": "Trying new VR headset", "split": "train", "source_index": 6, "event_index": 7}
+{"title": "Avril Lavigne concert", "split": "train", "source_index": 8, "event_index": 0}
+{"title": "Fireworks", "split": "train", "source_index": 8, "event_index": 1}
+{"title": "Silent disco party", "split": "train", "source_index": 8, "event_index": 2}
+{"title": "Sum 41 concert", "split": "train", "source_index": 8, "event_index": 3}
+{"title": "Jam session", "split": "train", "source_index": 8, "event_index": 4}
+{"title": "Structural Dynamics lecture", "split": "train", "source_index": 10, "event_index": 5}
+{"title": "David Bowie tribute concert", "split": "train", "source_index": 13, "event_index": 1}
+{"title": "Cooking pasta", "split": "train", "source_index": 15, "event_index": 0}
+{"title": "Walking with Bella", "split": "train", "source_index": 18, "event_index": 2}
+{"title": "Deep cleaning the kitchen", "split": "train", "source_index": 18, "event_index": 5}
+{"title": "Yoga class with Emily", "split": "train", "source_index": 18, "event_index": 6}
+{"title": "Korean BBQ food trucks", "split": "train", "source_index": 20, "event_index": 0}
+{"title": "The Killers concert", "split": "train", "source_index": 20, "event_index": 3}
+{"title": "Networking with engineers", "split": "train", "source_index": 23, "event_index": 4}
+{"title": "Backstage tour VIP pass", "split": "train", "source_index": 27, "event_index": 0}
+{"title": "David Guetta DJ set", "split": "train", "source_index": 27, "event_index": 5}

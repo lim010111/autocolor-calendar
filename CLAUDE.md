@@ -75,6 +75,9 @@ aggregated by the `improve-token-efficiency` skill out of
 `~/.claude/projects/-home-shine-projects-autocolor-for-calendar/`. The
 durable scoreboard lives in [evals/agent-results.json](evals/agent-results.json);
 the rubric trend point is [docs/ai-readiness-score.json](docs/ai-readiness-score.json).
+The 4-language classification baseline (en/ko/zh-CN/zh-TW) is built by the
+operator-side Python pipeline in [evals/dataset-builder/](evals/dataset-builder/)
+and lands as `evals/datasets/{lang}/classification.json`.
 
 ## See also
 

@@ -96,6 +96,63 @@ time is the entire point.
 }
 ```
 
+## Layer 4 — multilingual classification eval
+
+Per-language baseline measurement for the 4 supported locales
+(`en` / `ko` / `zh-CN` / `zh-TW` per `gas/i18n.js`). Built once-per-source
+from HuggingFace `anakin87/events-scheduling`, then translated; case ids are
+1:1 across the 4 lang siblings so cross-lingual deltas are visible at a
+glance. Builder lives at [`dataset-builder/`](./dataset-builder/) (Python /
+UV) — operator-only, **not in CI**.
+
+### Run
+
+```bash
+# Build (once per source revision; idempotent per stage)
+cd evals/dataset-builder && uv sync && uv run build-dataset all
+
+# Score a language (reads dataset's evaluator.threshold + blocking_tags)
+pnpm tsx evals/scripts/run-classification-eval.ts \
+  --task-file evals/datasets/en/classification.json --include-rule-leg
+```
+
+`--include-rule-leg` adds rule-leg hit / pass numbers alongside the LLM leg
+in stdout and in the ledger row's `notes`. `--task-file` is opt-in; calling
+the runner with no args still drives the original
+`evals/tasks/classification-semantic.json` regression suite (same 90% gate,
+same `user-report-*` blocking).
+
+Per-run cost (Layer 4): ~192 cases × 4 langs × ≤300 tokens against
+`gpt-5.4-nano` ≈ $0.5 total. Build cost: < $3 (embed + label + augment +
+translate via Batch API).
+
+### Ledger row shape (Layer 4)
+
+```json
+{
+  "run_id": "<date>-classification-multilingual-<lang>",
+  "tool":   "classification-multilingual-<lang>-eval",
+  "kind":   "task_pass_rate",
+  "score":  168, "max": 192, "task_pass_rate": 0.875,
+  "notes":  "model=gpt-5.4-nano; dataset=evals/datasets/<lang>/...; lang=<lang>; rule_hit=137/192; rule_pass=128/192"
+}
+```
+
+The Layer 3 ledger schema is unchanged — Layer 4 just lands as additional
+rows with their own `tool` / `run_id` and `lang` in `notes`.
+
+### Limits to keep in mind
+
+- Source dedups to 50 unique titles → augmented to ~192 cases via
+  gpt-5.5 paraphrasing. Per-category accuracy CIs are correspondingly wide.
+- Translations collapse ~22–25% of English paraphrases onto the same target
+  string — 1:1 case id mapping is preserved, but per-lang stats lean toward
+  the most "natural" target phrasing.
+- Cases have only `summary` (no `description` / `location`); the prod
+  classifier reads all three. Treat these as a lower bound.
+- See the [builder README](./dataset-builder/README.md) "Known
+  limitations" for the full list.
+
 ## Telemetry
 
 - **Session log.** Claude Code session JSONLs live under
