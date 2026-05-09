@@ -2,20 +2,25 @@
 /**
  * Layer 3 — semantic classification eval (offline operator script).
  *
- * Runs each case in `evals/tasks/classification-semantic.json` against the
- * live OpenAI API using the production prompt builder + parser, then appends
- * one ledger row to `evals/agent-results.json`.
+ * Runs each case in a dataset file against the live OpenAI API using the
+ * production prompt builder + parser, then appends one ledger row to
+ * `evals/agent-results.json`.
  *
  * Usage:
  *   pnpm tsx evals/scripts/run-classification-eval.ts
- *   # OPENAI_API_KEY can come from env or .dev.vars
+ *     # default — uses evals/tasks/classification-semantic.json (90% gate)
+ *
+ *   pnpm tsx evals/scripts/run-classification-eval.ts \
+ *     --task-file evals/datasets/en/classification.json --include-rule-leg
+ *     # multilingual dataset — threshold + blocking tags read from the
+ *     # dataset's `evaluator` field; rule leg is also measured
  *
  * Cost: ~20 cases × (~3K input + ≤64 completion tokens) per run, well under
  * $0.02 against gpt-5.4-nano. Bypasses `reserveLlmCall` — this is operator
  * budget, separate from the per-user runtime cap.
  *
- * Exit code: 0 when all `user-report-*` cases pass AND overall pass-rate
- * ≥ 90%; otherwise 1 (suitable for "merge gate" use).
+ * Exit code: 0 when all blocking-tag cases pass AND overall pass-rate
+ * ≥ threshold; otherwise 1 (suitable for "merge gate" use).
  */
 import { promises as fs } from "node:fs";
 import { execSync } from "node:child_process";
@@ -24,20 +29,21 @@ import { fileURLToPath } from "node:url";
 
 import { config as loadEnv } from "dotenv";
 
-import type { Category } from "../../src/services/classifier";
+import { classifyEvent, type Category } from "../../src/services/classifier";
 import type { CalendarEvent } from "../../src/services/googleCalendar";
 import { buildPrompt, parseCategoryName } from "../../src/services/llmClassifier";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const ROOT = path.resolve(__dirname, "..", "..");
-const TASK_FILE = path.join(ROOT, "evals/tasks/classification-semantic.json");
+const DEFAULT_TASK_FILE = path.join(ROOT, "evals/tasks/classification-semantic.json");
 const RESULTS_FILE = path.join(ROOT, "evals/agent-results.json");
 const OPENAI_URL = "https://api.openai.com/v1/chat/completions";
 const MODEL = "gpt-5.4-nano";
 const MAX_COMPLETION_TOKENS = 64;
 const TIMEOUT_MS = 15_000;
-const PASS_RATE_THRESHOLD = 0.9;
+const DEFAULT_PASS_RATE_THRESHOLD = 0.9;
+const DEFAULT_BLOCKING_TAG_PREFIX = "user-report-";
 
 loadEnv({ path: path.join(ROOT, ".dev.vars") });
 
@@ -53,8 +59,38 @@ type EvalSuite = {
   schema_version: number;
   task: string;
   description?: string;
+  // Optional fields added by the multilingual dataset builder.
+  lang?: string;
+  evaluator?: { threshold?: number; blocking_tags?: string[] };
   cases: EvalCase[];
 };
+
+type CliArgs = {
+  taskFile: string;
+  includeRuleLeg: boolean;
+};
+
+function parseArgs(argv: string[]): CliArgs {
+  const out: CliArgs = { taskFile: DEFAULT_TASK_FILE, includeRuleLeg: false };
+  for (let i = 0; i < argv.length; i++) {
+    const a = argv[i];
+    if (a === "--task-file") {
+      const next = argv[++i];
+      if (!next) throw new Error("--task-file requires a path");
+      out.taskFile = path.isAbsolute(next) ? next : path.resolve(process.cwd(), next);
+    } else if (a === "--include-rule-leg") {
+      out.includeRuleLeg = true;
+    } else if (a === "--help" || a === "-h") {
+      console.log(
+        "Usage: run-classification-eval.ts [--task-file <path>] [--include-rule-leg]",
+      );
+      process.exit(0);
+    } else {
+      throw new Error(`unknown argument: ${a}`);
+    }
+  }
+  return out;
+}
 
 type LedgerRow = {
   run_id: string;
@@ -83,6 +119,8 @@ type CaseResult = {
   pass: boolean;
   expected: string;
   got: string;
+  // Populated only when --include-rule-leg is set.
+  rule?: { hit: boolean; categoryName: string | null; pass: boolean };
 };
 
 function requireApiKey(): string {
@@ -176,9 +214,27 @@ async function callOpenAi(
   }
 }
 
-async function runCase(apiKey: string, c: EvalCase): Promise<CaseResult> {
+async function runCase(
+  apiKey: string,
+  c: EvalCase,
+  opts: { includeRuleLeg: boolean },
+): Promise<CaseResult> {
   const cats = c.categories.map(buildCategory);
-  const messages = buildPrompt(buildEvent(c), cats);
+  const event = buildEvent(c);
+
+  let rule: CaseResult["rule"];
+  if (opts.includeRuleLeg) {
+    const ruleResult = await classifyEvent(event, { userId: "eval", categories: cats });
+    if (ruleResult === null) {
+      rule = { hit: false, categoryName: null, pass: c.expected.category_name === "none" };
+    } else {
+      const matched = cats.find((cat) => cat.id === ruleResult.categoryId);
+      const name = matched?.name ?? null;
+      rule = { hit: true, categoryName: name, pass: name === c.expected.category_name };
+    }
+  }
+
+  const messages = buildPrompt(event, cats);
   let got: string;
   try {
     const raw = await callOpenAi(apiKey, messages);
@@ -189,52 +245,89 @@ async function runCase(apiKey: string, c: EvalCase): Promise<CaseResult> {
   } catch (err) {
     got = `<error:${err instanceof Error ? err.message : String(err)}>`;
   }
-  return {
+  const result: CaseResult = {
     id: c.id,
     tag: c.tag,
     expected: c.expected.category_name,
     got,
     pass: got === c.expected.category_name,
   };
+  if (rule) result.rule = rule;
+  return result;
 }
 
 async function appendLedgerRow(
-  passCount: number,
-  total: number,
-  failedUserReports: number,
+  suite: EvalSuite,
+  taskFile: string,
+  results: CaseResult[],
+  blockingFailCount: number,
+  ruleStats: { ruleHits: number; rulePassCount: number } | null,
 ): Promise<void> {
   const ledger = JSON.parse(await fs.readFile(RESULTS_FILE, "utf8")) as Ledger;
+  const passCount = results.filter((r) => r.pass).length;
+  const total = results.length;
   const passRate = total === 0 ? 0 : passCount / total;
   const today = new Date().toISOString().slice(0, 10);
+  const langSuffix = suite.lang ? `-${suite.lang}` : "";
+  // Preserve the historical ledger tool string for the original hand-crafted
+  // suite (no `lang` field) so trend reads in docs/ai-readiness-map.html
+  // don't have to merge two ids.
+  const tool = suite.lang ? `${suite.task}${langSuffix}-eval` : "classification-semantic-eval";
+  const datasetBasename = path.relative(ROOT, taskFile);
+  const noteParts = [`model=${MODEL}`, `dataset=${datasetBasename}`];
+  if (suite.lang) noteParts.push(`lang=${suite.lang}`);
+  if (ruleStats) {
+    noteParts.push(
+      `rule_hit=${ruleStats.ruleHits}/${total}`,
+      `rule_pass=${ruleStats.rulePassCount}/${total}`,
+    );
+  }
+  if (blockingFailCount > 0) noteParts.push(`blocking_failed=${blockingFailCount}`);
   ledger.runs.push({
-    run_id: `${today}-classification-semantic`,
+    run_id: `${today}-${suite.task}${langSuffix}`,
     timestamp: new Date().toISOString(),
     git_sha: gitSha(),
     kind: "task_pass_rate",
-    tool: "classification-semantic-eval",
+    tool,
     score: passCount,
     max: total,
     grade: null,
     categories: null,
     task_pass_rate: Number(passRate.toFixed(3)),
-    notes:
-      `model=${MODEL}; cases tagged user-report-2026-05-08 must all pass` +
-      (failedUserReports > 0 ? ` (FAILED: ${failedUserReports})` : ""),
+    notes: noteParts.join("; "),
   });
   await fs.writeFile(RESULTS_FILE, JSON.stringify(ledger, null, 2) + "\n");
 }
 
+function isBlockingFail(tag: string, blockingTags: string[] | null): boolean {
+  if (blockingTags) return blockingTags.some((t) => tag.includes(t));
+  return tag.includes(DEFAULT_BLOCKING_TAG_PREFIX);
+}
+
 async function main(): Promise<void> {
+  const args = parseArgs(process.argv.slice(2));
   const apiKey = requireApiKey();
-  const suite = JSON.parse(await fs.readFile(TASK_FILE, "utf8")) as EvalSuite;
-  console.log(`Running ${suite.cases.length} cases against ${MODEL}…\n`);
+  const suite = JSON.parse(await fs.readFile(args.taskFile, "utf8")) as EvalSuite;
+
+  const threshold = suite.evaluator?.threshold ?? DEFAULT_PASS_RATE_THRESHOLD;
+  const blockingTags = suite.evaluator?.blocking_tags ?? null; // null → default `user-report-` prefix
+  const langLabel = suite.lang ? ` lang=${suite.lang}` : "";
+  console.log(
+    `Running ${suite.cases.length} cases against ${MODEL}${langLabel} ` +
+      `(threshold=${threshold}, dataset=${path.relative(ROOT, args.taskFile)})…\n`,
+  );
 
   const results: CaseResult[] = [];
   for (const c of suite.cases) {
-    const r = await runCase(apiKey, c);
+    const r = await runCase(apiKey, c, { includeRuleLeg: args.includeRuleLeg });
     results.push(r);
     const mark = r.pass ? "PASS" : "FAIL";
-    console.log(`  ${mark}  [${r.tag}]  ${r.id}: expected=${r.expected} got=${r.got}`);
+    const ruleSuffix = r.rule
+      ? ` rule=${r.rule.hit ? r.rule.categoryName : "<miss>"}`
+      : "";
+    console.log(
+      `  ${mark}  [${r.tag}]  ${r.id}: expected=${r.expected} got=${r.got}${ruleSuffix}`,
+    );
   }
 
   const passCount = results.filter((r) => r.pass).length;
@@ -242,22 +335,34 @@ async function main(): Promise<void> {
   const passRate = total === 0 ? 0 : passCount / total;
   console.log(`\nPass: ${passCount}/${total} (${(passRate * 100).toFixed(1)}%)`);
 
-  const userReportFails = results.filter(
-    (r) => !r.pass && r.tag.includes("user-report"),
-  );
-  if (userReportFails.length > 0) {
-    console.error(
-      `\n⚠ ${userReportFails.length} user-report case(s) failed — merge BLOCKED:`,
+  let ruleStats: { ruleHits: number; rulePassCount: number } | null = null;
+  if (args.includeRuleLeg) {
+    const ruleHits = results.filter((r) => r.rule?.hit).length;
+    const rulePassCount = results.filter((r) => r.rule?.pass).length;
+    ruleStats = { ruleHits, rulePassCount };
+    console.log(
+      `Rule leg: hit=${ruleHits}/${total} (${((ruleHits / total) * 100).toFixed(1)}%), ` +
+        `pass=${rulePassCount}/${total} (${((rulePassCount / total) * 100).toFixed(1)}%)`,
     );
-    for (const f of userReportFails) {
+  }
+
+  const blockingFails = results.filter((r) => !r.pass && isBlockingFail(r.tag, blockingTags));
+  if (blockingFails.length > 0) {
+    const tagDesc = blockingTags
+      ? `tags ${JSON.stringify(blockingTags)}`
+      : `cases tagged ${DEFAULT_BLOCKING_TAG_PREFIX}*`;
+    console.error(
+      `\n⚠ ${blockingFails.length} blocking case(s) failed (${tagDesc}) — merge BLOCKED:`,
+    );
+    for (const f of blockingFails) {
       console.error(`   ${f.id}: expected=${f.expected} got=${f.got}`);
     }
   }
 
-  await appendLedgerRow(passCount, total, userReportFails.length);
+  await appendLedgerRow(suite, args.taskFile, results, blockingFails.length, ruleStats);
   console.log(`\nLedger row appended: ${RESULTS_FILE}`);
 
-  if (userReportFails.length > 0 || passRate < PASS_RATE_THRESHOLD) {
+  if (blockingFails.length > 0 || passRate < threshold) {
     process.exit(1);
   }
 }

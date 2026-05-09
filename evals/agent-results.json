@@ -22,6 +22,71 @@
       },
       "task_pass_rate": null,
       "notes": "Pre-improvement baseline. Captured before evals/ + .husky hooks landed; subsequent measurements re-score against the same rubric so trend is visible in docs/ai-readiness-map.html."
+    },
+    {
+      "run_id": "2026-05-09-classification-semantic-matching",
+      "timestamp": "2026-05-09T04:41:13.106Z",
+      "git_sha": "1f41184",
+      "kind": "task_pass_rate",
+      "tool": "classification-semantic-matching-eval",
+      "score": 19,
+      "max": 20,
+      "grade": null,
+      "categories": null,
+      "task_pass_rate": 0.95,
+      "notes": "model=gpt-5.4-nano; dataset=evals/tasks/classification-semantic.json"
+    },
+    {
+      "run_id": "2026-05-09-classification-multilingual-en",
+      "timestamp": "2026-05-09T04:43:58.102Z",
+      "git_sha": "1f41184",
+      "kind": "task_pass_rate",
+      "tool": "classification-multilingual-en-eval",
+      "score": 168,
+      "max": 192,
+      "grade": null,
+      "categories": null,
+      "task_pass_rate": 0.875,
+      "notes": "model=gpt-5.4-nano; dataset=evals/datasets/en/classification.json; lang=en; rule_hit=137/192; rule_pass=128/192"
+    },
+    {
+      "run_id": "2026-05-09-classification-multilingual-ko",
+      "timestamp": "2026-05-09T04:46:16.535Z",
+      "git_sha": "1f41184",
+      "kind": "task_pass_rate",
+      "tool": "classification-multilingual-ko-eval",
+      "score": 166,
+      "max": 192,
+      "grade": null,
+      "categories": null,
+      "task_pass_rate": 0.865,
+      "notes": "model=gpt-5.4-nano; dataset=evals/datasets/ko/classification.json; lang=ko; rule_hit=117/192; rule_pass=110/192"
+    },
+    {
+      "run_id": "2026-05-09-classification-multilingual-zh-CN",
+      "timestamp": "2026-05-09T04:48:25.341Z",
+      "git_sha": "1f41184",
+      "kind": "task_pass_rate",
+      "tool": "classification-multilingual-zh-CN-eval",
+      "score": 167,
+      "max": 192,
+      "grade": null,
+      "categories": null,
+      "task_pass_rate": 0.87,
+      "notes": "model=gpt-5.4-nano; dataset=evals/datasets/zh-CN/classification.json; lang=zh-CN; rule_hit=117/192; rule_pass=113/192"
+    },
+    {
+      "run_id": "2026-05-09-classification-multilingual-zh-TW",
+      "timestamp": "2026-05-09T04:50:44.927Z",
+      "git_sha": "1f41184",
+      "kind": "task_pass_rate",
+      "tool": "classification-multilingual-zh-TW-eval",
+      "score": 168,
+      "max": 192,
+      "grade": null,
+      "categories": null,
+      "task_pass_rate": 0.875,
+      "notes": "model=gpt-5.4-nano; dataset=evals/datasets/zh-TW/classification.json; lang=zh-TW; rule_hit=114/192; rule_pass=108/192"
     }
   ],
   "next": {

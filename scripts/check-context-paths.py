@@ -45,7 +45,7 @@ CONTEXT_FILES = ("CLAUDE.md", "AGENTS.md", "README.md")
 RE_PATH_REF = re.compile(
     r"(?<![A-Za-z0-9_/])"
     r"((?:\.\./|\./|[A-Za-z0-9_]+/)[A-Za-z0-9_./-]+\."
-    r"(?:tsx|jsx|json|yaml|yml|toml|html|java|py|ts|js|md|sql|css|sh|go|rs|kt|rb|php))"
+    r"(?:tsx|jsx|jsonl|json|yaml|yml|toml|html|java|py|ts|js|md|sql|css|sh|go|rs|kt|rb|php))"
 )
 
 
