@@ -1,0 +1,27 @@
+◇ injected env (10) from .dev.vars // tip: ⌘ override existing { override: true }
+Running 20 cases against gpt-5-nano (prompt=v3) (threshold=0.9, dataset=evals/tasks/classification-semantic.json)…
+
+  PASS  [hypernym,user-report-2026-05-08]  user-report-meal-breakfast: expected=Meal got=Meal
+  PASS  [hypernym,user-report-2026-05-08]  user-report-meal-lunch: expected=Meal got=Meal
+  PASS  [morphology,paraphrase,user-report-2026-05-08]  user-report-move-getting-ready: expected=Move got=Move
+  PASS  [negative,user-report-2026-05-08]  user-report-meal-meeting-negative: expected=none got=none
+  PASS  [hypernym]  hypernym-meal-dinner: expected=Meal got=Meal
+  PASS  [hypernym]  hypernym-exercise-yoga: expected=Exercise got=Exercise
+  PASS  [hypernym]  hypernym-travel-flight: expected=Travel got=Travel
+  PASS  [morphology]  morphology-run-running: expected=Run got=Run
+  PASS  [morphology]  morphology-study-studied: expected=Study got=Study
+  PASS  [paraphrase]  paraphrase-move-going-out: expected=Move got=Move
+  PASS  [paraphrase]  paraphrase-meal-eat: expected=Meal got=Meal
+  PASS  [cross-lingual]  cross-lingual-en-ko-meal-breakfast: expected=식사 got=식사
+  PASS  [cross-lingual]  cross-lingual-ko-en-meal-asachimsiksa: expected=Meal got=Meal
+  PASS  [cross-lingual]  cross-lingual-zh-en-exercise-yoga: expected=运动 got=运动
+  PASS  [cross-lingual]  cross-lingual-en-ko-meeting: expected=회의 got=회의
+  PASS  [negative]  negative-exercise-coffee: expected=none got=none
+  PASS  [negative]  negative-meal-news: expected=none got=none
+  PASS  [negative,metaphorical]  negative-aspirational-not-actual: expected=none got=none
+  FAIL  [priority,tie-resolution]  priority-tie-meeting-first: expected=Meeting got=<bad_response>
+  PASS  [smoke]  smoke-single-category-clear-fit: expected=Meeting got=Meeting
+
+Pass: 19/20 (95.0%)
+
+Ledger row appended: /home/shine/projects/autocolor_for_calendar/.claude/worktrees/verify-classification-model/evals/agent-results.json

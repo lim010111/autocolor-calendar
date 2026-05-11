@@ -14,19 +14,17 @@ import json
 
 from .config import CLUSTERS_PATH, LABEL_REASONING_EFFORT, META_DIR, TRANSLATE_MODEL
 from .openai_client import get_client
+from .prompts import load_prompt
 
 AUGMENTED_PATH = META_DIR / "augmented-cases.jsonl"
 
 _VARIANTS_PER_BASE = 3
 
-_SYSTEM_PROMPT = (
-    "You rewrite calendar event titles for evaluation. Given a single title "
-    "and the category it belongs to, produce {n} alternative phrasings that a "
-    "real person might type into Google Calendar. Vary surface form (length, "
-    "word order, punctuation, abbreviations like '@', 'w/'); preserve the "
-    "underlying activity and category exactly. Do NOT introduce a different "
-    "activity, do NOT add proper nouns that weren't implied, do NOT translate."
-)
+# Source of truth: prompts/dataset-builder/augment.system.v1.md
+# ({n} is substituted via .replace at call-site, because the body intentionally
+# contains no other braces — switching to .format would be equivalent today but
+# fragile against future edits.)
+_SYSTEM_PROMPT = load_prompt("augment")
 
 _RESPONSE_SCHEMA = {
     "type": "object",

@@ -1,0 +1,204 @@
+◇ injected env (10) from .dev.vars // tip: ⌘ enable debugging { debug: true }
+Running 192 cases against gpt-5-nano (prompt=v3) lang=ko (threshold=0.7, dataset=evals/datasets/ko/classification.json)…
+
+  PASS  [base,c0]  base-0e16a037: expected=기술 강연 got=기술 강연 rule=기술 강연
+  FAIL  [paraphrase,c0]  var-20369901: expected=기술 강연 got=<bad_response> rule=기술 강연
+  FAIL  [paraphrase,c0]  var-7858066a: expected=기술 강연 got=<bad_response> rule=기술 강연
+  FAIL  [paraphrase,c0]  var-96b97d6a: expected=기술 강연 got=<bad_response> rule=기술 강연
+  FAIL  [base,c0]  base-92b81b7c: expected=기술 강연 got=<bad_response> rule=기술 강연
+  FAIL  [paraphrase,c0]  var-f2cae3fd: expected=기술 강연 got=<bad_response> rule=기술 강연
+  PASS  [paraphrase,c0]  var-04beccff: expected=기술 강연 got=기술 강연 rule=기술 강연
+  FAIL  [paraphrase,c0]  var-d61c73e5: expected=기술 강연 got=<bad_response> rule=기술 강연
+  FAIL  [base,c0]  base-658111f3: expected=기술 강연 got=<bad_response> rule=기술 강연
+  PASS  [paraphrase,c0]  var-3403e53b: expected=기술 강연 got=기술 강연 rule=기술 강연
+  PASS  [paraphrase,c0]  var-73ac7be8: expected=기술 강연 got=기술 강연 rule=기술 강연
+  PASS  [paraphrase,c0]  var-f19b644a: expected=기술 강연 got=기술 강연 rule=기술 강연
+  FAIL  [base,c0]  base-ab5013f7: expected=기술 강연 got=<bad_response> rule=기술 강연
+  PASS  [paraphrase,c0]  var-c326f7d4: expected=기술 강연 got=기술 강연 rule=기술 강연
+  PASS  [paraphrase,c0]  var-cd66ff5c: expected=기술 강연 got=기술 강연 rule=기술 강연
+  FAIL  [paraphrase,c0]  var-f9310e15: expected=기술 강연 got=<bad_response> rule=기술 강연
+  FAIL  [base,c0]  base-16acd1b1: expected=기술 강연 got=none rule=기술 강연
+  FAIL  [paraphrase,c0]  var-dc723ad5: expected=기술 강연 got=<bad_response> rule=기술 강연
+  FAIL  [paraphrase,c0]  var-0092c088: expected=기술 강연 got=none rule=기술 강연
+  FAIL  [paraphrase,c0]  var-0ae8d78b: expected=기술 강연 got=<bad_response> rule=기술 강연
+  FAIL  [base,c1]  base-2575fa88: expected=야간 유흥 got=<bad_response> rule=야간 유흥
+  PASS  [paraphrase,c1]  var-b0eab386: expected=야간 유흥 got=야간 유흥 rule=야간 유흥
+  PASS  [paraphrase,c1]  var-6bb4ba61: expected=야간 유흥 got=야간 유흥 rule=야간 유흥
+  FAIL  [base,c1]  base-6ab2e640: expected=야간 유흥 got=<bad_response> rule=야간 유흥
+  FAIL  [paraphrase,c1]  var-bae48ac0: expected=야간 유흥 got=<bad_response> rule=야간 유흥
+  FAIL  [paraphrase,c1]  var-dd3a9b09: expected=야간 유흥 got=<bad_response> rule=야간 유흥
+  PASS  [base,c1]  base-df56519a: expected=야간 유흥 got=야간 유흥 rule=야간 유흥
+  FAIL  [paraphrase,c1]  var-6ac5d99b: expected=야간 유흥 got=<bad_response> rule=야간 유흥
+  PASS  [paraphrase,c1]  var-93e1fabd: expected=야간 유흥 got=야간 유흥 rule=야간 유흥
+  PASS  [paraphrase,c1]  var-525558fd: expected=야간 유흥 got=야간 유흥 rule=야간 유흥
+  FAIL  [base,c2]  base-29c63f88: expected=홈 웰니스 got=<bad_response> rule=<miss>
+  PASS  [paraphrase,c2]  var-0a891dba: expected=홈 웰니스 got=홈 웰니스 rule=<miss>
+  PASS  [paraphrase,c2]  var-687fdd03: expected=홈 웰니스 got=홈 웰니스 rule=<miss>
+  PASS  [paraphrase,c2]  var-46039515: expected=홈 웰니스 got=홈 웰니스 rule=<miss>
+  PASS  [base,c2]  base-c4acab11: expected=홈 웰니스 got=홈 웰니스 rule=<miss>
+  PASS  [paraphrase,c2]  var-efc55deb: expected=홈 웰니스 got=홈 웰니스 rule=<miss>
+  PASS  [paraphrase,c2]  var-8e6d0916: expected=홈 웰니스 got=홈 웰니스 rule=<miss>
+  PASS  [paraphrase,c2]  var-8f5edc33: expected=홈 웰니스 got=홈 웰니스 rule=<miss>
+  PASS  [base,c2]  base-8b28a73f: expected=홈 웰니스 got=홈 웰니스 rule=<miss>
+  PASS  [paraphrase,c2]  var-8d7da9ce: expected=홈 웰니스 got=홈 웰니스 rule=<miss>
+  PASS  [paraphrase,c2]  var-6e787f49: expected=홈 웰니스 got=홈 웰니스 rule=<miss>
+  PASS  [paraphrase,c2]  var-8076922f: expected=홈 웰니스 got=홈 웰니스 rule=<miss>
+  FAIL  [base,c3]  base-5e1dc511: expected=협업 세션 got=<bad_response> rule=<miss>
+  FAIL  [paraphrase,c3]  var-5124d442: expected=협업 세션 got=<bad_response> rule=사교 일정
+  FAIL  [paraphrase,c3]  var-b767c50a: expected=협업 세션 got=<bad_response> rule=사교 일정
+  FAIL  [paraphrase,c3]  var-ad9223b1: expected=협업 세션 got=<bad_response> rule=<miss>
+  PASS  [base,c3]  base-8d6d4ec6: expected=협업 세션 got=협업 세션 rule=<miss>
+  PASS  [paraphrase,c3]  var-5014257f: expected=협업 세션 got=협업 세션 rule=<miss>
+  PASS  [paraphrase,c3]  var-708144db: expected=협업 세션 got=협업 세션 rule=<miss>
+  PASS  [paraphrase,c3]  var-23a9ce87: expected=협업 세션 got=협업 세션 rule=<miss>
+  FAIL  [base,c3]  base-3352a8aa: expected=협업 세션 got=사교 일정 rule=<miss>
+  FAIL  [paraphrase,c3]  var-8e838f7d: expected=협업 세션 got=<bad_response> rule=<miss>
+  FAIL  [paraphrase,c3]  var-4e6acaab: expected=협업 세션 got=<bad_response> rule=<miss>
+  FAIL  [paraphrase,c3]  var-61e31e78: expected=협업 세션 got=<bad_response> rule=<miss>
+  PASS  [base,c3]  base-e14efdea: expected=협업 세션 got=협업 세션 rule=<miss>
+  FAIL  [paraphrase,c3]  var-14f36af4: expected=협업 세션 got=<bad_response> rule=협업 세션
+  FAIL  [paraphrase,c3]  var-4d9adc8f: expected=협업 세션 got=<bad_response> rule=<miss>
+  PASS  [paraphrase,c3]  var-f96683c0: expected=협업 세션 got=협업 세션 rule=협업 세션
+  PASS  [base,c4]  base-2c1fda20: expected=야외 심부름 got=야외 심부름 rule=<miss>
+  PASS  [paraphrase,c4]  var-e53e169a: expected=야외 심부름 got=야외 심부름 rule=<miss>
+  PASS  [paraphrase,c4]  var-a2c82953: expected=야외 심부름 got=야외 심부름 rule=<miss>
+  FAIL  [paraphrase,c4]  var-b641223f: expected=야외 심부름 got=<bad_response> rule=야외 심부름
+  FAIL  [base,c4]  base-f3b5ef40: expected=야외 심부름 got=<bad_response> rule=야외 심부름
+  PASS  [paraphrase,c4]  var-1a08b54b: expected=야외 심부름 got=야외 심부름 rule=야외 심부름
+  FAIL  [paraphrase,c4]  var-ef4f5827: expected=야외 심부름 got=<bad_response> rule=야외 심부름
+  FAIL  [paraphrase,c4]  var-cf9e7bfa: expected=야외 심부름 got=<bad_response> rule=야외 심부름
+  PASS  [base,c4]  base-5e146514: expected=야외 심부름 got=야외 심부름 rule=야외 심부름
+  PASS  [paraphrase,c4]  var-e3640ae3: expected=야외 심부름 got=야외 심부름 rule=야외 심부름
+  PASS  [paraphrase,c4]  var-a70432f0: expected=야외 심부름 got=야외 심부름 rule=야외 심부름
+  PASS  [paraphrase,c4]  var-80823c56: expected=야외 심부름 got=야외 심부름 rule=야외 심부름
+  FAIL  [base,c4]  base-1d699407: expected=야외 심부름 got=<bad_response> rule=야외 심부름
+  FAIL  [paraphrase,c4]  var-ce8f3305: expected=야외 심부름 got=<bad_response> rule=야외 심부름
+  FAIL  [paraphrase,c4]  var-ba96308d: expected=야외 심부름 got=<bad_response> rule=야외 심부름
+  FAIL  [paraphrase,c4]  var-830f9873: expected=야외 심부름 got=<bad_response> rule=야외 심부름
+  FAIL  [base,c4]  base-590116f7: expected=야외 심부름 got=<bad_response> rule=<miss>
+  FAIL  [paraphrase,c4]  var-378dcc58: expected=야외 심부름 got=<bad_response> rule=<miss>
+  FAIL  [paraphrase,c4]  var-55b7ac0c: expected=야외 심부름 got=<bad_response> rule=<miss>
+  FAIL  [base,c5]  base-59418e4a: expected=콘서트 행사 got=<bad_response> rule=<miss>
+  PASS  [paraphrase,c5]  var-f9a3032f: expected=콘서트 행사 got=콘서트 행사 rule=콘서트 행사
+  PASS  [paraphrase,c5]  var-190a0ab2: expected=콘서트 행사 got=콘서트 행사 rule=<miss>
+  PASS  [paraphrase,c5]  var-48043917: expected=콘서트 행사 got=콘서트 행사 rule=<miss>
+  PASS  [base,c5]  base-f7f30940: expected=콘서트 행사 got=콘서트 행사 rule=<miss>
+  PASS  [paraphrase,c5]  var-6e2f304e: expected=콘서트 행사 got=콘서트 행사 rule=<miss>
+  FAIL  [paraphrase,c5]  var-988972db: expected=콘서트 행사 got=<bad_response> rule=콘서트 행사
+  FAIL  [base,c5]  base-f225cc08: expected=콘서트 행사 got=<bad_response> rule=<miss>
+  PASS  [paraphrase,c5]  var-37e3944e: expected=콘서트 행사 got=콘서트 행사 rule=<miss>
+  PASS  [paraphrase,c5]  var-d0f2e91c: expected=콘서트 행사 got=콘서트 행사 rule=콘서트 행사
+  PASS  [base,c5]  base-fd113b08: expected=콘서트 행사 got=콘서트 행사 rule=<miss>
+  PASS  [paraphrase,c5]  var-0506900b: expected=콘서트 행사 got=콘서트 행사 rule=콘서트 행사
+  PASS  [paraphrase,c5]  var-2ab86822: expected=콘서트 행사 got=콘서트 행사 rule=<miss>
+  PASS  [base,c5]  base-72977952: expected=콘서트 행사 got=콘서트 행사 rule=콘서트 행사
+  PASS  [paraphrase,c5]  var-555a51f0: expected=콘서트 행사 got=콘서트 행사 rule=콘서트 행사
+  PASS  [paraphrase,c5]  var-82d77c9c: expected=콘서트 행사 got=콘서트 행사 rule=콘서트 행사
+  PASS  [paraphrase,c5]  var-25f52652: expected=콘서트 행사 got=콘서트 행사 rule=콘서트 행사
+  FAIL  [base,c6]  base-af6f2145: expected=업무 활동 got=<bad_response> rule=<miss>
+  FAIL  [paraphrase,c6]  var-67c652b2: expected=업무 활동 got=<bad_response> rule=<miss>
+  FAIL  [paraphrase,c6]  var-36ce9cbf: expected=업무 활동 got=<bad_response> rule=<miss>
+  FAIL  [paraphrase,c6]  var-f57a3b4b: expected=업무 활동 got=<bad_response> rule=<miss>
+  FAIL  [base,c6]  base-c2fe008d: expected=업무 활동 got=<bad_response> rule=<miss>
+  FAIL  [paraphrase,c6]  var-c90f0d50: expected=업무 활동 got=<bad_response> rule=<miss>
+  FAIL  [paraphrase,c6]  var-d4eea8d1: expected=업무 활동 got=<error:OpenAI 400: {
+  "error": {
+    "message": "Could not finish the message because max_tokens or model output limit was reached. Please try again with higher max_tokens.",
+    "type": "invalid_request_error",
+    "p> rule=<miss>
+  PASS  [base,c6]  base-219cc959: expected=업무 활동 got=업무 활동 rule=업무 활동
+  FAIL  [paraphrase,c6]  var-782b2e7b: expected=업무 활동 got=<bad_response> rule=업무 활동
+  PASS  [paraphrase,c6]  var-625ff0b2: expected=업무 활동 got=업무 활동 rule=업무 활동
+  PASS  [paraphrase,c6]  var-ed0c1ca1: expected=업무 활동 got=업무 활동 rule=업무 활동
+  FAIL  [base,c6]  base-5d19b1e4: expected=업무 활동 got=<bad_response> rule=<miss>
+  FAIL  [paraphrase,c6]  var-34526b8d: expected=업무 활동 got=<bad_response> rule=<miss>
+  FAIL  [paraphrase,c6]  var-0985cee0: expected=업무 활동 got=<bad_response> rule=<miss>
+  FAIL  [paraphrase,c6]  var-95fc6f59: expected=업무 활동 got=<bad_response> rule=<miss>
+  FAIL  [base,c6]  base-48a8cbe2: expected=업무 활동 got=<bad_response> rule=업무 활동
+  FAIL  [paraphrase,c6]  var-7f427134: expected=업무 활동 got=<bad_response> rule=업무 활동
+  FAIL  [paraphrase,c6]  var-29136d5a: expected=업무 활동 got=<bad_response> rule=업무 활동
+  FAIL  [paraphrase,c6]  var-e8e2998c: expected=업무 활동 got=<bad_response> rule=업무 활동
+  PASS  [base,c6]  base-1f9681f5: expected=업무 활동 got=업무 활동 rule=업무 활동
+  PASS  [paraphrase,c6]  var-e4886871: expected=업무 활동 got=업무 활동 rule=업무 활동
+  PASS  [paraphrase,c6]  var-5c9e658a: expected=업무 활동 got=업무 활동 rule=업무 활동
+  PASS  [paraphrase,c6]  var-f539418b: expected=업무 활동 got=업무 활동 rule=업무 활동
+  FAIL  [base,c6]  base-e89aaf14: expected=업무 활동 got=<bad_response> rule=업무 활동
+  FAIL  [paraphrase,c6]  var-939e8979: expected=업무 활동 got=<bad_response> rule=업무 활동
+  PASS  [paraphrase,c6]  var-cfd592ec: expected=업무 활동 got=업무 활동 rule=업무 활동
+  PASS  [paraphrase,c6]  var-a1982e72: expected=업무 활동 got=업무 활동 rule=업무 활동
+  FAIL  [base,c6,boundary]  base-be2b321c: expected=업무 활동 got=<bad_response> rule=업무 활동
+  FAIL  [paraphrase,c6,boundary]  var-06188868: expected=업무 활동 got=<bad_response> rule=업무 활동
+  FAIL  [paraphrase,c6,boundary]  var-bdf42f1c: expected=업무 활동 got=<bad_response> rule=업무 활동
+  PASS  [base,c6]  base-93e8c6f6: expected=업무 활동 got=업무 활동 rule=업무 활동
+  PASS  [paraphrase,c6]  var-aa25734a: expected=업무 활동 got=업무 활동 rule=업무 활동
+  PASS  [paraphrase,c6]  var-65a131e2: expected=업무 활동 got=업무 활동 rule=업무 활동
+  FAIL  [paraphrase,c6]  var-82ac0d23: expected=업무 활동 got=<bad_response> rule=업무 활동
+  PASS  [base,c6]  base-6fd23579: expected=업무 활동 got=업무 활동 rule=업무 활동
+  FAIL  [paraphrase,c6]  var-19bb15f8: expected=업무 활동 got=<bad_response> rule=업무 활동
+  PASS  [paraphrase,c6]  var-786c5612: expected=업무 활동 got=업무 활동 rule=업무 활동
+  PASS  [paraphrase,c6]  var-b97e4733: expected=업무 활동 got=업무 활동 rule=업무 활동
+  FAIL  [base,c6,boundary]  base-5e4fd8c6: expected=업무 활동 got=<bad_response> rule=업무 활동
+  FAIL  [paraphrase,c6,boundary]  var-071cbf6a: expected=업무 활동 got=<bad_response> rule=업무 활동
+  FAIL  [paraphrase,c6,boundary]  var-4af6b893: expected=업무 활동 got=<bad_response> rule=업무 활동
+  FAIL  [paraphrase,c6,boundary]  var-6c47c334: expected=업무 활동 got=협업 세션 rule=업무 활동
+  FAIL  [base,c6]  base-fe869b61: expected=업무 활동 got=<bad_response> rule=<miss>
+  FAIL  [paraphrase,c6]  var-95f0fcda: expected=업무 활동 got=<bad_response> rule=<miss>
+  FAIL  [paraphrase,c6]  var-34b5333e: expected=업무 활동 got=<bad_response> rule=<miss>
+  FAIL  [paraphrase,c6]  var-bac15c43: expected=업무 활동 got=<bad_response> rule=<miss>
+  FAIL  [base,c7]  base-50ad096b: expected=사교 일정 got=<bad_response> rule=<miss>
+  PASS  [paraphrase,c7]  var-64bf5491: expected=사교 일정 got=사교 일정 rule=사교 일정
+  FAIL  [paraphrase,c7]  var-4df452f4: expected=사교 일정 got=<bad_response> rule=<miss>
+  PASS  [paraphrase,c7]  var-365a4c3f: expected=사교 일정 got=사교 일정 rule=사교 일정
+  FAIL  [base,c7]  base-5490d8f9: expected=사교 일정 got=<bad_response> rule=사교 일정
+  FAIL  [paraphrase,c7]  var-e062f7bb: expected=사교 일정 got=<bad_response> rule=학업 수업
+  FAIL  [paraphrase,c7]  var-b2692ab5: expected=사교 일정 got=<bad_response> rule=사교 일정
+  FAIL  [paraphrase,c7]  var-da2c16f7: expected=사교 일정 got=<bad_response> rule=<miss>
+  FAIL  [base,c7]  base-27242232: expected=사교 일정 got=<bad_response> rule=<miss>
+  PASS  [paraphrase,c7]  var-c3b87465: expected=사교 일정 got=사교 일정 rule=<miss>
+  PASS  [paraphrase,c7]  var-04177959: expected=사교 일정 got=사교 일정 rule=사교 일정
+  PASS  [paraphrase,c7]  var-23af79d2: expected=사교 일정 got=사교 일정 rule=사교 일정
+  FAIL  [base,c7]  base-9dbc6608: expected=사교 일정 got=<bad_response> rule=학업 수업
+  FAIL  [paraphrase,c7]  var-c540648e: expected=사교 일정 got=<bad_response> rule=<miss>
+  FAIL  [paraphrase,c7]  var-5ac0f3ad: expected=사교 일정 got=<bad_response> rule=학업 수업
+  FAIL  [paraphrase,c7]  var-b2571d05: expected=사교 일정 got=<bad_response> rule=학업 수업
+  PASS  [base,c7]  base-5a5f4c94: expected=사교 일정 got=사교 일정 rule=<miss>
+  FAIL  [paraphrase,c7]  var-2d8840bb: expected=사교 일정 got=<bad_response> rule=<miss>
+  FAIL  [paraphrase,c7]  var-25764116: expected=사교 일정 got=<bad_response> rule=<miss>
+  FAIL  [paraphrase,c7]  var-38001a09: expected=사교 일정 got=<bad_response> rule=<miss>
+  PASS  [base,c7]  base-8f358d8d: expected=사교 일정 got=사교 일정 rule=<miss>
+  PASS  [paraphrase,c7]  var-add83440: expected=사교 일정 got=사교 일정 rule=<miss>
+  FAIL  [paraphrase,c7]  var-3f34d188: expected=사교 일정 got=<bad_response> rule=<miss>
+  PASS  [paraphrase,c7]  var-6e7ca679: expected=사교 일정 got=사교 일정 rule=<miss>
+  PASS  [base,c8]  base-e981ac90: expected=미디어 소비 got=미디어 소비 rule=미디어 소비
+  PASS  [paraphrase,c8]  var-7391035a: expected=미디어 소비 got=미디어 소비 rule=미디어 소비
+  PASS  [paraphrase,c8]  var-c490154c: expected=미디어 소비 got=미디어 소비 rule=미디어 소비
+  PASS  [paraphrase,c8]  var-b80a77ec: expected=미디어 소비 got=미디어 소비 rule=미디어 소비
+  PASS  [base,c8]  base-bf695fcf: expected=미디어 소비 got=미디어 소비 rule=<miss>
+  PASS  [paraphrase,c8]  var-e3839bd3: expected=미디어 소비 got=미디어 소비 rule=<miss>
+  PASS  [paraphrase,c8]  var-cd87968a: expected=미디어 소비 got=미디어 소비 rule=<miss>
+  PASS  [paraphrase,c8]  var-6d7a1f2b: expected=미디어 소비 got=미디어 소비 rule=미디어 소비
+  PASS  [base,c9]  base-cf8c03a3: expected=학업 수업 got=학업 수업 rule=학업 수업
+  PASS  [paraphrase,c9]  var-52908b65: expected=학업 수업 got=학업 수업 rule=학업 수업
+  FAIL  [paraphrase,c9]  var-69bb1a06: expected=학업 수업 got=<bad_response> rule=학업 수업
+  FAIL  [paraphrase,c9]  var-1ee635e1: expected=학업 수업 got=<bad_response> rule=학업 수업
+  FAIL  [base,c9]  base-38aa7137: expected=학업 수업 got=<bad_response> rule=<miss>
+  FAIL  [paraphrase,c9]  var-0f70c139: expected=학업 수업 got=<bad_response> rule=<miss>
+  FAIL  [paraphrase,c9]  var-cc9ba6c3: expected=학업 수업 got=<bad_response> rule=<miss>
+  FAIL  [paraphrase,c9]  var-0c86a22d: expected=학업 수업 got=<bad_response> rule=<miss>
+  FAIL  [base,c9]  base-7ba5196d: expected=학업 수업 got=<bad_response> rule=학업 수업
+  FAIL  [paraphrase,c9]  var-2b1ac716: expected=학업 수업 got=<bad_response> rule=학업 수업
+  FAIL  [paraphrase,c9]  var-f8889615: expected=학업 수업 got=<bad_response> rule=학업 수업
+  FAIL  [paraphrase,c9]  var-de2b6101: expected=학업 수업 got=<bad_response> rule=사교 일정
+  FAIL  [base,c9]  base-23553b43: expected=학업 수업 got=<bad_response> rule=학업 수업
+  PASS  [paraphrase,c9]  var-582ed3c1: expected=학업 수업 got=학업 수업 rule=학업 수업
+  FAIL  [paraphrase,c9]  var-29b520be: expected=학업 수업 got=<bad_response> rule=학업 수업
+  FAIL  [paraphrase,c9]  var-67547a94: expected=학업 수업 got=<bad_response> rule=학업 수업
+  PASS  [base,c9]  base-0da7fff8: expected=학업 수업 got=학업 수업 rule=학업 수업
+  PASS  [paraphrase,c9]  var-3da27727: expected=학업 수업 got=학업 수업 rule=학업 수업
+  FAIL  [paraphrase,c9]  var-178c7991: expected=학업 수업 got=<bad_response> rule=학업 수업
+  PASS  [paraphrase,c9]  var-53e699f6: expected=학업 수업 got=학업 수업 rule=학업 수업
+
+Pass: 89/192 (46.4%)
+Rule leg: hit=117/192 (60.9%), pass=110/192 (57.3%)
+
+Ledger row appended: /home/shine/projects/autocolor_for_calendar/.claude/worktrees/verify-classification-model/evals/agent-results.json
