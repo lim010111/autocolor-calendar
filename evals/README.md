@@ -50,6 +50,11 @@ Exit code is `1` when any case tagged `user-report-*` fails OR overall
 pass-rate falls below 90% — suitable as a manual pre-merge gate for prompt
 edits. Otherwise `0`.
 
+Set `LANGFUSE_PUBLIC_KEY` / `LANGFUSE_SECRET_KEY` in `.dev.vars` to mirror
+each case into Langfuse as a per-case trace; the runner prints a
+`Langfuse run: <url>` line on success. Soft-dep — eval still runs and
+gates without it. See [ADR-0001](../docs/decisions/0001-langfuse-eval-only.md).
+
 ### Cost
 
 Per run: ~20 cases × (~3K input + ≤64 completion tokens) ≈ 60K input +
@@ -121,6 +126,15 @@ in stdout and in the ledger row's `notes`. `--task-file` is opt-in; calling
 the runner with no args still drives the original
 `evals/tasks/classification-semantic.json` regression suite (same 90% gate,
 same `user-report-*` blocking).
+
+Before the first Layer 4 invocation, upload the per-language datasets
+into Langfuse via `pnpm tsx evals/scripts/sync-langfuse-dataset.ts all`
+(idempotent upsert by `case.id`, rerun after every dataset rebuild). With
+`LANGFUSE_*` keys present in `.dev.vars`, the runner then links each
+trace to its dataset item and prints a `Langfuse run: <url>` line that
+groups all 192 traces — see
+[ADR-0001](../docs/decisions/0001-langfuse-eval-only.md). Same soft-dep
+posture as Layer 3.
 
 Per-run cost (Layer 4): ~192 cases × 4 langs × ≤300 tokens against
 `gpt-5.4-nano` ≈ $0.5 total. Build cost: < $3 (embed + label + augment +
