@@ -24,10 +24,12 @@
  */
 import { promises as fs } from "node:fs";
 import { execSync } from "node:child_process";
+import { createHash, randomUUID } from "node:crypto";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { config as loadEnv } from "dotenv";
+import { LangfuseClient } from "@langfuse/client";
 
 import { classifyEvent, type Category } from "../../src/services/classifier";
 import type { CalendarEvent } from "../../src/services/googleCalendar";
@@ -161,8 +163,28 @@ type CaseResult = {
   pass: boolean;
   expected: string;
   got: string;
+  // §4 trace-payload fields (per ADR-0001). Populated for every case so a
+  // downstream sink (e.g. Langfuse) can read them without re-running the
+  // model. `got` keeps the human-readable normalised form for stdout +
+  // ledger; `parsed` keeps the parser's raw return so the trace can show
+  // `null` (miss) vs `undefined` (bad_response) faithfully.
+  parsed: string | null | undefined;
+  rawResponse: string;
+  httpStatus: number;
+  latencyMs: number;
+  attempts: number;
+  promptSummary: string;
+  // First 16 hex chars of sha256(systemPromptText). Same value for every
+  // case in a run; carried here so a per-case trace stands alone.
+  promptSha256Prefix: string;
   // Populated only when --include-rule-leg is set.
   rule?: { hit: boolean; categoryName: string | null; pass: boolean };
+};
+
+type OpenAiCallTelemetry = {
+  rawBody: string;
+  httpStatus: number;
+  latencyMs: number;
 };
 
 function requireApiKey(): string {
@@ -173,6 +195,278 @@ function requireApiKey(): string {
     );
   }
   return k;
+}
+
+// ── Langfuse sink (ADR-0001) ────────────────────────────────────────────
+//
+// Soft-dep observability for the eval runner. Failure to construct the
+// client, send a trace, or flush at end-of-run MUST NOT change the merge-
+// gate exit code, stdout PASS/FAIL block, or ledger row — those are
+// determined exclusively from the in-memory `CaseResult[]`. The sink emits
+// at most one warn line per failure category and latches off on init
+// failure so a missing key does not flood stderr with N case errors.
+//
+// Mechanism: the legacy `client.api.ingestion.batch` endpoint accepts
+// trace-create + span-create + score-create events in one call. The
+// dataset-item linkage is a separate `datasetRunItems.create` call
+// (only fired when the suite has a recognised `lang`). No OTel setup —
+// `@langfuse/tracing` is not used here.
+const SUPPORTED_LANGS_FOR_LANGFUSE = ["en", "ko", "zh-CN", "zh-TW"] as const;
+const LANGFUSE_DATASET_PREFIX = "autocolor-classification";
+
+function stripQuotes(v: string | undefined): string | undefined {
+  if (v === undefined) return undefined;
+  return v.replace(/^"|"$/g, "");
+}
+
+type LangfuseSinkConfig = {
+  runName: string;
+  runDescription: string;
+  datasetName: string | null;
+};
+
+type LangfuseRecordPayload = {
+  caseResult: CaseResult;
+  runOpts: {
+    model: string;
+    promptVersion: ClassifierPromptVersion;
+    reasoningEffort: string | undefined;
+    maxCompletionTokens: number;
+    lang: string | null;
+  };
+};
+
+class LangfuseSink {
+  private client: LangfuseClient | null = null;
+  private latchedOff = false;
+  private cfg: LangfuseSinkConfig;
+  private firstTraceId: string | null = null;
+  private baseUrl: string | null = null;
+  private successCount = 0;
+
+  constructor(cfg: LangfuseSinkConfig) {
+    this.cfg = cfg;
+  }
+
+  /**
+   * Lazy-init: returns the client if keys are present and the constructor
+   * succeeds; otherwise latches off (silently — keys absent is a valid
+   * state per ADR-0001, not a failure). Init errors with keys *present*
+   * emit one warn and latch.
+   */
+  private ensureClient(): LangfuseClient | null {
+    if (this.client) return this.client;
+    if (this.latchedOff) return null;
+    const publicKey = stripQuotes(process.env["LANGFUSE_PUBLIC_KEY"]);
+    const secretKey = stripQuotes(process.env["LANGFUSE_SECRET_KEY"]);
+    const baseUrl =
+      stripQuotes(process.env["LANGFUSE_BASE_URL"]) ||
+      "https://cloud.langfuse.com";
+    if (!publicKey || !secretKey) {
+      this.latchedOff = true;
+      return null;
+    }
+    try {
+      this.client = new LangfuseClient({ publicKey, secretKey, baseUrl });
+      this.baseUrl = baseUrl;
+      return this.client;
+    } catch (err) {
+      console.warn(
+        `langfuse: client init failed (${err instanceof Error ? err.message : String(err)}); telemetry disabled for this run`,
+      );
+      this.latchedOff = true;
+      return null;
+    }
+  }
+
+  async record(p: LangfuseRecordPayload): Promise<void> {
+    const client = this.ensureClient();
+    if (!client) return;
+    const { caseResult: cr, runOpts } = p;
+    const traceId = randomUUID();
+    const spanId = randomUUID();
+    const scoreId = randomUUID();
+    if (!this.firstTraceId) this.firstTraceId = traceId;
+    const traceName = `classify ${cr.id}`;
+    const outcome =
+      cr.got.startsWith("<error:") ? "error"
+        : cr.got === "<bad_response>" ? "bad_response"
+        : cr.got === "none" ? "miss"
+        : "hit";
+    const ts = new Date().toISOString();
+    const startTime = new Date(Date.now() - cr.latencyMs).toISOString();
+    const endTime = ts;
+
+    // The post-redactEventForLlm user-message JSON is already serialised
+    // in `promptSummary`. Re-parse it for the trace `input` so the UI
+    // shows structured data rather than a string blob.
+    let traceInput: unknown;
+    try {
+      traceInput = JSON.parse(cr.promptSummary);
+    } catch {
+      traceInput = cr.promptSummary;
+    }
+    const traceOutput = { parsed: cr.parsed ?? null, raw_response: cr.rawResponse };
+    const metadata = {
+      prompt_version: runOpts.promptVersion,
+      prompt_sha256_prefix: cr.promptSha256Prefix,
+      model: runOpts.model,
+      reasoning_effort: runOpts.reasoningEffort ?? null,
+      max_completion_tokens: runOpts.maxCompletionTokens,
+      lang: runOpts.lang,
+      case_id: cr.id,
+      case_tag: cr.tag,
+      attempts: cr.attempts,
+      latency_ms: cr.latencyMs,
+      http_status: cr.httpStatus,
+      outcome,
+    };
+
+    try {
+      await client.api.ingestion.batch({
+        batch: [
+          {
+            type: "trace-create",
+            id: randomUUID(),
+            timestamp: ts,
+            body: {
+              id: traceId,
+              timestamp: ts,
+              name: traceName,
+              input: traceInput,
+              output: traceOutput,
+              metadata,
+              tags: [
+                `lang:${runOpts.lang ?? "n/a"}`,
+                `prompt:${runOpts.promptVersion}`,
+                `model:${runOpts.model}`,
+                `outcome:${outcome}`,
+              ],
+            },
+          },
+          {
+            type: "span-create",
+            id: randomUUID(),
+            timestamp: ts,
+            body: {
+              id: spanId,
+              traceId,
+              name: "openai.chat.completions",
+              startTime,
+              endTime,
+              input: traceInput,
+              output: traceOutput,
+              metadata,
+            },
+          },
+          {
+            type: "score-create",
+            id: randomUUID(),
+            timestamp: ts,
+            body: {
+              id: scoreId,
+              traceId,
+              name: "pass",
+              value: cr.pass ? 1 : 0,
+              dataType: "NUMERIC",
+              comment: cr.pass ? undefined : `expected=${cr.expected} got=${cr.got}`,
+            },
+          },
+        ],
+      });
+      this.successCount++;
+    } catch (err) {
+      this.warnOnce(
+        "trace_post",
+        `langfuse: trace post failed (${err instanceof Error ? err.message : String(err)})`,
+      );
+      return; // skip dataset link if the trace itself failed
+    }
+
+    // Layer 4 only — Layer 3's hand-crafted suite has no Langfuse dataset.
+    if (this.cfg.datasetName) {
+      const datasetItemId = `${runOpts.lang}-${cr.id}`;
+      try {
+        await client.api.datasetRunItems.create({
+          runName: this.cfg.runName,
+          runDescription: this.cfg.runDescription,
+          datasetItemId,
+          traceId,
+        });
+      } catch (err) {
+        this.warnOnce(
+          "dataset_link",
+          `langfuse: dataset run-item link failed (${err instanceof Error ? err.message : String(err)})`,
+        );
+      }
+    }
+  }
+
+  private warnedKinds = new Set<string>();
+  private warnOnce(kind: string, msg: string): void {
+    if (this.warnedKinds.has(kind)) return;
+    this.warnedKinds.add(kind);
+    console.warn(msg);
+  }
+
+  /**
+   * End-of-run hook. Returns a UI URL when one can be derived, else null.
+   * Failure to derive a URL is non-fatal — the eval always exits on its
+   * in-memory results, never on Langfuse state. For Layer 4 we look up
+   * the projectId once and build a dataset-run URL that groups all of
+   * the run's traces; for Layer 3 (no dataset) we fall back to the first
+   * trace URL.
+   */
+  async finalize(): Promise<string | null> {
+    const client = this.client;
+    if (!client) return null;
+    if (this.successCount === 0) return null;
+    if (this.cfg.datasetName && this.baseUrl) {
+      try {
+        const [run, projects] = await Promise.all([
+          client.api.datasets.getRun(this.cfg.datasetName, this.cfg.runName),
+          client.api.projects.get(),
+        ]);
+        const projectId = projects.data?.[0]?.id;
+        if (projectId) {
+          return `${this.baseUrl}/project/${projectId}/datasets/${run.datasetId}/runs/${run.id}`;
+        }
+      } catch (err) {
+        this.warnOnce(
+          "run_url",
+          `langfuse: run URL fetch failed (${err instanceof Error ? err.message : String(err)})`,
+        );
+      }
+    }
+    if (this.baseUrl && this.firstTraceId) {
+      return `${this.baseUrl}/trace/${this.firstTraceId}`;
+    }
+    return null;
+  }
+}
+
+function gitShortSha(): string {
+  // Already exists for the ledger row; re-using the helper avoids re-shelling.
+  return gitSha();
+}
+
+function buildLangfuseSinkConfig(
+  suite: EvalSuite,
+  args: CliArgs,
+): LangfuseSinkConfig {
+  const sha = gitShortSha();
+  const langSuffix = suite.lang ? `-${suite.lang}` : "";
+  const effortSuffix = args.reasoningEffort ? `-${args.reasoningEffort}` : "";
+  const runName = `${sha}${langSuffix}-${args.promptVersion}${effortSuffix}`;
+  const description =
+    `Run ${runName} (model=${args.model}, prompt=${args.promptVersion}` +
+    (args.reasoningEffort ? `, reasoning_effort=${args.reasoningEffort}` : "") +
+    `, dataset=${path.relative(ROOT, args.taskFile)})`;
+  const datasetName =
+    suite.lang && (SUPPORTED_LANGS_FOR_LANGFUSE as readonly string[]).includes(suite.lang)
+      ? `${LANGFUSE_DATASET_PREFIX}-${suite.lang}`
+      : null;
+  return { runName, runDescription: description, datasetName };
 }
 
 function gitSha(): string {
@@ -214,9 +508,11 @@ async function callOpenAi(
   reasoningEffort: string | undefined,
   maxCompletionTokens: number,
   model: string,
+  telemetry: OpenAiCallTelemetry,
 ): Promise<string> {
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), TIMEOUT_MS);
+  const start = Date.now();
   try {
     const body: Record<string, unknown> = {
       model,
@@ -246,17 +542,24 @@ async function callOpenAi(
       body: JSON.stringify(body),
       signal: ctrl.signal,
     });
+    const rawBody = await res.text();
+    telemetry.rawBody = rawBody;
+    telemetry.httpStatus = res.status;
+    telemetry.latencyMs = Date.now() - start;
     if (!res.ok) {
-      const body = await res.text();
-      throw new Error(`OpenAI ${res.status}: ${body.slice(0, 200)}`);
+      throw new Error(`OpenAI ${res.status}: ${rawBody.slice(0, 200)}`);
     }
-    const json = (await res.json()) as {
-      choices?: Array<{ message?: { content?: string } }>;
-    };
+    let json: { choices?: Array<{ message?: { content?: string } }> };
+    try {
+      json = JSON.parse(rawBody);
+    } catch {
+      throw new Error("missing content");
+    }
     const content = json.choices?.[0]?.message?.content;
     if (typeof content !== "string") throw new Error("missing content");
     return content;
   } finally {
+    if (telemetry.latencyMs === 0) telemetry.latencyMs = Date.now() - start;
     clearTimeout(timer);
   }
 }
@@ -288,15 +591,30 @@ async function runCase(
   }
 
   const messages = buildPrompt(event, cats, opts.promptVersion);
+  const promptSummary = messages[1]?.content ?? "";
+  const promptSha256Prefix = createHash("sha256")
+    .update(messages[0]?.content ?? "")
+    .digest("hex")
+    .slice(0, 16);
+  const telemetry: OpenAiCallTelemetry = { rawBody: "", httpStatus: 0, latencyMs: 0 };
   let got: string;
+  let parsed: string | null | undefined;
   try {
-    const raw = await callOpenAi(apiKey, messages, opts.reasoningEffort, opts.maxCompletionTokens, opts.model);
-    const parsed = parseCategoryName(raw);
+    const raw = await callOpenAi(
+      apiKey,
+      messages,
+      opts.reasoningEffort,
+      opts.maxCompletionTokens,
+      opts.model,
+      telemetry,
+    );
+    parsed = parseCategoryName(raw);
     if (parsed === undefined) got = "<bad_response>";
     else if (parsed === null) got = "none";
     else got = parsed;
   } catch (err) {
     got = `<error:${err instanceof Error ? err.message : String(err)}>`;
+    parsed = undefined;
   }
   const result: CaseResult = {
     id: c.id,
@@ -304,6 +622,13 @@ async function runCase(
     expected: c.expected.category_name,
     got,
     pass: got === c.expected.category_name,
+    parsed,
+    rawResponse: telemetry.rawBody,
+    httpStatus: telemetry.httpStatus,
+    latencyMs: telemetry.latencyMs,
+    attempts: 1,
+    promptSummary,
+    promptSha256Prefix,
   };
   if (rule) result.rule = rule;
   return result;
@@ -390,6 +715,15 @@ async function main(): Promise<void> {
       `(threshold=${threshold}, dataset=${path.relative(ROOT, args.taskFile)})…\n`,
   );
 
+  const langfuseSink = new LangfuseSink(buildLangfuseSinkConfig(suite, args));
+  const runOpts = {
+    model: args.model,
+    promptVersion: args.promptVersion,
+    reasoningEffort: args.reasoningEffort,
+    maxCompletionTokens: args.maxCompletionTokens,
+    lang: suite.lang ?? null,
+  };
+
   const results: CaseResult[] = [];
   for (const c of suite.cases) {
     const r = await runCase(apiKey, c, {
@@ -407,6 +741,7 @@ async function main(): Promise<void> {
     console.log(
       `  ${mark}  [${r.tag}]  ${r.id}: expected=${r.expected} got=${r.got}${ruleSuffix}`,
     );
+    await langfuseSink.record({ caseResult: r, runOpts });
   }
 
   const passCount = results.filter((r) => r.pass).length;
@@ -450,6 +785,9 @@ async function main(): Promise<void> {
     args.promptVersion,
   );
   console.log(`\nLedger row appended: ${RESULTS_FILE}`);
+
+  const langfuseUrl = await langfuseSink.finalize();
+  if (langfuseUrl) console.log(`Langfuse run: ${langfuseUrl}`);
 
   if (blockingFails.length > 0 || passRate < threshold) {
     process.exit(1);
