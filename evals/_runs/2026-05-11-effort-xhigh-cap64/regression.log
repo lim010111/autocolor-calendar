@@ -1,0 +1,41 @@
+◇ injected env (10) from .dev.vars // tip: ⌘ multiple files { path: ['.env.local', '.env'] }
+Running 20 cases against gpt-5.4-nano effort=xhigh (threshold=0.9, dataset=evals/tasks/classification-semantic.json)…
+
+  FAIL  [hypernym,user-report-2026-05-08]  user-report-meal-breakfast: expected=Meal got=<bad_response>
+  FAIL  [hypernym,user-report-2026-05-08]  user-report-meal-lunch: expected=Meal got=<error:OpenAI 400: {
+  "error": {
+    "message": "Could not finish the message because max_tokens or model output limit was reached. Please try again with higher max_tokens.",
+    "type": "invalid_request_error",
+    "p>
+  FAIL  [morphology,paraphrase,user-report-2026-05-08]  user-report-move-getting-ready: expected=Move got=<bad_response>
+  FAIL  [negative,user-report-2026-05-08]  user-report-meal-meeting-negative: expected=none got=<bad_response>
+  PASS  [hypernym]  hypernym-meal-dinner: expected=Meal got=Meal
+  FAIL  [hypernym]  hypernym-exercise-yoga: expected=Exercise got=<bad_response>
+  PASS  [hypernym]  hypernym-travel-flight: expected=Travel got=Travel
+  PASS  [morphology]  morphology-run-running: expected=Run got=Run
+  PASS  [morphology]  morphology-study-studied: expected=Study got=Study
+  FAIL  [paraphrase]  paraphrase-move-going-out: expected=Move got=<bad_response>
+  FAIL  [paraphrase]  paraphrase-meal-eat: expected=Meal got=<bad_response>
+  FAIL  [cross-lingual]  cross-lingual-en-ko-meal-breakfast: expected=식사 got=<bad_response>
+  FAIL  [cross-lingual]  cross-lingual-ko-en-meal-asachimsiksa: expected=Meal got=<bad_response>
+  FAIL  [cross-lingual]  cross-lingual-zh-en-exercise-yoga: expected=运动 got=<bad_response>
+  PASS  [cross-lingual]  cross-lingual-en-ko-meeting: expected=회의 got=회의
+  PASS  [negative]  negative-exercise-coffee: expected=none got=none
+  FAIL  [negative]  negative-meal-news: expected=none got=<bad_response>
+  FAIL  [negative,metaphorical]  negative-aspirational-not-actual: expected=none got=<bad_response>
+  FAIL  [priority,tie-resolution]  priority-tie-meeting-first: expected=Meeting got=<bad_response>
+  FAIL  [smoke]  smoke-single-category-clear-fit: expected=Meeting got=<bad_response>
+
+Pass: 6/20 (30.0%)
+
+⚠ 4 blocking case(s) failed (cases tagged user-report-*) — merge BLOCKED:
+   user-report-meal-breakfast: expected=Meal got=<bad_response>
+   user-report-meal-lunch: expected=Meal got=<error:OpenAI 400: {
+  "error": {
+    "message": "Could not finish the message because max_tokens or model output limit was reached. Please try again with higher max_tokens.",
+    "type": "invalid_request_error",
+    "p>
+   user-report-move-getting-ready: expected=Move got=<bad_response>
+   user-report-meal-meeting-negative: expected=none got=<bad_response>
+
+Ledger row appended: /home/shine/projects/autocolor_for_calendar/evals/agent-results.json

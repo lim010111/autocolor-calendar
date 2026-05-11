@@ -382,18 +382,56 @@ keyword `"Get ready"`. Anti-overstretch is explicit: token-overlap-only
 domain mismatches (`"Meeting"` ↔ `"Meal"`) and metaphorical / aspirational
 matches are rejected.
 
-**Tie-resolution: priority-first, then `none`.** Categories arrive
-pre-sorted by `(priority ASC, created_at ASC)` from `classifierChain`, and
-the prompt instructs the model to prefer the first listed category when two
-are equally good — falling through to `"none"` only on real ambiguity. This
-mirrors the rule leg's `priority` first-win so behavior across the two legs
-stays consistent.
+**Tie-resolution: six tie-breakers (a–f), priority-first sits at (e), `none` at (f).**
+The prompt's `# Edge cases and tie-breakers` section lists six rules applied in order
+when more than one category matches the activity nucleus identified in step 1. See
+`buildPrompt` system prompt for normative text; this list is the contract index:
+
+- (a) **Activity nucleus beats decoration** — participant names / topics / tools / venues
+  are decoration; only matter under (b)–(d).
+- (b) **Setting beats topic** — "panel discussion" / "workshop" / "meetup" / "lecture"
+  are settings; pick the setting category over the topic category.
+- (c) **Practice beats performance** — "jam session" / "rehearsal" / "practice" /
+  "scrimmage" / "drill" route to a preparation category over a performance category
+  when both exist.
+- (d) **Participant cues are conditional** — "with <person>" boosts a relational/social
+  category ONLY when one is in the list; otherwise ignore and stay on the activity
+  nucleus.
+- (e) **User-defined priority** — categories arrive pre-sorted by `(priority ASC,
+  created_at ASC)` from `classifierChain`; if (a)–(d) leave a tie, prefer the first
+  listed. Mirrors the rule leg's `priority` first-win so behavior across legs stays
+  consistent.
+- (f) **Genuine ambiguity → "none"** — fall through to `"none"` only after (a)–(e)
+  cannot pick a single category. Do not guess.
+
+Rules (b)–(d) were added 2026-05-11 to address `evals/report.md` §7.2 Pattern B
+("cross-cluster confusion") which accounted for 70% of baseline fails. Rules are
+deliberately *category-agnostic* — they reference category meaning *types*
+(setting, topic, preparation, performance, relational), never specific cluster
+names from `evals/datasets/_meta/clusters.json`, because user categories are
+arbitrary at runtime.
+
+**Decision rule edits are eval-gated.** Any change to the matching rules, the step
+order, the six tie-breakers, or the few-shot examples in `buildPrompt` must:
+
+1. Pass the regression guard (`pnpm tsx evals/scripts/run-classification-eval.ts` —
+   ≥90% AND zero `user-report-*` fail).
+2. Pass the 4-language baseline (en/ko/zh-CN/zh-TW) re-run with `--include-rule-leg`
+   per `evals/report.md` §8.1, with delta ≥ -1%p on each language vs the latest
+   baseline ledger row.
+3. Pass the Pattern B named-summary grep (en stdout): "Jam session" / "Brainstorming
+   with Luke and Patrick" / "Web3 panel discussion" / "Yoga class with Emily" must
+   all PASS.
+
+A delta worse than -2%p triggers the `evals/report.md` §8.3 per-pattern stdout grep
+analysis. New ledger rows are append-only; never overwrite prior baselines.
 
 **Cross-lingual coverage is carried by the prompt rule + user-authored
 keywords; `users.locale` is NOT transmitted to the model.** The few-shot
-covers ko↔en and zh↔en pairs explicitly. A category whose keywords already
-include multiple languages (e.g. `["Meal", "식사"]`) is the recommended UX
-shape — no DB or route change is needed for additional locales.
+covers ko↔en and zh↔en pairs explicitly (Examples 1–2 in `buildPrompt`).
+A category whose keywords already include multiple languages
+(e.g. `["Meal", "식사"]`) is the recommended UX shape — no DB or route
+change is needed for additional locales.
 
 Response schema stays single-field (`{ "category_name": string }`). Adding
 a `confidence` or `reasoning` field would push verbose Korean category

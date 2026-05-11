@@ -1,0 +1,79 @@
+◇ injected env (10) from .dev.vars // tip: ⌘ enable debugging { debug: true }
+Running 192 cases against gpt-5.4-nano lang=en effort=xhigh (threshold=0.7, dataset=evals/datasets/en/classification.json)…
+
+  FAIL  [base,c0]  base-0e16a037: expected=Tech Talks got=<bad_response> rule=Tech Talks
+  FAIL  [paraphrase,c0]  var-20369901: expected=Tech Talks got=<bad_response> rule=Tech Talks
+  FAIL  [paraphrase,c0]  var-7858066a: expected=Tech Talks got=<bad_response> rule=Tech Talks
+  FAIL  [paraphrase,c0]  var-96b97d6a: expected=Tech Talks got=<bad_response> rule=Tech Talks
+  FAIL  [base,c0]  base-92b81b7c: expected=Tech Talks got=<bad_response> rule=Tech Talks
+  FAIL  [paraphrase,c0]  var-f2cae3fd: expected=Tech Talks got=<bad_response> rule=Tech Talks
+  FAIL  [paraphrase,c0]  var-04beccff: expected=Tech Talks got=<bad_response> rule=Tech Talks
+  FAIL  [paraphrase,c0]  var-d61c73e5: expected=Tech Talks got=<bad_response> rule=Tech Talks
+  FAIL  [base,c0]  base-658111f3: expected=Tech Talks got=<bad_response> rule=Tech Talks
+  FAIL  [paraphrase,c0]  var-3403e53b: expected=Tech Talks got=<bad_response> rule=Tech Talks
+  FAIL  [paraphrase,c0]  var-73ac7be8: expected=Tech Talks got=<bad_response> rule=Tech Talks
+  FAIL  [paraphrase,c0]  var-f19b644a: expected=Tech Talks got=<bad_response> rule=Tech Talks
+  FAIL  [base,c0]  base-ab5013f7: expected=Tech Talks got=<bad_response> rule=Tech Talks
+  FAIL  [paraphrase,c0]  var-c326f7d4: expected=Tech Talks got=<bad_response> rule=Tech Talks
+  FAIL  [paraphrase,c0]  var-cd66ff5c: expected=Tech Talks got=<bad_response> rule=Tech Talks
+  FAIL  [paraphrase,c0]  var-f9310e15: expected=Tech Talks got=<bad_response> rule=Tech Talks
+  FAIL  [base,c0]  base-16acd1b1: expected=Tech Talks got=<bad_response> rule=Tech Talks
+  FAIL  [paraphrase,c0]  var-dc723ad5: expected=Tech Talks got=<bad_response> rule=Tech Talks
+  FAIL  [paraphrase,c0]  var-0092c088: expected=Tech Talks got=<bad_response> rule=Tech Talks
+  FAIL  [paraphrase,c0]  var-0ae8d78b: expected=Tech Talks got=<bad_response> rule=Tech Talks
+  FAIL  [base,c1]  base-2575fa88: expected=Nightlife Entertainment got=<bad_response> rule=Nightlife Entertainment
+  FAIL  [paraphrase,c1]  var-b0eab386: expected=Nightlife Entertainment got=<bad_response> rule=Nightlife Entertainment
+  FAIL  [paraphrase,c1]  var-6bb4ba61: expected=Nightlife Entertainment got=<bad_response> rule=Nightlife Entertainment
+  FAIL  [base,c1]  base-6ab2e640: expected=Nightlife Entertainment got=<bad_response> rule=Nightlife Entertainment
+  FAIL  [paraphrase,c1]  var-bae48ac0: expected=Nightlife Entertainment got=<bad_response> rule=Nightlife Entertainment
+  FAIL  [paraphrase,c1]  var-dd3a9b09: expected=Nightlife Entertainment got=<bad_response> rule=Nightlife Entertainment
+  FAIL  [base,c1]  base-df56519a: expected=Nightlife Entertainment got=<bad_response> rule=Nightlife Entertainment
+  FAIL  [paraphrase,c1]  var-6ac5d99b: expected=Nightlife Entertainment got=<bad_response> rule=Nightlife Entertainment
+  FAIL  [paraphrase,c1]  var-93e1fabd: expected=Nightlife Entertainment got=<bad_response> rule=Nightlife Entertainment
+  FAIL  [paraphrase,c1]  var-525558fd: expected=Nightlife Entertainment got=<bad_response> rule=Nightlife Entertainment
+  FAIL  [base,c2]  base-29c63f88: expected=Home Wellness got=<bad_response> rule=<miss>
+  FAIL  [paraphrase,c2]  var-0a891dba: expected=Home Wellness got=<bad_response> rule=<miss>
+  FAIL  [paraphrase,c2]  var-687fdd03: expected=Home Wellness got=<bad_response> rule=<miss>
+  FAIL  [paraphrase,c2]  var-46039515: expected=Home Wellness got=<bad_response> rule=<miss>
+  FAIL  [base,c2]  base-c4acab11: expected=Home Wellness got=<bad_response> rule=<miss>
+  FAIL  [paraphrase,c2]  var-efc55deb: expected=Home Wellness got=<bad_response> rule=<miss>
+  FAIL  [paraphrase,c2]  var-8e6d0916: expected=Home Wellness got=<bad_response> rule=<miss>
+  FAIL  [paraphrase,c2]  var-8f5edc33: expected=Home Wellness got=<bad_response> rule=<miss>
+  FAIL  [base,c2]  base-8b28a73f: expected=Home Wellness got=<bad_response> rule=<miss>
+  FAIL  [paraphrase,c2]  var-8d7da9ce: expected=Home Wellness got=<bad_response> rule=<miss>
+  FAIL  [paraphrase,c2]  var-6e787f49: expected=Home Wellness got=<bad_response> rule=<miss>
+  FAIL  [paraphrase,c2]  var-8076922f: expected=Home Wellness got=<bad_response> rule=<miss>
+  FAIL  [base,c3]  base-5e1dc511: expected=Collaborative Sessions got=<bad_response> rule=<miss>
+  FAIL  [paraphrase,c3]  var-5124d442: expected=Collaborative Sessions got=<bad_response> rule=<miss>
+  FAIL  [paraphrase,c3]  var-b767c50a: expected=Collaborative Sessions got=<bad_response> rule=<miss>
+  FAIL  [paraphrase,c3]  var-ad9223b1: expected=Collaborative Sessions got=<bad_response> rule=<miss>
+  FAIL  [base,c3]  base-8d6d4ec6: expected=Collaborative Sessions got=<bad_response> rule=<miss>
+  FAIL  [paraphrase,c3]  var-5014257f: expected=Collaborative Sessions got=<bad_response> rule=<miss>
+  FAIL  [paraphrase,c3]  var-708144db: expected=Collaborative Sessions got=<bad_response> rule=<miss>
+  FAIL  [paraphrase,c3]  var-23a9ce87: expected=Collaborative Sessions got=<bad_response> rule=<miss>
+  FAIL  [base,c3]  base-3352a8aa: expected=Collaborative Sessions got=<bad_response> rule=<miss>
+  FAIL  [paraphrase,c3]  var-8e838f7d: expected=Collaborative Sessions got=<bad_response> rule=<miss>
+  FAIL  [paraphrase,c3]  var-4e6acaab: expected=Collaborative Sessions got=<bad_response> rule=<miss>
+  FAIL  [paraphrase,c3]  var-61e31e78: expected=Collaborative Sessions got=<bad_response> rule=<miss>
+  FAIL  [base,c3]  base-e14efdea: expected=Collaborative Sessions got=<bad_response> rule=<miss>
+  FAIL  [paraphrase,c3]  var-14f36af4: expected=Collaborative Sessions got=<bad_response> rule=Collaborative Sessions
+  FAIL  [paraphrase,c3]  var-4d9adc8f: expected=Collaborative Sessions got=<bad_response> rule=<miss>
+  FAIL  [paraphrase,c3]  var-f96683c0: expected=Collaborative Sessions got=<bad_response> rule=Collaborative Sessions
+  FAIL  [base,c4]  base-2c1fda20: expected=Outdoor Errands got=<bad_response> rule=Outdoor Errands
+  FAIL  [paraphrase,c4]  var-e53e169a: expected=Outdoor Errands got=<bad_response> rule=Outdoor Errands
+  FAIL  [paraphrase,c4]  var-a2c82953: expected=Outdoor Errands got=<bad_response> rule=Outdoor Errands
+  FAIL  [paraphrase,c4]  var-b641223f: expected=Outdoor Errands got=<bad_response> rule=Outdoor Errands
+  FAIL  [base,c4]  base-f3b5ef40: expected=Outdoor Errands got=<bad_response> rule=Outdoor Errands
+  FAIL  [paraphrase,c4]  var-1a08b54b: expected=Outdoor Errands got=<bad_response> rule=Outdoor Errands
+  FAIL  [paraphrase,c4]  var-ef4f5827: expected=Outdoor Errands got=<bad_response> rule=Outdoor Errands
+  FAIL  [paraphrase,c4]  var-cf9e7bfa: expected=Outdoor Errands got=<bad_response> rule=Outdoor Errands
+  FAIL  [base,c4]  base-5e146514: expected=Outdoor Errands got=<bad_response> rule=Outdoor Errands
+  FAIL  [paraphrase,c4]  var-e3640ae3: expected=Outdoor Errands got=<bad_response> rule=Outdoor Errands
+  FAIL  [paraphrase,c4]  var-a70432f0: expected=Outdoor Errands got=<bad_response> rule=Outdoor Errands
+  FAIL  [paraphrase,c4]  var-80823c56: expected=Outdoor Errands got=<bad_response> rule=Outdoor Errands
+  FAIL  [base,c4]  base-1d699407: expected=Outdoor Errands got=<bad_response> rule=Outdoor Errands
+  FAIL  [paraphrase,c4]  var-ce8f3305: expected=Outdoor Errands got=<bad_response> rule=Outdoor Errands
+  FAIL  [paraphrase,c4]  var-ba96308d: expected=Outdoor Errands got=<bad_response> rule=Outdoor Errands
+  FAIL  [paraphrase,c4]  var-830f9873: expected=Outdoor Errands got=<bad_response> rule=Outdoor Errands
+  FAIL  [base,c4]  base-590116f7: expected=Outdoor Errands got=<bad_response> rule=Outdoor Errands
+  FAIL  [paraphrase,c4]  var-378dcc58: expected=Outdoor Errands got=<bad_response> rule=Outdoor Errands

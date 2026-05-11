@@ -1,0 +1,3 @@
+◇ injected env (10) from .dev.vars // tip: ⌘ override existing { override: true }
+Running 192 cases against gpt-5.4-nano lang=zh-CN effort=medium (threshold=0.7, dataset=evals/datasets/zh-CN/classification.json)…
+
