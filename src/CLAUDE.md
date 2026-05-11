@@ -426,6 +426,35 @@ order, the six tie-breakers, or the few-shot examples in `buildPrompt` must:
 A delta worse than -2%p triggers the `evals/report.md` §8.3 per-pattern stdout grep
 analysis. New ledger rows are append-only; never overwrite prior baselines.
 
+**Prompt body lives in versioned `.md` files, not inline literals.** Source-of-truth
+files are `prompts/classifier/system.v<N>.md` (with YAML frontmatter — see
+`prompts/README.md`); `loadClassifierPrompt(version)` in
+`src/services/prompts/classifierPrompts.ts` resolves a version to its body via a
+code-generated bundle (`src/services/prompts/_generated.ts`, emitted by
+`scripts/embed-prompts.ts`). Adding or editing a prompt:
+
+1. Author or edit `prompts/classifier/system.v<N+1>.md` (preserve all eight
+   test-assertion keywords from `src/__tests__/llmClassifier.test.ts:77-167` —
+   `[email]` / `[url]` / `[phone]` / `"none"` / `category_name` /
+   `hypernym|hyponym` / `morphology|inflection` / `paraphrase` /
+   `cross-lingual` / `surface overlaps` / `metaphorical|aspirational` /
+   `priority order` / `listed first` / `Breakfast` / `Meal` /
+   `Getting ready` / `Get ready` / `아침식사` / `运动|健身|瑜伽` /
+   `Plan to run for president`).
+2. Run `pnpm embed-prompts` to refresh `_generated.ts`.
+3. Add `v<N+1>` to the `ClassifierPromptVersion` union and `REGISTRY` in
+   `classifierPrompts.ts`; bump `DEFAULT_CLASSIFIER_PROMPT_VERSION` only when
+   the eval-gate (steps 1-3 above) has passed.
+4. `pnpm verify-prompts` (CI guard) runs `embed-prompts` then
+   `git diff --exit-code` against `_generated.ts` — out-of-sync files fail the
+   build.
+
+**Never delete prior version files.** They are the rollback path: the eval
+runner accepts `--prompt-version v2` (etc.) to reproduce a prior baseline
+without a git checkout. The same convention applies to the dataset-builder
+prompts under `prompts/dataset-builder/`, loaded by
+`evals/dataset-builder/src/dataset_builder/prompts.py:load_prompt(name, version)`.
+
 **Cross-lingual coverage is carried by the prompt rule + user-authored
 keywords; `users.locale` is NOT transmitted to the model.** The few-shot
 covers ko↔en and zh↔en pairs explicitly (Examples 1–2 in `buildPrompt`).

@@ -30,6 +30,7 @@ from .config import (
     dataset_path,
 )
 from .openai_client import get_client
+from .prompts import load_prompt
 
 _LANG_NAMES = {
     "ko": "Korean (한국어)",
@@ -37,13 +38,9 @@ _LANG_NAMES = {
     "zh-TW": "Traditional Chinese (繁體中文)",
 }
 
-_SYSTEM_PROMPT = (
-    "You translate short English calendar text into {lang_name} for an "
-    "evaluation dataset. Keep the translation natural, concise, and faithful "
-    "to the activity. Do not transliterate; do not add commentary; preserve "
-    "proper nouns (people, brands, song titles) when they would not be "
-    "translated in normal usage. Output only the translation in JSON."
-)
+# Source of truth: prompts/dataset-builder/translate.system.v1.md
+# ({lang_name} is substituted via .format at call-site.)
+_SYSTEM_PROMPT = load_prompt("translate")
 
 _RESPONSE_SCHEMA = {
     "type": "object",

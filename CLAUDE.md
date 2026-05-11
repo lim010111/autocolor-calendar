@@ -12,6 +12,7 @@ backend; the GAS Add-on is UI only (no local triggers, no fallback rules).
 | `gas/` | Google Apps Script Add-on UI (CardService) | [gas/CLAUDE.md](gas/CLAUDE.md) |
 | `drizzle/` | Postgres migrations (schema source: `src/db/schema.ts`) | [drizzle/CLAUDE.md](drizzle/CLAUDE.md) |
 | `scripts/` | Operator-side TS scripts (secrets, failure-sim) | [scripts/CLAUDE.md](scripts/CLAUDE.md) |
+| `prompts/` | Versioned LLM prompts (classifier + dataset-builder) | [prompts/README.md](prompts/README.md) |
 | `docs/` | Architecture, runbooks, marketplace assets | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) |
 
 ## Project documentation

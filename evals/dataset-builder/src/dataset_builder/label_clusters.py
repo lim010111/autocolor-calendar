@@ -17,22 +17,15 @@ from .config import (
     LABEL_REASONING_EFFORT,
 )
 from .openai_client import get_client
+from .prompts import load_prompt
 
 # Google Calendar color IDs are 1..11; cluster index + 1 keeps us in range
 # without a stable lookup table — the IDs themselves don't matter for the
 # classifier, but the schema requires a string in {"1".."11"}.
 _COLOR_IDS = [str(i + 1) for i in range(11)]
 
-_SYSTEM_PROMPT = (
-    "You name calendar event categories for an evaluation dataset. "
-    "Given a tight cluster of event titles, return a short English category "
-    "name (1-3 words, Title Case) and 6-10 lowercase keywords that, when "
-    "substring-matched against natural calendar titles, would reliably bucket "
-    "the events into this category. Keywords must be short (1-2 words), "
-    "lowercase, deduplicated, and chosen to maximise coverage of paraphrases "
-    "without overlapping other obvious categories. Do not include the cluster "
-    "members verbatim as keywords."
-)
+# Source of truth: prompts/dataset-builder/label-clusters.system.v1.md
+_SYSTEM_PROMPT = load_prompt("label-clusters")
 
 _RESPONSE_SCHEMA = {
     "type": "object",

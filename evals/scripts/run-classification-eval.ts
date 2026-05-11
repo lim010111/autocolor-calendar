@@ -31,7 +31,13 @@ import { config as loadEnv } from "dotenv";
 
 import { classifyEvent, type Category } from "../../src/services/classifier";
 import type { CalendarEvent } from "../../src/services/googleCalendar";
-import { buildPrompt, parseCategoryName } from "../../src/services/llmClassifier";
+import {
+  buildPrompt,
+  DEFAULT_CLASSIFIER_PROMPT_VERSION,
+  LLM_MODEL as PRODUCTION_MODEL,
+  parseCategoryName,
+  type ClassifierPromptVersion,
+} from "../../src/services/llmClassifier";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -39,11 +45,11 @@ const ROOT = path.resolve(__dirname, "..", "..");
 const DEFAULT_TASK_FILE = path.join(ROOT, "evals/tasks/classification-semantic.json");
 const RESULTS_FILE = path.join(ROOT, "evals/agent-results.json");
 const OPENAI_URL = "https://api.openai.com/v1/chat/completions";
-const MODEL = "gpt-5.4-nano";
 const DEFAULT_MAX_COMPLETION_TOKENS = 64;
 const TIMEOUT_MS = 60_000;
 const DEFAULT_PASS_RATE_THRESHOLD = 0.9;
 const DEFAULT_BLOCKING_TAG_PREFIX = "user-report-";
+const VALID_PROMPT_VERSIONS: readonly ClassifierPromptVersion[] = ["v2", "v3"];
 
 loadEnv({ path: path.join(ROOT, ".dev.vars") });
 
@@ -70,6 +76,8 @@ type CliArgs = {
   includeRuleLeg: boolean;
   reasoningEffort: string | undefined;
   maxCompletionTokens: number;
+  model: string;
+  promptVersion: ClassifierPromptVersion;
 };
 
 function parseArgs(argv: string[]): CliArgs {
@@ -78,6 +86,8 @@ function parseArgs(argv: string[]): CliArgs {
     includeRuleLeg: false,
     reasoningEffort: undefined,
     maxCompletionTokens: DEFAULT_MAX_COMPLETION_TOKENS,
+    model: PRODUCTION_MODEL,
+    promptVersion: DEFAULT_CLASSIFIER_PROMPT_VERSION,
   };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
@@ -97,9 +107,24 @@ function parseArgs(argv: string[]): CliArgs {
       const n = Number(next);
       if (!Number.isFinite(n) || n <= 0) throw new Error(`invalid --max-completion-tokens: ${next}`);
       out.maxCompletionTokens = n;
+    } else if (a === "--model") {
+      const next = argv[++i];
+      if (!next) throw new Error("--model requires a value");
+      out.model = next;
+    } else if (a === "--prompt-version") {
+      const next = argv[++i];
+      if (!next) throw new Error("--prompt-version requires a value");
+      if (!(VALID_PROMPT_VERSIONS as readonly string[]).includes(next)) {
+        throw new Error(
+          `invalid --prompt-version: ${next} (expected one of ${VALID_PROMPT_VERSIONS.join(", ")})`,
+        );
+      }
+      out.promptVersion = next as ClassifierPromptVersion;
     } else if (a === "--help" || a === "-h") {
       console.log(
-        "Usage: run-classification-eval.ts [--task-file <path>] [--include-rule-leg] [--reasoning-effort <value>] [--max-completion-tokens <n>]",
+        "Usage: run-classification-eval.ts [--task-file <path>] [--include-rule-leg] " +
+          "[--reasoning-effort <value>] [--max-completion-tokens <n>] " +
+          "[--model <id>] [--prompt-version v2|v3]",
       );
       process.exit(0);
     } else {
@@ -188,12 +213,13 @@ async function callOpenAi(
   messages: Array<{ role: "system" | "user"; content: string }>,
   reasoningEffort: string | undefined,
   maxCompletionTokens: number,
+  model: string,
 ): Promise<string> {
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), TIMEOUT_MS);
   try {
     const body: Record<string, unknown> = {
-      model: MODEL,
+      model,
       messages,
       max_completion_tokens: maxCompletionTokens,
       response_format: {
@@ -242,6 +268,8 @@ async function runCase(
     includeRuleLeg: boolean;
     reasoningEffort: string | undefined;
     maxCompletionTokens: number;
+    model: string;
+    promptVersion: ClassifierPromptVersion;
   },
 ): Promise<CaseResult> {
   const cats = c.categories.map(buildCategory);
@@ -259,10 +287,10 @@ async function runCase(
     }
   }
 
-  const messages = buildPrompt(event, cats);
+  const messages = buildPrompt(event, cats, opts.promptVersion);
   let got: string;
   try {
-    const raw = await callOpenAi(apiKey, messages, opts.reasoningEffort, opts.maxCompletionTokens);
+    const raw = await callOpenAi(apiKey, messages, opts.reasoningEffort, opts.maxCompletionTokens, opts.model);
     const parsed = parseCategoryName(raw);
     if (parsed === undefined) got = "<bad_response>";
     else if (parsed === null) got = "none";
@@ -289,6 +317,8 @@ async function appendLedgerRow(
   ruleStats: { ruleHits: number; rulePassCount: number } | null,
   reasoningEffort: string | undefined,
   maxCompletionTokens: number,
+  model: string,
+  promptVersion: ClassifierPromptVersion,
 ): Promise<void> {
   const ledger = JSON.parse(await fs.readFile(RESULTS_FILE, "utf8")) as Ledger;
   const passCount = results.filter((r) => r.pass).length;
@@ -298,12 +328,23 @@ async function appendLedgerRow(
   const langSuffix = suite.lang ? `-${suite.lang}` : "";
   const effortSuffix = reasoningEffort ? `-effort-${reasoningEffort}` : "";
   const capSuffix = maxCompletionTokens !== DEFAULT_MAX_COMPLETION_TOKENS ? `-cap${maxCompletionTokens}` : "";
+  // Only stamp the model + prompt-version into the run_id when the runner
+  // drifts off production defaults — otherwise the prior baseline ids keep
+  // their original shape so dashboards / docs/ai-readiness-map.html joins
+  // do not break.
+  const modelSuffix = model === PRODUCTION_MODEL ? "" : `-${model}`;
+  const promptSuffix =
+    promptVersion === DEFAULT_CLASSIFIER_PROMPT_VERSION ? "" : `-prompt-${promptVersion}`;
   // Preserve the historical ledger tool string for the original hand-crafted
   // suite (no `lang` field) so trend reads in docs/ai-readiness-map.html
   // don't have to merge two ids.
   const tool = suite.lang ? `${suite.task}${langSuffix}-eval` : "classification-semantic-eval";
   const datasetBasename = path.relative(ROOT, taskFile);
-  const noteParts = [`model=${MODEL}`, `dataset=${datasetBasename}`];
+  const noteParts = [
+    `model=${model}`,
+    `prompt_version=${promptVersion}`,
+    `dataset=${datasetBasename}`,
+  ];
   if (suite.lang) noteParts.push(`lang=${suite.lang}`);
   if (reasoningEffort) noteParts.push(`reasoning_effort=${reasoningEffort}`);
   if (maxCompletionTokens !== DEFAULT_MAX_COMPLETION_TOKENS) noteParts.push(`max_completion_tokens=${maxCompletionTokens}`);
@@ -315,7 +356,7 @@ async function appendLedgerRow(
   }
   if (blockingFailCount > 0) noteParts.push(`blocking_failed=${blockingFailCount}`);
   ledger.runs.push({
-    run_id: `${today}-${suite.task}${langSuffix}${effortSuffix}${capSuffix}`,
+    run_id: `${today}-${suite.task}${langSuffix}${modelSuffix}${promptSuffix}${effortSuffix}${capSuffix}`,
     timestamp: new Date().toISOString(),
     git_sha: gitSha(),
     kind: "task_pass_rate",
@@ -345,7 +386,7 @@ async function main(): Promise<void> {
   const langLabel = suite.lang ? ` lang=${suite.lang}` : "";
   const effortLabel = args.reasoningEffort ? ` effort=${args.reasoningEffort}` : "";
   console.log(
-    `Running ${suite.cases.length} cases against ${MODEL}${langLabel}${effortLabel} ` +
+    `Running ${suite.cases.length} cases against ${args.model} (prompt=${args.promptVersion})${langLabel}${effortLabel} ` +
       `(threshold=${threshold}, dataset=${path.relative(ROOT, args.taskFile)})…\n`,
   );
 
@@ -355,6 +396,8 @@ async function main(): Promise<void> {
       includeRuleLeg: args.includeRuleLeg,
       reasoningEffort: args.reasoningEffort,
       maxCompletionTokens: args.maxCompletionTokens,
+      model: args.model,
+      promptVersion: args.promptVersion,
     });
     results.push(r);
     const mark = r.pass ? "PASS" : "FAIL";
@@ -403,6 +446,8 @@ async function main(): Promise<void> {
     ruleStats,
     args.reasoningEffort,
     args.maxCompletionTokens,
+    args.model,
+    args.promptVersion,
   );
   console.log(`\nLedger row appended: ${RESULTS_FILE}`);
 
