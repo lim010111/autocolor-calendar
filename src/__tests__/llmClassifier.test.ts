@@ -112,9 +112,13 @@ describe("buildPrompt", () => {
   });
 
   it("system message contains anti-overstretch (false-positive) guidance", () => {
+    // 2026-05-11 prompt rewrite reworded the token-overlap rejection from
+    // "different domain even if some tokens overlap" to "only the surface
+    // overlaps"; same contract, different wording. Both the surface-overlap
+    // rejection and the metaphorical/aspirational rejection must remain.
     const msgs = buildPrompt(ev(), [cat()]);
     const sys = msgs.find((m) => m.role === "system")!;
-    expect(sys.content).toMatch(/different domain/i);
+    expect(sys.content).toMatch(/surface overlaps|different domain/i);
     expect(sys.content).toMatch(/metaphorical|aspirational/i);
   });
 
@@ -150,10 +154,15 @@ describe("buildPrompt", () => {
     expect(sys.content).toMatch(/运动|健身|瑜伽/);
   });
 
-  it("few-shot includes negative example rejecting token-overlap-only match (Team Meeting)", () => {
+  it("few-shot includes negative example rejecting metaphorical/aspirational match (Plan to run for president)", () => {
+    // 2026-05-11 prompt rewrite: token-overlap negative ("Team Meeting" ≠ "Meal")
+    // moved to prose under "# Critical rule" / "Reject when only the surface
+    // overlaps", and the aspirational negative ("Plan to run for president" ≠
+    // "Run") was promoted to a few-shot to fix the lone regression-guard fail
+    // observed in evals/report.md §6.3 baseline (19/20 → 20/20 target).
     const msgs = buildPrompt(ev(), [cat()]);
     const sys = msgs.find((m) => m.role === "system")!;
-    expect(sys.content).toContain("Team Meeting");
+    expect(sys.content).toContain("Plan to run for president");
     expect(sys.content).toMatch(/"category_name":"none"/);
   });
 

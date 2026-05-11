@@ -1,0 +1,77 @@
+◇ injected env (10) from .dev.vars // tip: ⌘ enable debugging { debug: true }
+Running 192 cases against gpt-5.4-nano lang=ko effort=high (threshold=0.7, dataset=evals/datasets/ko/classification.json)…
+
+  FAIL  [base,c0]  base-0e16a037: expected=기술 강연 got=<bad_response> rule=기술 강연
+  FAIL  [paraphrase,c0]  var-20369901: expected=기술 강연 got=<bad_response> rule=기술 강연
+  FAIL  [paraphrase,c0]  var-7858066a: expected=기술 강연 got=<bad_response> rule=기술 강연
+  FAIL  [paraphrase,c0]  var-96b97d6a: expected=기술 강연 got=<bad_response> rule=기술 강연
+  FAIL  [base,c0]  base-92b81b7c: expected=기술 강연 got=<bad_response> rule=기술 강연
+  FAIL  [paraphrase,c0]  var-f2cae3fd: expected=기술 강연 got=<bad_response> rule=기술 강연
+  FAIL  [paraphrase,c0]  var-04beccff: expected=기술 강연 got=<bad_response> rule=기술 강연
+  FAIL  [paraphrase,c0]  var-d61c73e5: expected=기술 강연 got=<bad_response> rule=기술 강연
+  FAIL  [base,c0]  base-658111f3: expected=기술 강연 got=<bad_response> rule=기술 강연
+  FAIL  [paraphrase,c0]  var-3403e53b: expected=기술 강연 got=<bad_response> rule=기술 강연
+  FAIL  [paraphrase,c0]  var-73ac7be8: expected=기술 강연 got=<error:OpenAI 400: {
+  "error": {
+    "message": "Could not finish the message because max_tokens or model output limit was reached. Please try again with higher max_tokens.",
+    "type": "invalid_request_error",
+    "p> rule=기술 강연
+  FAIL  [paraphrase,c0]  var-f19b644a: expected=기술 강연 got=<bad_response> rule=기술 강연
+  FAIL  [base,c0]  base-ab5013f7: expected=기술 강연 got=<bad_response> rule=기술 강연
+  FAIL  [paraphrase,c0]  var-c326f7d4: expected=기술 강연 got=<bad_response> rule=기술 강연
+  FAIL  [paraphrase,c0]  var-cd66ff5c: expected=기술 강연 got=<bad_response> rule=기술 강연
+  FAIL  [paraphrase,c0]  var-f9310e15: expected=기술 강연 got=<bad_response> rule=기술 강연
+  FAIL  [base,c0]  base-16acd1b1: expected=기술 강연 got=<bad_response> rule=기술 강연
+  FAIL  [paraphrase,c0]  var-dc723ad5: expected=기술 강연 got=<bad_response> rule=기술 강연
+  FAIL  [paraphrase,c0]  var-0092c088: expected=기술 강연 got=<bad_response> rule=기술 강연
+  FAIL  [paraphrase,c0]  var-0ae8d78b: expected=기술 강연 got=<bad_response> rule=기술 강연
+  FAIL  [base,c1]  base-2575fa88: expected=야간 유흥 got=<bad_response> rule=야간 유흥
+  FAIL  [paraphrase,c1]  var-b0eab386: expected=야간 유흥 got=<error:OpenAI 400: {
+  "error": {
+    "message": "Could not finish the message because max_tokens or model output limit was reached. Please try again with higher max_tokens.",
+    "type": "invalid_request_error",
+    "p> rule=야간 유흥
+  FAIL  [paraphrase,c1]  var-6bb4ba61: expected=야간 유흥 got=<bad_response> rule=야간 유흥
+  FAIL  [base,c1]  base-6ab2e640: expected=야간 유흥 got=<bad_response> rule=야간 유흥
+  FAIL  [paraphrase,c1]  var-bae48ac0: expected=야간 유흥 got=<bad_response> rule=야간 유흥
+  FAIL  [paraphrase,c1]  var-dd3a9b09: expected=야간 유흥 got=콘서트 행사 rule=야간 유흥
+  PASS  [base,c1]  base-df56519a: expected=야간 유흥 got=야간 유흥 rule=야간 유흥
+  FAIL  [paraphrase,c1]  var-6ac5d99b: expected=야간 유흥 got=<bad_response> rule=야간 유흥
+  FAIL  [paraphrase,c1]  var-93e1fabd: expected=야간 유흥 got=<error:OpenAI 400: {
+  "error": {
+    "message": "Could not finish the message because max_tokens or model output limit was reached. Please try again with higher max_tokens.",
+    "type": "invalid_request_error",
+    "p> rule=야간 유흥
+  FAIL  [paraphrase,c1]  var-525558fd: expected=야간 유흥 got=<error:OpenAI 400: {
+  "error": {
+    "message": "Could not finish the message because max_tokens or model output limit was reached. Please try again with higher max_tokens.",
+    "type": "invalid_request_error",
+    "p> rule=야간 유흥
+  FAIL  [base,c2]  base-29c63f88: expected=홈 웰니스 got=<bad_response> rule=<miss>
+  FAIL  [paraphrase,c2]  var-0a891dba: expected=홈 웰니스 got=<bad_response> rule=<miss>
+  FAIL  [paraphrase,c2]  var-687fdd03: expected=홈 웰니스 got=<error:OpenAI 400: {
+  "error": {
+    "message": "Could not finish the message because max_tokens or model output limit was reached. Please try again with higher max_tokens.",
+    "type": "invalid_request_error",
+    "p> rule=<miss>
+  FAIL  [paraphrase,c2]  var-46039515: expected=홈 웰니스 got=<bad_response> rule=<miss>
+  FAIL  [base,c2]  base-c4acab11: expected=홈 웰니스 got=<bad_response> rule=<miss>
+  FAIL  [paraphrase,c2]  var-efc55deb: expected=홈 웰니스 got=<bad_response> rule=<miss>
+  FAIL  [paraphrase,c2]  var-8e6d0916: expected=홈 웰니스 got=<bad_response> rule=<miss>
+  FAIL  [paraphrase,c2]  var-8f5edc33: expected=홈 웰니스 got=<bad_response> rule=<miss>
+  FAIL  [base,c2]  base-8b28a73f: expected=홈 웰니스 got=<bad_response> rule=<miss>
+  FAIL  [paraphrase,c2]  var-8d7da9ce: expected=홈 웰니스 got=<error:OpenAI 400: {
+  "error": {
+    "message": "Could not finish the message because max_tokens or model output limit was reached. Please try again with higher max_tokens.",
+    "type": "invalid_request_error",
+    "p> rule=<miss>
+  FAIL  [paraphrase,c2]  var-6e787f49: expected=홈 웰니스 got=<bad_response> rule=<miss>
+  FAIL  [paraphrase,c2]  var-8076922f: expected=홈 웰니스 got=<bad_response> rule=<miss>
+  FAIL  [base,c3]  base-5e1dc511: expected=협업 세션 got=<bad_response> rule=<miss>
+  FAIL  [paraphrase,c3]  var-5124d442: expected=협업 세션 got=<bad_response> rule=사교 일정
+  FAIL  [paraphrase,c3]  var-b767c50a: expected=협업 세션 got=<bad_response> rule=사교 일정
+  FAIL  [paraphrase,c3]  var-ad9223b1: expected=협업 세션 got=<bad_response> rule=<miss>
+  FAIL  [base,c3]  base-8d6d4ec6: expected=협업 세션 got=<bad_response> rule=<miss>
+  FAIL  [paraphrase,c3]  var-5014257f: expected=협업 세션 got=<bad_response> rule=<miss>
+  FAIL  [paraphrase,c3]  var-708144db: expected=협업 세션 got=<bad_response> rule=<miss>
+  FAIL  [paraphrase,c3]  var-23a9ce87: expected=협업 세션 got=<bad_response> rule=<miss>

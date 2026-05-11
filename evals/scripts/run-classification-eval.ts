@@ -40,8 +40,8 @@ const DEFAULT_TASK_FILE = path.join(ROOT, "evals/tasks/classification-semantic.j
 const RESULTS_FILE = path.join(ROOT, "evals/agent-results.json");
 const OPENAI_URL = "https://api.openai.com/v1/chat/completions";
 const MODEL = "gpt-5.4-nano";
-const MAX_COMPLETION_TOKENS = 64;
-const TIMEOUT_MS = 15_000;
+const DEFAULT_MAX_COMPLETION_TOKENS = 64;
+const TIMEOUT_MS = 60_000;
 const DEFAULT_PASS_RATE_THRESHOLD = 0.9;
 const DEFAULT_BLOCKING_TAG_PREFIX = "user-report-";
 
@@ -68,10 +68,17 @@ type EvalSuite = {
 type CliArgs = {
   taskFile: string;
   includeRuleLeg: boolean;
+  reasoningEffort: string | undefined;
+  maxCompletionTokens: number;
 };
 
 function parseArgs(argv: string[]): CliArgs {
-  const out: CliArgs = { taskFile: DEFAULT_TASK_FILE, includeRuleLeg: false };
+  const out: CliArgs = {
+    taskFile: DEFAULT_TASK_FILE,
+    includeRuleLeg: false,
+    reasoningEffort: undefined,
+    maxCompletionTokens: DEFAULT_MAX_COMPLETION_TOKENS,
+  };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     if (a === "--task-file") {
@@ -80,9 +87,19 @@ function parseArgs(argv: string[]): CliArgs {
       out.taskFile = path.isAbsolute(next) ? next : path.resolve(process.cwd(), next);
     } else if (a === "--include-rule-leg") {
       out.includeRuleLeg = true;
+    } else if (a === "--reasoning-effort") {
+      const next = argv[++i];
+      if (!next) throw new Error("--reasoning-effort requires a value");
+      out.reasoningEffort = next;
+    } else if (a === "--max-completion-tokens") {
+      const next = argv[++i];
+      if (!next) throw new Error("--max-completion-tokens requires a value");
+      const n = Number(next);
+      if (!Number.isFinite(n) || n <= 0) throw new Error(`invalid --max-completion-tokens: ${next}`);
+      out.maxCompletionTokens = n;
     } else if (a === "--help" || a === "-h") {
       console.log(
-        "Usage: run-classification-eval.ts [--task-file <path>] [--include-rule-leg]",
+        "Usage: run-classification-eval.ts [--task-file <path>] [--include-rule-leg] [--reasoning-effort <value>] [--max-completion-tokens <n>]",
       );
       process.exit(0);
     } else {
@@ -169,34 +186,38 @@ function buildEvent(c: EvalCase): CalendarEvent {
 async function callOpenAi(
   apiKey: string,
   messages: Array<{ role: "system" | "user"; content: string }>,
+  reasoningEffort: string | undefined,
+  maxCompletionTokens: number,
 ): Promise<string> {
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), TIMEOUT_MS);
   try {
+    const body: Record<string, unknown> = {
+      model: MODEL,
+      messages,
+      max_completion_tokens: maxCompletionTokens,
+      response_format: {
+        type: "json_schema",
+        json_schema: {
+          name: "classification",
+          strict: true,
+          schema: {
+            type: "object",
+            additionalProperties: false,
+            required: ["category_name"],
+            properties: { category_name: { type: "string" } },
+          },
+        },
+      },
+    };
+    if (reasoningEffort !== undefined) body.reasoning_effort = reasoningEffort;
     const res = await fetch(OPENAI_URL, {
       method: "POST",
       headers: {
         authorization: `Bearer ${apiKey}`,
         "content-type": "application/json",
       },
-      body: JSON.stringify({
-        model: MODEL,
-        messages,
-        max_completion_tokens: MAX_COMPLETION_TOKENS,
-        response_format: {
-          type: "json_schema",
-          json_schema: {
-            name: "classification",
-            strict: true,
-            schema: {
-              type: "object",
-              additionalProperties: false,
-              required: ["category_name"],
-              properties: { category_name: { type: "string" } },
-            },
-          },
-        },
-      }),
+      body: JSON.stringify(body),
       signal: ctrl.signal,
     });
     if (!res.ok) {
@@ -217,7 +238,11 @@ async function callOpenAi(
 async function runCase(
   apiKey: string,
   c: EvalCase,
-  opts: { includeRuleLeg: boolean },
+  opts: {
+    includeRuleLeg: boolean;
+    reasoningEffort: string | undefined;
+    maxCompletionTokens: number;
+  },
 ): Promise<CaseResult> {
   const cats = c.categories.map(buildCategory);
   const event = buildEvent(c);
@@ -237,7 +262,7 @@ async function runCase(
   const messages = buildPrompt(event, cats);
   let got: string;
   try {
-    const raw = await callOpenAi(apiKey, messages);
+    const raw = await callOpenAi(apiKey, messages, opts.reasoningEffort, opts.maxCompletionTokens);
     const parsed = parseCategoryName(raw);
     if (parsed === undefined) got = "<bad_response>";
     else if (parsed === null) got = "none";
@@ -262,6 +287,8 @@ async function appendLedgerRow(
   results: CaseResult[],
   blockingFailCount: number,
   ruleStats: { ruleHits: number; rulePassCount: number } | null,
+  reasoningEffort: string | undefined,
+  maxCompletionTokens: number,
 ): Promise<void> {
   const ledger = JSON.parse(await fs.readFile(RESULTS_FILE, "utf8")) as Ledger;
   const passCount = results.filter((r) => r.pass).length;
@@ -269,6 +296,8 @@ async function appendLedgerRow(
   const passRate = total === 0 ? 0 : passCount / total;
   const today = new Date().toISOString().slice(0, 10);
   const langSuffix = suite.lang ? `-${suite.lang}` : "";
+  const effortSuffix = reasoningEffort ? `-effort-${reasoningEffort}` : "";
+  const capSuffix = maxCompletionTokens !== DEFAULT_MAX_COMPLETION_TOKENS ? `-cap${maxCompletionTokens}` : "";
   // Preserve the historical ledger tool string for the original hand-crafted
   // suite (no `lang` field) so trend reads in docs/ai-readiness-map.html
   // don't have to merge two ids.
@@ -276,6 +305,8 @@ async function appendLedgerRow(
   const datasetBasename = path.relative(ROOT, taskFile);
   const noteParts = [`model=${MODEL}`, `dataset=${datasetBasename}`];
   if (suite.lang) noteParts.push(`lang=${suite.lang}`);
+  if (reasoningEffort) noteParts.push(`reasoning_effort=${reasoningEffort}`);
+  if (maxCompletionTokens !== DEFAULT_MAX_COMPLETION_TOKENS) noteParts.push(`max_completion_tokens=${maxCompletionTokens}`);
   if (ruleStats) {
     noteParts.push(
       `rule_hit=${ruleStats.ruleHits}/${total}`,
@@ -284,7 +315,7 @@ async function appendLedgerRow(
   }
   if (blockingFailCount > 0) noteParts.push(`blocking_failed=${blockingFailCount}`);
   ledger.runs.push({
-    run_id: `${today}-${suite.task}${langSuffix}`,
+    run_id: `${today}-${suite.task}${langSuffix}${effortSuffix}${capSuffix}`,
     timestamp: new Date().toISOString(),
     git_sha: gitSha(),
     kind: "task_pass_rate",
@@ -312,14 +343,19 @@ async function main(): Promise<void> {
   const threshold = suite.evaluator?.threshold ?? DEFAULT_PASS_RATE_THRESHOLD;
   const blockingTags = suite.evaluator?.blocking_tags ?? null; // null → default `user-report-` prefix
   const langLabel = suite.lang ? ` lang=${suite.lang}` : "";
+  const effortLabel = args.reasoningEffort ? ` effort=${args.reasoningEffort}` : "";
   console.log(
-    `Running ${suite.cases.length} cases against ${MODEL}${langLabel} ` +
+    `Running ${suite.cases.length} cases against ${MODEL}${langLabel}${effortLabel} ` +
       `(threshold=${threshold}, dataset=${path.relative(ROOT, args.taskFile)})…\n`,
   );
 
   const results: CaseResult[] = [];
   for (const c of suite.cases) {
-    const r = await runCase(apiKey, c, { includeRuleLeg: args.includeRuleLeg });
+    const r = await runCase(apiKey, c, {
+      includeRuleLeg: args.includeRuleLeg,
+      reasoningEffort: args.reasoningEffort,
+      maxCompletionTokens: args.maxCompletionTokens,
+    });
     results.push(r);
     const mark = r.pass ? "PASS" : "FAIL";
     const ruleSuffix = r.rule
@@ -359,7 +395,15 @@ async function main(): Promise<void> {
     }
   }
 
-  await appendLedgerRow(suite, args.taskFile, results, blockingFails.length, ruleStats);
+  await appendLedgerRow(
+    suite,
+    args.taskFile,
+    results,
+    blockingFails.length,
+    ruleStats,
+    args.reasoningEffort,
+    args.maxCompletionTokens,
+  );
   console.log(`\nLedger row appended: ${RESULTS_FILE}`);
 
   if (blockingFails.length > 0 || passRate < threshold) {
