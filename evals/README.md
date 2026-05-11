@@ -165,6 +165,18 @@ rows with their own `tool` / `run_id` and `lang` in `notes`.
   (no event payloads, no query strings).
 - **Score trend.** `docs/ai-readiness-score.json` is the durable trend
   point; CI re-runs the scorer on demand and writes a fresh snapshot.
+- **Per-case trace UI (Langfuse, eval-only).** When `LANGFUSE_PUBLIC_KEY`
+  is set in `.dev.vars`, `run-classification-eval.ts` mirrors each case
+  into Langfuse Cloud (EU) as one trace linked to a dataset item.
+  Datasets `autocolor-classification-{en,ko,zh-CN,zh-TW}` are populated
+  via a dedicated `sync-langfuse-dataset` step under `evals/scripts/`,
+  run once per dataset rebuild (idempotent upsert by `case.id`).
+  The integration is **soft-dep**: SDK failure or unset env never
+  affects the merge-gate exit code or `agent-results.json` ledger row —
+  Langfuse is augmentation, the ledger remains canonical. Scope and
+  trade-offs: [`../docs/decisions/0001-langfuse-eval-only.md`](../docs/decisions/0001-langfuse-eval-only.md).
+  The runtime / Worker path **does NOT** use Langfuse — see
+  [`../src/CLAUDE.md`](../src/CLAUDE.md) "Langfuse trade-off note".
 
 ## Why the bar is "task pass-rate", not "rubric score"
 

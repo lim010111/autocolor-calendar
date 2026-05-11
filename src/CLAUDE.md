@@ -297,15 +297,26 @@ hard-cap 200. Mirrors `/api/stats` window keys (with `24h` added) so
 operators can drill down from the aggregate to the per-event rows in one
 URL hop.
 
-Langfuse trade-off note: the Langfuse-equivalent surface
-(prompt/response trace UI, span hierarchy) was deferred — Langfuse JS v5
-is Node-only (`engines.node >= 20`, `@opentelemetry/sdk-node` dep) and
-the official docs do not endorse Cloudflare Workers. The columns above
-+ the reader route cover the per-event drill-down need without adding
-a third-party processor or the privacy-policy work that follows from
-shipping prompts to a SaaS. Re-evaluate when (a) prompt version
-management, (b) LLM-as-judge, or (c) Workers-blessed Langfuse path
-becomes a need — see TODO §6.3.
+Langfuse trade-off note: the Langfuse-equivalent surface on the **runtime
+path** (prompt/response trace UI inside the Worker) stays deferred —
+`@langfuse/otel` is Node-only (`@opentelemetry/sdk-node` dep) and the
+official docs do not endorse Cloudflare Workers. The columns above + the
+reader route cover the per-event drill-down need on the runtime side
+without adding a third-party processor or the privacy-policy work that
+follows from shipping prompts to a SaaS. Re-evaluate this **runtime**
+decision when (a) prompt version management, (b) LLM-as-judge, or
+(c) Workers-blessed Langfuse path becomes a need — see TODO §6.3.
+
+The **eval surface** is a separate surface and Langfuse landed there
+2026-05-11 — see [`../docs/decisions/0001-langfuse-eval-only.md`](../docs/decisions/0001-langfuse-eval-only.md).
+The SDK is invoked only from `evals/scripts/run-classification-eval.ts`
+(Node/tsx, never the Worker) via `@langfuse/client` + `@langfuse/tracing`
+(fetch-only, no OTel). Soft-dep: `LANGFUSE_*` env unset or SDK failure
+does NOT affect merge-gate exit code or `agent-results.json` ledger row
+generation — same observability-isolation discipline as the tables above.
+Secrets live in `.dev.vars` only and are NOT in `scripts/sync-secrets.ts`
+`REQUIRED_SECRETS` (same pattern as `DIRECT_DATABASE_URL`), so they
+cannot leak into the Worker by accident.
 
 ### `rollback_runs`
 
