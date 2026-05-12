@@ -51,7 +51,14 @@ const DEFAULT_MAX_COMPLETION_TOKENS = 64;
 const TIMEOUT_MS = 60_000;
 const DEFAULT_PASS_RATE_THRESHOLD = 0.9;
 const DEFAULT_BLOCKING_TAG_PREFIX = "user-report-";
-const VALID_PROMPT_VERSIONS: readonly ClassifierPromptVersion[] = ["v2", "v3"];
+const VALID_PROMPT_VERSIONS: readonly ClassifierPromptVersion[] = [
+  "v2",
+  "v3",
+  "v4-light-A",
+  "v4-light-B",
+  "v4-light-C",
+  "v4-ko",
+];
 
 loadEnv({ path: path.join(ROOT, ".dev.vars") });
 
@@ -177,6 +184,13 @@ type CaseResult = {
   // First 16 hex chars of sha256(systemPromptText). Same value for every
   // case in a run; carried here so a per-case trace stands alone.
   promptSha256Prefix: string;
+  // Per-case usage telemetry — populated only on outcomes where the OpenAI
+  // call returned a body (`hit` / `miss` / `bad_response` / `http_error`).
+  // `null` for timeouts and the rare malformed-response case where parsing
+  // `usage` itself fails. Used by §10 nano-prompt-experiment to attribute
+  // cost (reasoning_tokens) to the same case whose accuracy we measure.
+  reasoningTokens: number | null;
+  completionTokens: number | null;
   // Populated only when --include-rule-leg is set.
   rule?: { hit: boolean; categoryName: string | null; pass: boolean };
 };
@@ -185,6 +199,12 @@ type OpenAiCallTelemetry = {
   rawBody: string;
   httpStatus: number;
   latencyMs: number;
+  // §10 nano-prompt-experiment: `completion_tokens_details.reasoning_tokens`
+  // is the o-series / gpt-5-nano hidden reasoning-token count; pairs with
+  // top-level `completion_tokens` to form the (cost, accuracy) frontier
+  // captured in the ledger 4-tuple.
+  reasoningTokens: number | null;
+  completionTokens: number | null;
 };
 
 function requireApiKey(): string {
@@ -546,15 +566,30 @@ async function callOpenAi(
     telemetry.rawBody = rawBody;
     telemetry.httpStatus = res.status;
     telemetry.latencyMs = Date.now() - start;
+    // §10 nano-prompt-experiment: parse usage for BOTH OK and 4xx/5xx
+    // bodies — the error case never produces tokens, but the structure is
+    // identical so the try/catch is cheap and uniform.
+    let usageParsed: {
+      completion_tokens?: number;
+      completion_tokens_details?: { reasoning_tokens?: number };
+    } | undefined;
     if (!res.ok) {
       throw new Error(`OpenAI ${res.status}: ${rawBody.slice(0, 200)}`);
     }
-    let json: { choices?: Array<{ message?: { content?: string } }> };
+    let json: {
+      choices?: Array<{ message?: { content?: string } }>;
+      usage?: typeof usageParsed;
+    };
     try {
       json = JSON.parse(rawBody);
     } catch {
       throw new Error("missing content");
     }
+    usageParsed = json.usage;
+    const reasoning = usageParsed?.completion_tokens_details?.reasoning_tokens;
+    const completion = usageParsed?.completion_tokens;
+    telemetry.reasoningTokens = typeof reasoning === "number" ? reasoning : null;
+    telemetry.completionTokens = typeof completion === "number" ? completion : null;
     const content = json.choices?.[0]?.message?.content;
     if (typeof content !== "string") throw new Error("missing content");
     return content;
@@ -596,7 +631,13 @@ async function runCase(
     .update(messages[0]?.content ?? "")
     .digest("hex")
     .slice(0, 16);
-  const telemetry: OpenAiCallTelemetry = { rawBody: "", httpStatus: 0, latencyMs: 0 };
+  const telemetry: OpenAiCallTelemetry = {
+    rawBody: "",
+    httpStatus: 0,
+    latencyMs: 0,
+    reasoningTokens: null,
+    completionTokens: null,
+  };
   let got: string;
   let parsed: string | null | undefined;
   try {
@@ -629,6 +670,8 @@ async function runCase(
     attempts: 1,
     promptSummary,
     promptSha256Prefix,
+    reasoningTokens: telemetry.reasoningTokens,
+    completionTokens: telemetry.completionTokens,
   };
   if (rule) result.rule = rule;
   return result;
@@ -680,6 +723,33 @@ async function appendLedgerRow(
     );
   }
   if (blockingFailCount > 0) noteParts.push(`blocking_failed=${blockingFailCount}`);
+  // §10 nano-prompt-experiment 4-tuple. `accuracy` is redundant with
+  // `task_pass_rate` but stated explicitly so the report's cost-narrative
+  // table reads stand-alone. Means are computed only over cases that
+  // actually produced a usage payload, so a run with zero successful API
+  // calls reports `null` instead of NaN.
+  const badResponseCount = results.filter((r) => r.got === "<bad_response>").length;
+  const badResponseRate = total === 0 ? 0 : badResponseCount / total;
+  const reasoningSamples = results
+    .map((r) => r.reasoningTokens)
+    .filter((v): v is number => typeof v === "number");
+  const completionSamples = results
+    .map((r) => r.completionTokens)
+    .filter((v): v is number => typeof v === "number");
+  const meanReasoning =
+    reasoningSamples.length === 0
+      ? null
+      : reasoningSamples.reduce((a, b) => a + b, 0) / reasoningSamples.length;
+  const meanCompletion =
+    completionSamples.length === 0
+      ? null
+      : completionSamples.reduce((a, b) => a + b, 0) / completionSamples.length;
+  noteParts.push(
+    `accuracy=${passRate.toFixed(3)}`,
+    `bad_response_rate=${badResponseRate.toFixed(3)}`,
+    `mean_reasoning_tokens=${meanReasoning === null ? "null" : meanReasoning.toFixed(1)}`,
+    `mean_completion_tokens=${meanCompletion === null ? "null" : meanCompletion.toFixed(1)}`,
+  );
   ledger.runs.push({
     run_id: `${today}-${suite.task}${langSuffix}${modelSuffix}${promptSuffix}${effortSuffix}${capSuffix}`,
     timestamp: new Date().toISOString(),
@@ -748,6 +818,31 @@ async function main(): Promise<void> {
   const total = results.length;
   const passRate = total === 0 ? 0 : passCount / total;
   console.log(`\nPass: ${passCount}/${total} (${(passRate * 100).toFixed(1)}%)`);
+
+  // §10 nano-prompt-experiment cost-narrative summary — mirrors the
+  // 4-tuple stamped into the ledger note so the operator sees it without
+  // re-opening agent-results.json.
+  const badResponseCount = results.filter((r) => r.got === "<bad_response>").length;
+  const badResponseRate = total === 0 ? 0 : badResponseCount / total;
+  const reasoningSamples = results
+    .map((r) => r.reasoningTokens)
+    .filter((v): v is number => typeof v === "number");
+  const completionSamples = results
+    .map((r) => r.completionTokens)
+    .filter((v): v is number => typeof v === "number");
+  const fmtMean = (xs: number[]): string =>
+    xs.length === 0 ? "n/a" : (xs.reduce((a, b) => a + b, 0) / xs.length).toFixed(1);
+  const fmtMax = (xs: number[]): string =>
+    xs.length === 0 ? "n/a" : Math.max(...xs).toString();
+  console.log(
+    `bad_response_rate=${badResponseRate.toFixed(3)} (${badResponseCount}/${total})`,
+  );
+  console.log(
+    `reasoning_tokens: mean=${fmtMean(reasoningSamples)} max=${fmtMax(reasoningSamples)} (n=${reasoningSamples.length})`,
+  );
+  console.log(
+    `completion_tokens: mean=${fmtMean(completionSamples)} max=${fmtMax(completionSamples)} (n=${completionSamples.length})`,
+  );
 
   let ruleStats: { ruleHits: number; rulePassCount: number } | null = null;
   if (args.includeRuleLeg) {
