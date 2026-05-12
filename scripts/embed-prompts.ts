@@ -30,8 +30,12 @@ function stripFrontmatter(s: string): string {
 
 function loadClassifierBodies(): Map<string, string> {
   const bodies = new Map<string, string>();
+  // v\d+ is the prefix; suffix supports variant tags like `v4-light-A`,
+  // `v4-ko`, `v4-zh-CN-light-B`. Suffix segments allow letters, digits,
+  // and hyphens (e.g. `zh-CN`, `light-A`).
+  const pattern = /^system\.(v\d+(?:-[A-Za-z0-9-]+)*)\.md$/;
   for (const name of readdirSync(CLASSIFIER_DIR).sort()) {
-    const m = name.match(/^system\.(v\d+)\.md$/);
+    const m = name.match(pattern);
     if (!m) continue;
     const version = m[1]!;
     const raw = readFileSync(join(CLASSIFIER_DIR, name), "utf8");
@@ -51,11 +55,16 @@ function emit(bodies: Map<string, string>): string {
   lines.push(`// Run \`pnpm tsx scripts/embed-prompts.ts\` after editing any source.`);
   lines.push("");
   lines.push(`export const CLASSIFIER_SYSTEM_PROMPTS = {`);
+  // Suffixed variants (`v4-light-A`, `v4-ko`, …) are not valid bare JS
+  // identifiers because of the hyphen; JSON.stringify the key so the
+  // emitted object literal stays well-formed across both shapes.
+  const isBareIdent = (k: string): boolean => /^[A-Za-z_$][A-Za-z0-9_$]*$/.test(k);
   for (const v of versions) {
     const body = bodies.get(v)!;
+    const key = isBareIdent(v) ? v : JSON.stringify(v);
     // String.raw + backtick template would still need backtick escapes;
     // emit JSON.stringify form (one line) so escapes are bullet-proof.
-    lines.push(`  ${v}: ${JSON.stringify(body)},`);
+    lines.push(`  ${key}: ${JSON.stringify(body)},`);
   }
   lines.push(`} as const;`);
   lines.push("");
