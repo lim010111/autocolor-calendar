@@ -16,6 +16,12 @@
 
 zh-CN / zh-TW 두 셀 모두 §4 *"Winner selection 기준 R"* 의 hard gate 를 통과하지 못했다. H3 lang-native semantic 가설은 PR-β 의 ko 결과(`v4-ko` ≡ Wave 6 `v3+low`)에 이어 **중국어 4-language 전체에서 일관되게 기각**. ADR-0002 (`gpt-5.4-nano` lock) 는 모든 4 개 언어에서 prompt-side 우회로가 없음을 통해 강화된다.
 
+> **실험 설계 비대칭 (transparency note).** 본 4-language 비교는 두 개의 다른 prompt dimension 을 섞고 있다.
+> - **en (Cell 1.1a/b/c):** v3 → **경량화 (lighter)** 변형. `v4-light-A` (Radical, 49 lines / 3 ex), `v4-light-B` (Surgical, 87 lines / 5 ex), `v4-light-C` (Compress, 77 lines / 6 ex). v3 의 일부 섹션을 제거/압축한 구조 변형.
+> - **ko (Cell 1.2), zh-CN (Cell 1.3), zh-TW (Cell 1.4):** v3 → **lang-native 번역**. `v4-ko` / `v4-zh-CN` / `v4-zh-TW` (모두 ≈ 120 lines / 5 ex). v3 의 7-section 구조 (Task / Critical rule / Inputs / Exact step order / Edge cases / Output format / Examples) 를 1:1 유지한 채 instructions·examples 만 해당 언어로 번역.
+>
+> 따라서 §5 의 4-language 종합 표는 "동일 prompt 처리가 4 언어에 일관적으로 효과가 있었는가" 가 아니라 "각 언어에서 가장 유망한 prompt dimension 하나만 측정했을 때 nano 가 baseline gate 를 회복하는가" 의 측정이다. 이 비대칭은 planning artifact (`.claude/handoffs/nano-prompt-experiment-2026-05-12.md` §4) 의 설계 의도 — 두 가설 H ("lighter") / H3 ("lang-native") 를 독립 변수 하나씩만 변경해 분리 측정 — 에서 비롯되었다. 비-en 언어에서 "경량화 + lang-native 동시 적용" 셀 (예: `v4-zh-CN-light-B`) 은 본 실험에서 측정되지 않았다 (§7 Open questions 참조).
+
 | Cell | lang | prompt | accuracy | bad_response | mean reasoning tok | mean completion tok | hard gate (acc) | hard gate (bad=0) | verdict |
 |------|------|--------|---------:|-------------:|-------------------:|--------------------:|-----------------|-------------------|---------|
 | 1.3 | zh-CN | `v4-zh-CN` (Bilingual 简体) | 150/192 (**78.1 %**) | 2/192 (**0.010**) | 255.7 | 275.4 | ≥ 81.5 % — ❌ FAIL by 3.4 %p | ❌ FAIL | ❌ no-lift + unsafe |
@@ -98,12 +104,14 @@ zh-CN / zh-TW 두 셀 모두 §4 *"Winner selection 기준 R"* 의 hard gate 를
 
 H3 lang-native semantic 가설의 4-language 검증을 단일 표로 모은다.
 
-| 언어 | prod baseline (v2+5.4-nano+low+cap512) | nano+v3+low+cap1024 (Wave 6) | v4-{light/native}+nano+low+cap1024 (실험) | gate (baseline−5 %p) | gate 결과 |
-|------|------:|------:|------:|------:|------|
-| en (`v4-light-B/C` best) | 90.1 % | n/a (Wave 1 87.0 % @ minimal) | 83.3 % | 85.1 % | ❌ −1.8 %p |
-| ko (`v4-ko`) | 88.5 % | 77.1 % | 77.1 % | 83.5 % | ❌ −6.4 %p (vs prod), ≡ Wave 6 |
-| zh-CN (`v4-zh-CN`) | 86.5 % | 75.0 % | 78.1 % | 81.5 % | ❌ −3.4 %p (vs prod), +3.1 %p (vs Wave 6) + 2 bad_response |
-| zh-TW (`v4-zh-TW`) | 81.8 % | (baseline at minimal 66.1 %) | 74.0 % | 76.8 % | ❌ −2.8 %p (vs prod) |
+| 언어 | dimension | prod baseline (v2+5.4-nano+low+cap512) | nano+v3+low+cap1024 (Wave 6) | v4 변형 +nano+low+cap1024 (실험) | gate (baseline−5 %p) | gate 결과 |
+|------|-----------|------:|------:|------:|------:|------|
+| en | **lighter** (`v4-light-B/C` best, structure-reduced) | 90.1 % | n/a (Wave 1 87.0 % @ minimal) | 83.3 % | 85.1 % | ❌ −1.8 %p |
+| ko | **lang-native** (`v4-ko`, v3 구조 + 한국어 번역) | 88.5 % | 77.1 % | 77.1 % | 83.5 % | ❌ −6.4 %p (vs prod), ≡ Wave 6 |
+| zh-CN | **lang-native** (`v4-zh-CN`, v3 구조 + 简体 번역) | 86.5 % | 75.0 % | 78.1 % | 81.5 % | ❌ −3.4 %p (vs prod), +3.1 %p (vs Wave 6) + 2 bad_response |
+| zh-TW | **lang-native** (`v4-zh-TW`, v3 구조 + 繁體 번역) | 81.8 % | (baseline at minimal 66.1 %) | 74.0 % | 76.8 % | ❌ −2.8 %p (vs prod) |
+
+> **표 해석 주의 (§1 transparency note 의 재확인).** "v4 변형" 열의 prompt 종류는 언어별로 다르다 — en 은 *경량화 (구조 축소)*, ko/zh-CN/zh-TW 는 *lang-native (v3 구조 그대로 번역)*. 두 dimension 모두 nano 의 prompt-side 회복 폭을 측정하기 위한 변형이지만, 동일 처리의 cross-language 비교는 아니다. "각 언어에서 가장 유망한 dimension 하나가 gate 를 통과하는가" 의 질문에 대한 4-언어 답이 모두 ❌ 라는 것이 본 표의 정확한 의미이다.
 
 **관찰:**
 - 4 언어 전체에서 prod baseline (v2+5.4-nano) 까지의 gap 가 prompt 변형으로 회복되지 않는다.
@@ -128,7 +136,9 @@ H3 lang-native semantic 가설의 4-language 검증을 단일 표로 모은다.
 
 본 측정으로 남는 미해결 문항 (모두 production 영향 없음, 향후 별도 PR 에서 다뤄질 수 있음):
 
+- **두 dimension 의 교차 측정 (en × lang-native, 비-en × lighter)**: 본 실험은 언어별로 하나의 dimension 만 측정했다 (§1 transparency note). 누락된 셀은 (a) en 에 v3-translation-style full-structure 변형을 얹은 셀 — 단, en 은 이미 v3 자체가 native 이므로 의미가 없음, (b) **비-en 언어에 lighter 변형을 적용한 셀** (예: `v4-zh-CN-light-B`, `v4-ko-light-B`). 후자가 미측정 공백이며, ko 에서 `v4-ko ≡ Wave 6 v3+low` 인 점 — instructions 길이/구조 변경이 ko 의 정확도를 움직이지 않는다는 약한 신호 — 으로 보아 비-en × lighter 도 gate 통과 가능성은 낮다고 추정되나 직접 측정은 없다. 추가 4 셀 측정 비용 ≈ $0.45.
 - **CJK 의 dataset 품질 영향**: zh-TW 의 abort error 1 건은 fetch timeout 으로 추정되나, 셀 단위로는 자동 miss 로 처리됐다. retry 후 안정 측정 시 +0.5 %p 의 회복 가능성 존재 — gate 통과에는 부족.
+- **lang-native 번역의 native-speaker 검수 부재**: `v4-zh-CN` / `v4-zh-TW` 의 번역은 모델 (Claude Opus 4.7) 이 작성했으며 native CJK 화자의 검수를 거치지 않았다. 简体/繁體 어휘 선택 (e.g., 「圓桌討論」 vs 「圆桌讨论」, 「瑜珈」 vs 「瑜伽」), tie-breaker 의 미묘한 뉘앙스, 예시 5 개의 자연스러움에 대해 minor 한 unidiomatic 표현이 잔존할 가능성이 있다. 본 실험 결론 (lang-native 가설 기각) 의 절대값에는 영향을 미칠 수 있으나, 4 개 언어 8.6 %p 평균 gap 의 방향성 자체를 뒤집을 가능성은 낮다.
 - **`v4-zh-CN` truncation pattern**: cap 1024 가 zh-CN dataset 에서 2 회 hit. cap 2048 로 확장 시 bad_response 가 사라질 수 있으나 (a) 비용 2 배, (b) 1.8 %p 미만의 회복 폭 예상으로 production 적용 불가. (실험적 호기심 차원에서만 흥미)
 - **5.4-nano 백포트 (Scope β)**: v4-native prompt 를 5.4-nano 위에 얹어 4 언어 모두에서 prompt-only 회복 폭을 측정하는 시나리오. 본 실험에서는 firing 조건 거짓으로 종결되었으나, lock 강화의 추가 신호로서 향후 별도 PR 에서 다룰 수 있다. cost: 4 셀 × $0.13 ≈ $0.52.
 
