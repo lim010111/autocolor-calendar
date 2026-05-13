@@ -945,6 +945,32 @@
       "categories": null,
       "task_pass_rate": 0.771,
       "notes": "model=gpt-5-nano; prompt_version=v4-ko; dataset=evals/datasets/ko/classification.json; lang=ko; reasoning_effort=low; max_completion_tokens=1024; accuracy=0.771; bad_response_rate=0.005; mean_reasoning_tokens=264.0; mean_completion_tokens=284.6"
+    },
+    {
+      "run_id": "2026-05-12-classification-multilingual-zh-CN-gpt-5-nano-prompt-v4-zh-CN-effort-low-cap1024",
+      "timestamp": "2026-05-12T14:45:42.809Z",
+      "git_sha": "ef7f1ec",
+      "kind": "task_pass_rate",
+      "tool": "classification-multilingual-zh-CN-eval",
+      "score": 150,
+      "max": 192,
+      "grade": null,
+      "categories": null,
+      "task_pass_rate": 0.781,
+      "notes": "model=gpt-5-nano; prompt_version=v4-zh-CN; dataset=evals/datasets/zh-CN/classification.json; lang=zh-CN; reasoning_effort=low; max_completion_tokens=1024; accuracy=0.781; bad_response_rate=0.010; mean_reasoning_tokens=255.7; mean_completion_tokens=275.4"
+    },
+    {
+      "run_id": "2026-05-12-classification-multilingual-zh-TW-gpt-5-nano-prompt-v4-zh-TW-effort-low-cap1024",
+      "timestamp": "2026-05-12T14:57:41.971Z",
+      "git_sha": "ef7f1ec",
+      "kind": "task_pass_rate",
+      "tool": "classification-multilingual-zh-TW-eval",
+      "score": 142,
+      "max": 192,
+      "grade": null,
+      "categories": null,
+      "task_pass_rate": 0.74,
+      "notes": "model=gpt-5-nano; prompt_version=v4-zh-TW; dataset=evals/datasets/zh-TW/classification.json; lang=zh-TW; reasoning_effort=low; max_completion_tokens=1024; accuracy=0.740; bad_response_rate=0.000; mean_reasoning_tokens=256.0; mean_completion_tokens=276.5"
     }
   ],
   "next": {
