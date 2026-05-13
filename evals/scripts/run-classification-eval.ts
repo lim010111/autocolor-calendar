@@ -60,7 +60,17 @@ const VALID_PROMPT_VERSIONS: readonly ClassifierPromptVersion[] = [
   "v4-ko",
   "v4-zh-CN",
   "v4-zh-TW",
+  // v5 family — gpt-5.4-nano prompt-dimension experiment 2026-05-13. See
+  // `.claude/handoffs/gpt-5.4-nano-prompt-tuning-2026-05-13.md`.
+  "v5-L1",
+  "v5-L2",
+  "v5-L4",
+  "v5-L5",
 ];
+const LANGFUSE_PROMPT_NAME_PREFIX = "autocolor-classifier";
+const LANGFUSE_PROMPT_LABEL = "eval";
+type PromptSource = "file" | "langfuse";
+const VALID_PROMPT_SOURCES: readonly PromptSource[] = ["file", "langfuse"];
 
 loadEnv({ path: path.join(ROOT, ".dev.vars") });
 
@@ -89,6 +99,7 @@ type CliArgs = {
   maxCompletionTokens: number;
   model: string;
   promptVersion: ClassifierPromptVersion;
+  promptSource: PromptSource;
 };
 
 function parseArgs(argv: string[]): CliArgs {
@@ -99,6 +110,7 @@ function parseArgs(argv: string[]): CliArgs {
     maxCompletionTokens: DEFAULT_MAX_COMPLETION_TOKENS,
     model: PRODUCTION_MODEL,
     promptVersion: DEFAULT_CLASSIFIER_PROMPT_VERSION,
+    promptSource: "file",
   };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
@@ -131,11 +143,21 @@ function parseArgs(argv: string[]): CliArgs {
         );
       }
       out.promptVersion = next as ClassifierPromptVersion;
+    } else if (a === "--prompt-source") {
+      const next = argv[++i];
+      if (!next) throw new Error("--prompt-source requires a value");
+      if (!(VALID_PROMPT_SOURCES as readonly string[]).includes(next)) {
+        throw new Error(
+          `invalid --prompt-source: ${next} (expected one of ${VALID_PROMPT_SOURCES.join(", ")})`,
+        );
+      }
+      out.promptSource = next as PromptSource;
     } else if (a === "--help" || a === "-h") {
       console.log(
         "Usage: run-classification-eval.ts [--task-file <path>] [--include-rule-leg] " +
           "[--reasoning-effort <value>] [--max-completion-tokens <n>] " +
-          "[--model <id>] [--prompt-version v2|v3]",
+          "[--model <id>] [--prompt-version v2|v3|v5-L1|…] " +
+          "[--prompt-source file|langfuse]",
       );
       process.exit(0);
     } else {
@@ -219,6 +241,49 @@ function requireApiKey(): string {
   return k;
 }
 
+// ── Langfuse prompt-source helper (ADR-0003) ────────────────────────────
+//
+// When the runner is invoked with `--prompt-source langfuse`, the system
+// prompt body is pulled from Langfuse Prompt Management instead of the
+// embedded `_generated.ts` bundle. Production code (`buildPrompt` in
+// `src/services/llmClassifier.ts`) keeps reading the file source — only
+// the runner has this Langfuse path. Failure here is HARD: if the
+// operator explicitly asked for the Langfuse copy and we can't get it,
+// silently falling back to the file copy would defeat the measurement.
+function leverIdFromVersion(version: ClassifierPromptVersion): string | null {
+  // `v5-L1` → `L1`. Used as a per-trace `lever:L<n>` tag so the Langfuse
+  // Run Comparison chart auto-segregates the v5 experiment cells.
+  const m = version.match(/-(L\d+)$/);
+  return m ? m[1]! : null;
+}
+
+async function fetchLangfusePromptBody(
+  version: ClassifierPromptVersion,
+): Promise<string> {
+  const publicKey = stripQuotes(process.env["LANGFUSE_PUBLIC_KEY"]);
+  const secretKey = stripQuotes(process.env["LANGFUSE_SECRET_KEY"]);
+  const baseUrl =
+    stripQuotes(process.env["LANGFUSE_BASE_URL"]) ||
+    "https://cloud.langfuse.com";
+  if (!publicKey || !secretKey) {
+    throw new Error(
+      "--prompt-source langfuse requires LANGFUSE_PUBLIC_KEY / LANGFUSE_SECRET_KEY in .dev.vars",
+    );
+  }
+  const client = new LangfuseClient({ publicKey, secretKey, baseUrl });
+  const name = `${LANGFUSE_PROMPT_NAME_PREFIX}-${version}`;
+  const fetched = await client.prompt.get(name, {
+    label: LANGFUSE_PROMPT_LABEL,
+    cacheTtlSeconds: 0,
+  });
+  if (typeof fetched.prompt !== "string") {
+    throw new Error(
+      `langfuse prompt ${name} returned non-text content (chat prompt?)`,
+    );
+  }
+  return fetched.prompt;
+}
+
 // ── Langfuse sink (ADR-0001) ────────────────────────────────────────────
 //
 // Soft-dep observability for the eval runner. Failure to construct the
@@ -252,6 +317,7 @@ type LangfuseRecordPayload = {
   runOpts: {
     model: string;
     promptVersion: ClassifierPromptVersion;
+    promptSource: PromptSource;
     reasoningEffort: string | undefined;
     maxCompletionTokens: number;
     lang: string | null;
@@ -329,19 +395,24 @@ class LangfuseSink {
       traceInput = cr.promptSummary;
     }
     const traceOutput = { parsed: cr.parsed ?? null, raw_response: cr.rawResponse };
+    const leverId = leverIdFromVersion(runOpts.promptVersion);
     const metadata = {
       prompt_version: runOpts.promptVersion,
       prompt_sha256_prefix: cr.promptSha256Prefix,
+      prompt_source: runOpts.promptSource,
       model: runOpts.model,
       reasoning_effort: runOpts.reasoningEffort ?? null,
       max_completion_tokens: runOpts.maxCompletionTokens,
       lang: runOpts.lang,
       case_id: cr.id,
       case_tag: cr.tag,
+      lever_id: leverId,
       attempts: cr.attempts,
       latency_ms: cr.latencyMs,
       http_status: cr.httpStatus,
       outcome,
+      reasoning_tokens: cr.reasoningTokens,
+      completion_tokens: cr.completionTokens,
     };
 
     try {
@@ -361,8 +432,11 @@ class LangfuseSink {
               tags: [
                 `lang:${runOpts.lang ?? "n/a"}`,
                 `prompt:${runOpts.promptVersion}`,
+                `prompt_source:${runOpts.promptSource}`,
                 `model:${runOpts.model}`,
                 `outcome:${outcome}`,
+                ...(leverId ? [`lever:${leverId}`] : []),
+                ...(runOpts.reasoningEffort ? [`effort:${runOpts.reasoningEffort}`] : []),
               ],
             },
           },
@@ -394,6 +468,41 @@ class LangfuseSink {
               comment: cr.pass ? undefined : `expected=${cr.expected} got=${cr.got}`,
             },
           },
+          // §10 nano-prompt-experiment custom scores. Per-trace numeric
+          // scores let Langfuse's Run Comparison chart compute run-mean
+          // (accuracy = mean of `pass`, bad_response_rate = mean of
+          // `bad_response`, reasoning-token aggregates over the run).
+          // `reasoning_tokens` is omitted when the call didn't return a
+          // usage body (timeout / pre-flight error) so the run mean isn't
+          // skewed by a zero.
+          {
+            type: "score-create",
+            id: randomUUID(),
+            timestamp: ts,
+            body: {
+              id: randomUUID(),
+              traceId,
+              name: "bad_response",
+              value: cr.got === "<bad_response>" ? 1 : 0,
+              dataType: "NUMERIC",
+            },
+          },
+          ...(cr.reasoningTokens !== null
+            ? [
+                {
+                  type: "score-create" as const,
+                  id: randomUUID(),
+                  timestamp: ts,
+                  body: {
+                    id: randomUUID(),
+                    traceId,
+                    name: "reasoning_tokens",
+                    value: cr.reasoningTokens,
+                    dataType: "NUMERIC" as const,
+                  },
+                },
+              ]
+            : []),
         ],
       });
       this.successCount++;
@@ -610,6 +719,14 @@ async function runCase(
     maxCompletionTokens: number;
     model: string;
     promptVersion: ClassifierPromptVersion;
+    // When provided, this body replaces the system message returned by
+    // `buildPrompt`. Set by main() when `--prompt-source langfuse` is
+    // active — the body has already been fetched from Langfuse Prompt
+    // Management once and is passed through to every case. The user-
+    // message JSON, category slicing, and PII redaction still come from
+    // `buildPrompt`, so production behaviour is preserved up to the
+    // system body swap.
+    systemBodyOverride: string | null;
   },
 ): Promise<CaseResult> {
   const cats = c.categories.map(buildCategory);
@@ -628,6 +745,9 @@ async function runCase(
   }
 
   const messages = buildPrompt(event, cats, opts.promptVersion);
+  if (opts.systemBodyOverride !== null && messages[0]) {
+    messages[0].content = opts.systemBodyOverride;
+  }
   const promptSummary = messages[1]?.content ?? "";
   const promptSha256Prefix = createHash("sha256")
     .update(messages[0]?.content ?? "")
@@ -689,6 +809,7 @@ async function appendLedgerRow(
   maxCompletionTokens: number,
   model: string,
   promptVersion: ClassifierPromptVersion,
+  promptSource: PromptSource,
 ): Promise<void> {
   const ledger = JSON.parse(await fs.readFile(RESULTS_FILE, "utf8")) as Ledger;
   const passCount = results.filter((r) => r.pass).length;
@@ -713,6 +834,7 @@ async function appendLedgerRow(
   const noteParts = [
     `model=${model}`,
     `prompt_version=${promptVersion}`,
+    `prompt_source=${promptSource}`,
     `dataset=${datasetBasename}`,
   ];
   if (suite.lang) noteParts.push(`lang=${suite.lang}`);
@@ -746,10 +868,26 @@ async function appendLedgerRow(
     completionSamples.length === 0
       ? null
       : completionSamples.reduce((a, b) => a + b, 0) / completionSamples.length;
+  // p95 — nearest-rank method on the sorted sample; cheaper than
+  // interpolation and ample for the n=192 dataset. Used by the §4.6
+  // winner-gate pre-check P2 (`p95 reasoning_tokens ≤ 60` ⇒ eligible
+  // for production cap=64 deployment).
+  const p95Reasoning =
+    reasoningSamples.length === 0
+      ? null
+      : (() => {
+          const sorted = [...reasoningSamples].sort((a, b) => a - b);
+          const idx = Math.min(
+            sorted.length - 1,
+            Math.ceil(0.95 * sorted.length) - 1,
+          );
+          return sorted[idx]!;
+        })();
   noteParts.push(
     `accuracy=${passRate.toFixed(3)}`,
     `bad_response_rate=${badResponseRate.toFixed(3)}`,
     `mean_reasoning_tokens=${meanReasoning === null ? "null" : meanReasoning.toFixed(1)}`,
+    `p95_reasoning_tokens=${p95Reasoning === null ? "null" : p95Reasoning.toString()}`,
     `mean_completion_tokens=${meanCompletion === null ? "null" : meanCompletion.toFixed(1)}`,
   );
   ledger.runs.push({
@@ -787,10 +925,23 @@ async function main(): Promise<void> {
       `(threshold=${threshold}, dataset=${path.relative(ROOT, args.taskFile)})…\n`,
   );
 
+  // Fetch the Langfuse-stored prompt body once when the operator opts into
+  // the Langfuse source. Production reads from `_generated.ts`; we never
+  // touch this path unless the runner is explicitly invoked in that mode.
+  let systemBodyOverride: string | null = null;
+  if (args.promptSource === "langfuse") {
+    systemBodyOverride = await fetchLangfusePromptBody(args.promptVersion);
+    console.log(
+      `Loaded system prompt from Langfuse (prompt=${args.promptVersion}, ` +
+        `bytes=${systemBodyOverride.length})\n`,
+    );
+  }
+
   const langfuseSink = new LangfuseSink(buildLangfuseSinkConfig(suite, args));
   const runOpts = {
     model: args.model,
     promptVersion: args.promptVersion,
+    promptSource: args.promptSource,
     reasoningEffort: args.reasoningEffort,
     maxCompletionTokens: args.maxCompletionTokens,
     lang: suite.lang ?? null,
@@ -804,6 +955,7 @@ async function main(): Promise<void> {
       maxCompletionTokens: args.maxCompletionTokens,
       model: args.model,
       promptVersion: args.promptVersion,
+      systemBodyOverride,
     });
     results.push(r);
     const mark = r.pass ? "PASS" : "FAIL";
@@ -836,11 +988,17 @@ async function main(): Promise<void> {
     xs.length === 0 ? "n/a" : (xs.reduce((a, b) => a + b, 0) / xs.length).toFixed(1);
   const fmtMax = (xs: number[]): string =>
     xs.length === 0 ? "n/a" : Math.max(...xs).toString();
+  const fmtP95 = (xs: number[]): string => {
+    if (xs.length === 0) return "n/a";
+    const sorted = [...xs].sort((a, b) => a - b);
+    const idx = Math.min(sorted.length - 1, Math.ceil(0.95 * sorted.length) - 1);
+    return sorted[idx]!.toString();
+  };
   console.log(
     `bad_response_rate=${badResponseRate.toFixed(3)} (${badResponseCount}/${total})`,
   );
   console.log(
-    `reasoning_tokens: mean=${fmtMean(reasoningSamples)} max=${fmtMax(reasoningSamples)} (n=${reasoningSamples.length})`,
+    `reasoning_tokens: mean=${fmtMean(reasoningSamples)} p95=${fmtP95(reasoningSamples)} max=${fmtMax(reasoningSamples)} (n=${reasoningSamples.length})`,
   );
   console.log(
     `completion_tokens: mean=${fmtMean(completionSamples)} max=${fmtMax(completionSamples)} (n=${completionSamples.length})`,
@@ -880,6 +1038,7 @@ async function main(): Promise<void> {
     args.maxCompletionTokens,
     args.model,
     args.promptVersion,
+    args.promptSource,
   );
   console.log(`\nLedger row appended: ${RESULTS_FILE}`);
 

@@ -971,6 +971,19 @@
       "categories": null,
       "task_pass_rate": 0.74,
       "notes": "model=gpt-5-nano; prompt_version=v4-zh-TW; dataset=evals/datasets/zh-TW/classification.json; lang=zh-TW; reasoning_effort=low; max_completion_tokens=1024; accuracy=0.740; bad_response_rate=0.000; mean_reasoning_tokens=256.0; mean_completion_tokens=276.5"
+    },
+    {
+      "run_id": "2026-05-13-classification-semantic-matching",
+      "timestamp": "2026-05-13T07:37:16.108Z",
+      "git_sha": "6aa77f5",
+      "kind": "task_pass_rate",
+      "tool": "classification-semantic-eval",
+      "score": 19,
+      "max": 20,
+      "grade": null,
+      "categories": null,
+      "task_pass_rate": 0.95,
+      "notes": "model=gpt-5.4-nano; prompt_version=v2; prompt_source=file; dataset=evals/tasks/classification-semantic.json; accuracy=0.950; bad_response_rate=0.000; mean_reasoning_tokens=0.0; p95_reasoning_tokens=0; mean_completion_tokens=12.1"
     }
   ],
   "next": {

@@ -13,7 +13,18 @@ export type ClassifierPromptVersion =
   | "v4-light-C"
   | "v4-ko"
   | "v4-zh-CN"
-  | "v4-zh-TW";
+  | "v4-zh-TW"
+  // v5 family — gpt-5.4-nano prompt-dimension experiment (2026-05-13). Four
+  // lever variants on the production V2 baseline that each exercise a single
+  // doc-recommended dimension from the OpenAI gpt-5.4-nano prompt-guidance
+  // doc: L1 = follow-up suppression, L2 = action/report separation,
+  // L4 = one-correct-example extreme, L5 = literal-first matching.
+  // Measurement-only — see
+  // `.claude/handoffs/gpt-5.4-nano-prompt-tuning-2026-05-13.md`.
+  | "v5-L1"
+  | "v5-L2"
+  | "v5-L4"
+  | "v5-L5";
 
 // Production default. v3 is gpt-5-nano-targeted; production runs on
 // gpt-5.4-nano against which v3 is unmeasured, so the default stays at v2
