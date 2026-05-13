@@ -58,6 +58,8 @@ const VALID_PROMPT_VERSIONS: readonly ClassifierPromptVersion[] = [
   "v4-light-B",
   "v4-light-C",
   "v4-ko",
+  "v4-zh-CN",
+  "v4-zh-TW",
 ];
 
 loadEnv({ path: path.join(ROOT, ".dev.vars") });
