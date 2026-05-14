@@ -24,7 +24,6 @@ oauthRoutes.get("/google", async (c) => {
   url.searchParams.set("response_type", "code");
   url.searchParams.set("access_type", "offline");
   url.searchParams.set("prompt", "consent");
-  url.searchParams.set("include_granted_scopes", "true");
   url.searchParams.set("scope", OAUTH_SCOPE_PARAM);
   url.searchParams.set("state", state);
   return c.redirect(url.toString(), 302);
