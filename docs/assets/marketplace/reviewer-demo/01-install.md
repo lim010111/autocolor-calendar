@@ -110,7 +110,6 @@ and the §5.4 ownership-marker contract.
      `client_id` / `redirect_uri` / `response_type=code` /
      `access_type=offline` (refresh token issued) /
      `prompt=consent` (forces consent re-prompt) /
-     `include_granted_scopes=true` /
      `scope=<OAUTH_SCOPE_PARAM>` /
      `state=<HMAC-signed nonce>` (`src/routes/oauth.ts:21-28`).
   3. The Worker returns a 302 to that authorization URL
