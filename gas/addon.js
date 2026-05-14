@@ -411,11 +411,11 @@ function fetchCategoriesOrError() {
 /**
  * Screen 3: Event Insight Card (event detail - eventOpenTrigger).
  *
- * Status section renders three live facts: event title (from CalendarApp),
- * applied colorId (from event.getColor()), and the current classification
- * (via POST /api/classify/preview). Preview is rule-only — if it misses,
- * we surface the will-try-LLM line when the backend has OPENAI_API_KEY,
- * otherwise the no-match line.
+ * Reads the currently displayed event via the Advanced Calendar Service
+ * (Calendar.Events.get), which respects the narrow
+ * `calendar.addons.current.event.read` scope — keeping the broader
+ * `auth/calendar` scope out of Stage 1 consent so Stage 2's backend OAuth
+ * renders a fresh consent screen instead of the "signing back in" shortcut.
  */
 function onEventOpen(e) {
   var L = pickLocale(e);
@@ -433,40 +433,30 @@ function onEventOpen(e) {
   if (e && e.calendar && e.calendar.id) {
     var event = null;
     try {
-      event = CalendarApp.getCalendarById(e.calendar.calendarId).getEventById(e.calendar.id);
-      title = event.getTitle() || t('event.untitled', null, L);
+      event = Calendar.Events.get(e.calendar.calendarId, e.calendar.id);
+      title = event.summary || t('event.untitled', null, L);
     } catch (err) {
       // Calendar event inaccessible — title stays as the empty fallback,
       // preview won't be fetched.
     }
 
     if (event) {
-      // getColor() returns the CalendarApp.EventColor enum VALUE, which is
-      // the raw colorId string ("1"-"11") or "" for the calendar default.
-      try {
-        var rawColorId = event.getColor();
-        if (rawColorId) {
-          var colors = getCalendarColors(L);
-          for (var ci = 0; ci < colors.length; ci++) {
-            if (colors[ci].id === rawColorId) {
-              appliedColorLabel = colors[ci].label;
-              break;
-            }
+      var rawColorId = event.colorId;
+      if (rawColorId) {
+        var colors = getCalendarColors(L);
+        for (var ci = 0; ci < colors.length; ci++) {
+          if (colors[ci].id === rawColorId) {
+            appliedColorLabel = colors[ci].label;
+            break;
           }
         }
-      } catch (err) {
-        // Leave default label on any EventColor access failure.
       }
 
       if (!previewResult) {
         previewResult = fetchPreviewOrError({
           summary: title,
-          description: (function () {
-            try { return event.getDescription() || ""; } catch (_) { return ""; }
-          })(),
-          location: (function () {
-            try { return event.getLocation() || ""; } catch (_) { return ""; }
-          })(),
+          description: event.description || "",
+          location: event.location || "",
         });
       }
 
@@ -645,7 +635,7 @@ function actionClassifyWithLlm(e) {
 
   var event = null;
   try {
-    event = CalendarApp.getCalendarById(e.calendar.calendarId).getEventById(e.calendar.id);
+    event = Calendar.Events.get(e.calendar.calendarId, e.calendar.id);
   } catch (_err) {
     event = null;
   }
@@ -655,13 +645,9 @@ function actionClassifyWithLlm(e) {
       .build();
   }
 
-  var title = event.getTitle() || t('event.untitled', null, L);
-  var description = (function () {
-    try { return event.getDescription() || ""; } catch (_) { return ""; }
-  })();
-  var location = (function () {
-    try { return event.getLocation() || ""; } catch (_) { return ""; }
-  })();
+  var title = event.summary || t('event.untitled', null, L);
+  var description = event.description || "";
+  var location = event.location || "";
 
   var preview = fetchPreviewOrError({
     summary: title,
