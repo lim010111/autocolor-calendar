@@ -71,9 +71,10 @@ python3 scripts/check-context-paths.py   # broken CLAUDE.md / README.md path ref
 
 Agent-run quality is tracked alongside the human runtime: the Worker's
 **agent log path** for runtime traffic is `src/middleware/logger.ts`
-(query-param redacted, body-blind), and **Claude Code session logs** are
-aggregated by the `improve-token-efficiency` skill out of
-`~/.claude/projects/-home-shine-projects-autocolor-for-calendar/`. The
+(query-param redacted, body-blind), and **Claude Code session logs** live
+under `~/.claude/projects/-home-shine-projects-autocolor-for-calendar/`
+(per-tool token + duration data) — a skill to aggregate them into a
+session-cost dashboard is planned, not yet built. The
 durable scoreboard lives in [evals/agent-results.json](evals/agent-results.json);
 the rubric trend point is [docs/ai-readiness-score.json](docs/ai-readiness-score.json).
 The 4-language classification baseline (en/ko/zh-CN/zh-TW) is built by the
