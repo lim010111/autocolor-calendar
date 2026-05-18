@@ -171,8 +171,8 @@ rows with their own `tool` / `run_id` and `lang` in `notes`.
 
 - **Session log.** Claude Code session JSONLs live under
   `~/.claude/projects/-home-shine-projects-autocolor-for-calendar/` and
-  carry per-tool token + duration data; the `improve-token-efficiency`
-  skill aggregates them into a session-cost dashboard.
+  carry per-tool token + duration data. A skill to aggregate them into a
+  session-cost dashboard is planned, not yet built.
 - **Worker request log.** `src/middleware/logger.ts` is the single
   redaction point — the agent log path on the runtime side. Anything
   added here must respect the `src/CLAUDE.md` "Log redaction contract"
