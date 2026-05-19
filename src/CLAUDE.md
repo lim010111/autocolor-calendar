@@ -383,6 +383,16 @@ purge lands with the §3-후속 "세션 GC" job.
 
 ## LLM semantic matching policy (§5.3)
 
+> **Superseded-by-decision (not yet implemented).** ADR-0004
+> (`docs/decisions/0004-embedding-classifier.md`, 2026-05-20) decided to
+> replace the Stage 1 substring keyword matcher with an embedding kNN
+> classifier. The §5 contract below — substring Stage 1, this LLM Stage 2 —
+> documents the **currently-running** pipeline and remains the live
+> invariant until the implementation PR lands and rewrites §5 in lockstep
+> (`docs/decisions/README.md` Drift policy: this file outranks the ADR).
+> Stage 2 (the LLM leg described here) survives the redesign; ADR-0002's
+> model decision (gpt-5.4-nano) is **not** superseded.
+
 The §5.3 fallback runs only on rule-miss events (`classifierChain`'s second
 leg) and is configured to match by *meaning*, not surface-token containment.
 `buildPrompt` (`src/services/llmClassifier.ts`) names four matching rules —
