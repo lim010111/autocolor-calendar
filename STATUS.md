@@ -6,32 +6,58 @@ outside the narrative block; mechanical sections are regenerated every run._
 <!-- narrative:start -->
 ## Current focus
 
-분류기 개인화 재설계 — Stage 1 substring 키워드 매칭을 폐기하고 임베딩 kNN
-분류기로 교체한다 (ADR-0004, 2026-05-20). `grill-with-docs` 세션이 설계를
-확정했고, 이번 세션은 ADR-0004 작성 + `docs/architecture-guidelines.md` /
-`src/CLAUDE.md` §5 에 supersede 예고 노트 삽입 + 6개 구현 이슈 발행까지
-끝냈다. 코드 변경은 아직 0줄 — 설계·문서·이슈 단계.
+두 갈래가 병존한다.
+
+1. **embedding-classifier** (ADR-0004 구현) — Stage 1 substring → 임베딩
+   kNN. #01 (모델 eval) HITL 대기 중, 후속 5개는 #01의 벡터 차원에 묶여
+   blocked.
+2. **architecture-deepening** (신규, 2026-05-25) — `/improve-codebase-
+   architecture` 세션이 9개 friction을 추리고 4개를 grill해 4개 이슈로
+   발행. 모두 *동작 변경 0줄 prep PR* 로 명세 — Rule Module + Classifier
+   chain deepening + branded PII types + integration harness. 의도는
+   ADR-0004 구현 (#02부터)이 이 deepened seam 위에서 일어나게 하는 것.
+
+코드 변경은 여전히 0줄.
 
 ## Start here next session
 
-- **이슈 #01 (임베딩 모델 선정 eval, HITL)** 부터 시작. 운영자 로컬 3080
-  GPU 랩에서 후보 3종(`bge-m3` / `qwen3-embedding-0.6b` /
-  `embeddinggemma-300m`)을 4개 언어 `classification.json` 으로 비교하고
-  벡터 차원·임계값을 확정해야 한다. #01 이 후속 5개 이슈 전부의 선행조건.
-- #02~#06 은 #01 의 벡터 차원이 나와야 풀린다. #05/#06 (examples 씨앗)은
-  추가로 OAuth 검수 통과가 출시 게이트.
+- **architecture-deepening #01 (Rule module aggregate)** 부터 바로 시작
+  가능 — blocker 없음, 동작 변경 0줄. `Category` → `Rule` rename +
+  `RuleService` 추출 + seeds synthesize. embedding-classifier #02가
+  들어오기 전에 land해야 후속 작업이 이 Module 내부 변경으로 흡수됨.
+- embedding-classifier **#01 (임베딩 모델 eval)** 은 운영자 로컬 3080
+  GPU 랩에서 병렬 진행 가능 — architecture-deepening과 독립.
+- architecture-deepening #02 (Classifier chain) / #03 (branded PII) /
+  #04 (integration harness) 는 #01에 직렬 의존.
 
 ## Open decisions
 
-- 임베딩 모델 + 벡터 차원(768 vs 1024) 미확정 — 이슈 #01 이 결정. 그전까지
-  스키마 작업 잠정 기본값은 `embeddinggemma-300m`(768d).
-- 등급별 임계값 `T_verified` / `T_declared` / `margin` 의 실제 숫자 미확정
-  — 이슈 #01 의 4개 언어 sweep 으로 도출. v1 은 2등급 *구조*만 확정됨.
-- examples 씨앗(#05/#06)은 캘린더 제목의 최초 durable 저장 → 개인정보
-  처리방침/동의 표면 변경 필요. OAuth 검수(2026-05-14 재제출) 통과 전
-  출시 불가.
+- 임베딩 모델 + 벡터 차원 (768 vs 1024) 미확정 — embedding-classifier
+  #01 이 결정. 그전까지 스키마 작업 잠정 기본값은 `embeddinggemma-300m`
+  (768d).
+- 등급별 임계값 `T_verified` / `T_declared` / `margin` 의 실제 숫자
+  미확정 — embedding-classifier #01 의 4개 언어 sweep 으로 도출.
+  v1 은 2등급 *구조*만 확정됨.
+- examples 씨앗(embedding-classifier #05/#06)은 캘린더 제목의 최초
+  durable 저장 → 개인정보처리방침/동의 표면 변경 필요. OAuth 검수
+  (2026-05-14 재제출) 통과 전 출시 불가.
+- 남은 architecture-deepening 후보 3개 (route handler / GAS Instant
+  Feedback UI / Claim primitive) walking 미진행 — route handler는 #01이
+  자연스럽게 흡수, GAS UI는 OAuth 통과 후 surface, Claim primitive는
+  isolated small PR로 후순위. 필요 시 별도 grill 세션.
 
 <!-- narrative:end -->
+
+## architecture-deepening
+
+`░░░░░░░░░░░░░░░░░░░░░░` 0/42 acceptance criteria met (0%)
+
+| # | Issue | Triage | Criteria | State | Blocked by |
+|---|-------|--------|----------|-------|-----------|
+| 01 | Rule module aggregate | `ready-for-agent` | 0/9 | ⬜ todo | — |
+| 02 | Classifier chain deepening | `ready-for-agent` | 0/11 | ⛔ blocked | #01 |
+| 03 | Branded pii types | `ready-for-agent` | 0/9 | ⛔ blocked | #02 |
+| 04 | Integration test harness | `ready-for-agent` | 0/13 | ⛔ blocked | #03 |
 
 ## embedding-classifier
 
