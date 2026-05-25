@@ -110,7 +110,7 @@
 - Consequences:
   - **불변항 대체.** `docs/architecture-guidelines.md` 의 "Hybrid
     Classification Engine" bullet 과 `src/CLAUDE.md` §5 (§5.1 substring
-    계약 포함) 은 이 ADR 과 lockstep 으로 갱신해야 한다. `docs/decisions/
+    계약 포함) 은 이 ADR 과 lockstep 으로 갱신해야 한다. `docs/adr/
     README.md` 의 Drift 정책에 따라 live invariant 인 `src/CLAUDE.md` 가
     우위이며, 구현 PR 이 두 문서를 동시에 갱신할 책임을 진다.
   - **§5.1 의 substring 정당화가 무효화된다.** `classifier.ts` 의 "한국어
@@ -157,6 +157,6 @@
     선정 + 임계값 sweep 데이터셋.
   - `prompts/dataset-builder/label-clusters.system.v1.md` — 아이디어 3
     (과거 일정 기반 자동 Rule 생성) 재사용 인프라.
-  - `docs/decisions/0002-llm-classifier-model.md` — Stage 2 모델 결정
+  - `docs/adr/0002-llm-classifier-model.md` — Stage 2 모델 결정
     (이 ADR 이 대체하지 않음).
-  - `docs/decisions/README.md` — ADR 템플릿 + Drift 정책.
+  - `docs/adr/README.md` — ADR 템플릿 + Drift 정책.

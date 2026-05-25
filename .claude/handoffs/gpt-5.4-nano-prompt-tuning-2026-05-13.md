@@ -35,7 +35,7 @@ Outcome shape (per the (D) goal locked in grill §1): a **lever characterization
 - Active use of Langfuse: **(a)** Prompt Management upload + runner fetch path, **(b)** custom scores (`accuracy`, `mean_reasoning_tokens`, `p95_reasoning_tokens`, `bad_response_rate`, `lever_id`, `reasoning_effort`) on each dataset run, **(d)** cross-variant trace diff via (b) as side-effect.
 - Append 8 ledger rows to `evals/agent-results.json`.
 - Write `evals/report-2026-05-13-gpt-5.4-nano-prompt-tuning.md` with results, winner-gate trace (§4), open questions.
-- Draft **ADR-0003** at `docs/decisions/0003-langfuse-prompt-management-eval-only.md`.
+- Draft **ADR-0003** at `docs/adr/0003-langfuse-prompt-management-eval-only.md`.
 
 ### Out of scope / non-goals
 
@@ -178,7 +178,7 @@ Full glossary: there is no `CONTEXT.md` in this repo. The closest equivalents ar
 
 ## 6. ADRs created this session
 
-None **yet** — but ADR-0003 (*Langfuse Prompt Management — eval-side only, file = production source-of-truth*) is the deliverable of PR-α. Path will be `docs/decisions/0003-langfuse-prompt-management-eval-only.md`. ADR-0001 (`docs/decisions/0001-langfuse-eval-only.md`) is its parent; ADR-0003 extends 0001's "eval-only" boundary to include prompt storage, not just dataset + traces.
+None **yet** — but ADR-0003 (*Langfuse Prompt Management — eval-side only, file = production source-of-truth*) is the deliverable of PR-α. Path will be `docs/adr/0003-langfuse-prompt-management-eval-only.md`. ADR-0001 (`docs/adr/0001-langfuse-eval-only.md`) is its parent; ADR-0003 extends 0001's "eval-only" boundary to include prompt storage, not just dataset + traces.
 
 ADR-0003 outline:
 
@@ -210,7 +210,7 @@ ADR-0003 outline:
 - `prompts/classifier/system.v5-L4.md` — One-example variant. Strip `# Examples` down to a single cross-lingual KO→EN example (or per §7 final choice). Otherwise V2.
 - `prompts/classifier/system.v5-L5.md` — Literal-first variant. In `# Critical rule`, replace the "four ways meaning can match" enumeration with: *"Match only when the event text explicitly names an activity that the category enumerates. If you must infer or paraphrase to reach a match, the answer is 'none'."* Remove all paraphrase/hypernym/morphology rules. Keep cross-lingual equivalence (it's not "paraphrase" — it's translation). Few-shot accordingly trimmed to literal-match examples + one cross-lingual.
 - `scripts/upload-prompts-to-langfuse.ts` — Idempotent upserter: reads `prompts/classifier/system.v<X>.md`, computes a content hash, calls Langfuse Prompts API to create or no-op. Mirrors `evals/scripts/sync-langfuse-dataset.ts` discipline (operator-side only, never injected into Worker secrets).
-- `docs/decisions/0003-langfuse-prompt-management-eval-only.md` — ADR per §6 outline.
+- `docs/adr/0003-langfuse-prompt-management-eval-only.md` — ADR per §6 outline.
 - `evals/report-2026-05-13-gpt-5.4-nano-prompt-tuning.md` — Final report. Use the structure of `evals/report-2026-05-13-nano-prompt-stage1.md` as a template (§1 TL;DR table → §2 per-cell details → §3 Winner gate trace → §4 PR-α/β/γ decision → §5 findings → §6 open questions → §7 references).
 
 ### Edit
@@ -235,7 +235,7 @@ ADR-0003 outline:
 1. **Author 4 prompt files + regenerate bundle.** Write `prompts/classifier/system.v5-{L1,L2,L4,L5}.md` per §8 specs (keep the V2 frontmatter shape — `id: classifier/system`, `version: v5-LX`, `model_target: gpt-5.4-nano`, `created: 2026-05-13`, `supersedes: v2`, `eval_baseline: evals/report-2026-05-11-prompt-rewrite.md`, `guide_source: https://developers.openai.com/api/docs/guides/prompt-guidance?model=gpt-5.4`, `notes: ...`). Add the four versions to `ClassifierPromptVersion` and `REGISTRY` in `src/services/prompts/classifierPrompts.ts`. Run `pnpm embed-prompts` to refresh `_generated.ts`. **Verify:** `pnpm verify-prompts` passes; `pnpm test` passes (V2 still the default; eight required test-assertion keywords intact in V2).
 2. **Upload script.** Write `scripts/upload-prompts-to-langfuse.ts` per §8. Confirm Langfuse client API surface (§7 open question). Test the script in dry-run mode against the Langfuse dev project; verify idempotency (second run = no-op). **Verify:** Langfuse UI shows v2 + v5-L1 + v5-L2 + v5-L4 + v5-L5 as Prompt entries with content hashes.
 3. **Runner extension.** In `evals/scripts/run-classification-eval.ts`: extend `VALID_PROMPT_VERSIONS`, add `--prompt-source` flag, plumb Langfuse Prompts fetch, emit custom scores + trace metadata. Run the existing regression eval (V2) against both `--prompt-source file` and `--prompt-source langfuse` — output must be byte-identical for the same case. **Verify:** `pnpm tsx evals/scripts/run-classification-eval.ts` (V2 default, file source) → 20/20 + `user-report-*` 0 fail. Same command with `--prompt-source langfuse` → identical pass count.
-4. **ADR-0003.** Write `docs/decisions/0003-langfuse-prompt-management-eval-only.md` per §6 outline. Cross-link from ADR-0001 (`docs/decisions/0001-langfuse-eval-only.md`) "Consequences" section if it references prompt storage at all (verify; non-blocking if not).
+4. **ADR-0003.** Write `docs/adr/0003-langfuse-prompt-management-eval-only.md` per §6 outline. Cross-link from ADR-0001 (`docs/adr/0001-langfuse-eval-only.md`) "Consequences" section if it references prompt storage at all (verify; non-blocking if not).
 5. **Gates + commit.** `pnpm typecheck`, `pnpm lint`, `pnpm test`, `python3 scripts/check-context-paths.py`. Open PR-α with the title `feat(evals): gpt-5.4-nano 프롬프트 차원 실험 인프라 (PR-α — L1/L2/L4/L5 + Langfuse Prompt Management)`. Merge before PR-β.
 
 ### PR-β — Measurement + Report

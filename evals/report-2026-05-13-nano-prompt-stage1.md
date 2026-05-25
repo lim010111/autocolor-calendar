@@ -160,7 +160,7 @@ RCA §2 가 *"v3 가 nano 에 비해 너무 무거울 수 있다"* 로 남겨둔
 
 ### 5.3 ADR-0002 lock 강화
 
-ADR-0002 (`docs/decisions/0002-llm-classifier-model.md`) 의 결정 — *"production `LLM_MODEL = gpt-5.4-nano` 유지, gpt-5-nano 는 보류"* — 의 retire-test 3 가지 트리거 중 **prompt-side optimization 의 가능성** 이 본 보고서로 정량 측정되었다:
+ADR-0002 (`docs/adr/0002-llm-classifier-model.md`) 의 결정 — *"production `LLM_MODEL = gpt-5.4-nano` 유지, gpt-5-nano 는 보류"* — 의 retire-test 3 가지 트리거 중 **prompt-side optimization 의 가능성** 이 본 보고서로 정량 측정되었다:
 
 - 본 보고서가 측정한 4 셀 중 어느 것도 nano 의 정확도를 *baseline−5 %p* 까지 끌어올리지 못한다.
 - *"lang-native semantic"* 가능성이 사실상 refuted 됨.
@@ -201,6 +201,6 @@ en 사이드 Stage 1 의 정확도 갭 (vs production baseline): −6.8 ~ −8.3
 - 핸드오프 (decision log): [`.claude/handoffs/nano-prompt-experiment-2026-05-12.md`](../.claude/handoffs/nano-prompt-experiment-2026-05-12.md)
 - 선행 RCA: [`evals/report-2026-05-12-nano-rca.md`](report-2026-05-12-nano-rca.md)
 - Production baseline: [`evals/report-2026-05-11-prompt-rewrite.md`](report-2026-05-11-prompt-rewrite.md)
-- ADR-0002 (gpt-5.4-nano lock): [`docs/decisions/0002-llm-classifier-model.md`](../docs/decisions/0002-llm-classifier-model.md)
+- ADR-0002 (gpt-5.4-nano lock): [`docs/adr/0002-llm-classifier-model.md`](../docs/adr/0002-llm-classifier-model.md)
 - 4 ledger rows: `evals/agent-results.json` (run_id `…v4-light-{A,B,C}…` × 3, `…v4-ko…` × 1, git_sha=`70f23e0`)
 - 4 Langfuse runs (위 §2 각 셀에 inline).

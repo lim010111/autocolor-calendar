@@ -81,6 +81,20 @@ The 4-language classification baseline (en/ko/zh-CN/zh-TW) is built by the
 operator-side Python pipeline in [evals/dataset-builder/](evals/dataset-builder/)
 and lands as `evals/datasets/{lang}/classification.json`.
 
+## Agent skills
+
+### Issue tracker
+
+Issues live as markdown files under `.scratch/<feature>/issues/NN-slug.md` with a `Status:` line at the top. STATUS.md is generated off these. See [docs/agents/issue-tracker.md](docs/agents/issue-tracker.md).
+
+### Triage labels
+
+Canonical role strings (`needs-triage` / `needs-info` / `ready-for-agent` / `ready-for-human` / `wontfix`) — written into each issue's `Status:` line. See [docs/agents/triage-labels.md](docs/agents/triage-labels.md).
+
+### Domain docs
+
+Multi-context — [CONTEXT-MAP.md](CONTEXT-MAP.md) at the root points at the cross-cutting glossary and any per-module `CONTEXT.md` files. ADRs at [docs/adr/](docs/adr/). See [docs/agents/domain.md](docs/agents/domain.md).
+
 ## See also
 
 - [TODO.md](TODO.md) — active work tracker

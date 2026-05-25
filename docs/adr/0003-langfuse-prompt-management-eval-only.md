@@ -83,7 +83,7 @@
     pattern (`name = <category>-<version>`, label = `eval`, content-hash
     idempotency) 으로 확장 가능.
 - References:
-  - `docs/decisions/0001-langfuse-eval-only.md` — 부모 결정 (dataset + trace
+  - `docs/adr/0001-langfuse-eval-only.md` — 부모 결정 (dataset + trace
     sink eval-only)
   - `src/CLAUDE.md` §5.3 "LLM semantic matching policy" — prompt-edit
     eval-gate 3-gate (regression / 4-lang / Pattern B); PR-γ 발화 시 필수

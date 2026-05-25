@@ -33,5 +33,5 @@
   - `evals/report-2026-05-11-prompt-rewrite.md` — gpt-5.4-nano + v2 의 4 lang baseline 수치 source
   - `src/CLAUDE.md` §5.3 "LLM semantic matching policy" — production 분류 정책 (본 ADR 로 무변경)
   - `prompts/classifier/system.v3.md` — 5-nano 재평가용 보존된 prompt asset
-  - `docs/decisions/0001-langfuse-eval-only.md` — Langfuse 도입 ADR (본 측정의 trace UI surface)
+  - `docs/adr/0001-langfuse-eval-only.md` — Langfuse 도입 ADR (본 측정의 trace UI surface)
   - Langfuse runs (Wave 1 + Wave 5 + Wave 6, 6 runs total) — 본 ADR 의 측정 raw audit

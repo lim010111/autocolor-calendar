@@ -53,7 +53,7 @@
 
 ```bash
 # 새 ADR 파일을 직전 번호 + 1 로 생성 (template 헤더 포함)
-last=$(ls -1 docs/decisions/[0-9]*.md 2>/dev/null | wc -l)
+last=$(ls -1 docs/adr/[0-9]*.md 2>/dev/null | wc -l)
 printf '%04d\n' $((last + 1))
 # 작성 후 path 참조가 살아있는지 확인 (CI / pre-commit gate)
 python3 scripts/check-context-paths.py

@@ -2,7 +2,7 @@
 
 ## How to use this handoff
 
-You are picking up after a `/grill-with-docs` planning session. Read this entire file, then start with §10. Decisions in §4 are settled — do not re-litigate them. The authoritative artefact is `docs/decisions/0001-langfuse-eval-only.md` — every Decision in §4 is a restatement of that ADR, not a competing source. If something in this handoff disagrees with the ADR, the ADR wins; if the ADR disagrees with `src/CLAUDE.md`, `src/CLAUDE.md` wins (per `docs/decisions/README.md` drift policy).
+You are picking up after a `/grill-with-docs` planning session. Read this entire file, then start with §10. Decisions in §4 are settled — do not re-litigate them. The authoritative artefact is `docs/adr/0001-langfuse-eval-only.md` — every Decision in §4 is a restatement of that ADR, not a competing source. If something in this handoff disagrees with the ADR, the ADR wins; if the ADR disagrees with `src/CLAUDE.md`, `src/CLAUDE.md` wins (per `docs/adr/README.md` drift policy).
 
 ## Goal
 
@@ -115,7 +115,7 @@ Full glossary: CONTEXT.md (does not exist in this repo — `src/CLAUDE.md`, `eva
 
 ## ADRs created this session
 
-- `docs/decisions/0001-langfuse-eval-only.md`
+- `docs/adr/0001-langfuse-eval-only.md`
 
 ## Open questions
 
