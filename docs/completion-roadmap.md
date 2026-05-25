@@ -23,14 +23,14 @@ AutoColor for Calendar를 **Workspace Marketplace public listing 활성** 상태
 
 직렬 의존이 강한 순서. 위에서부터 진행 권장.
 
-### 1. 도메인 확보 + Search Console 인증
+### 1. 도메인 확보 + Search Console 인증 ✓
 
 - 정본: [`TODO.md` line 8](../TODO.md), [Launch Gate row 1](marketplace-readiness.md#status).
 - **단일 최대 unblock 지점.** Privacy URL · ToS URL · App home URL · Support URL ·
   prod Watch API `WEBHOOK_BASE_URL` (§4 후속 line 52)이 전부 이 게이트를 공유.
 - 후속 unblock: §4 (Privacy/ToS), §5 (listing), §1.5 (support email/URL row 78-79).
 
-### 2. Prod 환경 활성화
+### 2. Prod 환경 활성화 ✓
 
 - 정본: [`TODO.md` §3 후속 line 35](../TODO.md), [Launch Gate row 2](marketplace-readiness.md#status).
 - 작업 단위는 line 35에 명시 — Supabase prod, GCP prod OAuth client, secrets 6종,
@@ -41,20 +41,20 @@ AutoColor for Calendar를 **Workspace Marketplace public listing 활성** 상태
   pg_cron으로 즉시 스케줄 — Retention 정책 (`marketplace-readiness.md` row 178)
   unblock 조건.
 
-### 3. CI/CD 파이프라인
+### 3. CI/CD 파이프라인 ✓
 
 - 정본: [`TODO.md` §7 line 129](../TODO.md).
 - **§6.1 E2E 테스트의 선행조건**(line 108에 명시).
 - 최소 단위: `pnpm vitest run` + `pnpm typecheck` + `pnpm lint` GitHub Actions PR gate.
 - 권장 추가: `pnpm db:generate` migration drift 검출, 보호 브랜치 정책.
 
-### 4. Privacy Policy + Terms of Service
+### 4. Privacy Policy + Terms of Service ✓
 
 - 정본: [`TODO.md` §7 line 132](../TODO.md), [`marketplace-readiness.md` §2 row 121-122](marketplace-readiness.md).
 - Legal 작업 — 외부 의존성이 가장 큼. **게이트 1과 동시 시작 권장.**
 - 본문 작성 → 도메인에 호스팅 → URL을 marketplace-readiness §2에 기록.
 
-### 5. Marketplace listing 자료 번들
+### 5. Marketplace listing 자료 번들 ✓
 
 - 정본: [`marketplace-readiness.md` §1](marketplace-readiness.md) (`미작성` 11건).
 - 짧은/긴 description (KR+EN), 아이콘 128/32, 스크린샷 ≥3, (선택) 홍보 영상,

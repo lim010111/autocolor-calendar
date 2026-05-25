@@ -31,8 +31,7 @@ Supabase Dashboard → New project. **본 프로젝트 prod region 은
 
 참고:
 - dev 는 `ap-southeast-1` (Singapore) — 라이브 카탈로그
-  [`docs/backend-infrastructure-handoff.md`](../backend-infrastructure-handoff.md)
-  line 37 참조.
+  [`docs/live-resources.md`](../live-resources.md) 의 Cloudflare 섹션 참조.
 - 한국 사용자가 다수더라도 본 프로젝트는 Tokyo 단일 region. Seoul
   (`ap-northeast-2`) 미선택 사유: 운영자가 Tokyo 로 이미 `autocolor-prod`
   생성 + Supabase region 풀에서 Tokyo 가 IPv6 접근 안정성·legacy 호환
@@ -95,7 +94,7 @@ pnpm gen-secrets prod
 ```
 
 `.prod.vars`에 다음을 모두 채운다 (`.gitignore`로 git untracked 보장 —
-`docs/backend-infrastructure-handoff.md` line 50 / `.dev.vars` 패턴 동일):
+`.dev.vars` 패턴 동일):
 
 ```bash
 # .prod.vars (git untracked)
@@ -378,7 +377,7 @@ env scoping으로 격리).
 - [`TODO.md` §3 후속 line 35](../../TODO.md) — 작업 정본
 - [`TODO.md` §3 후속 line 38](../../TODO.md) — 세션 GC
 - [`TODO.md` §4 후속 line 52](../../TODO.md) — prod Watch API 활성화 (G1 의존)
-- [`docs/backend-infrastructure-handoff.md`](../backend-infrastructure-handoff.md) — 라이브 카탈로그 / 자격증명 로테이션 이력
+- [`docs/live-resources.md`](../live-resources.md) — 라이브 카탈로그 / 자격증명 회전 이력
 - [`src/CLAUDE.md` "Environments"](../../src/CLAUDE.md) — dev/prod 바인딩 현황 (PR #43 활성화 이후)
 - `src/CLAUDE.md` "DB connectivity" — Hyperdrive pool 설정 / 마이그레이션 계약
 - `src/CLAUDE.md` "Secret rotation impact" — 시크릿 회전 절차
