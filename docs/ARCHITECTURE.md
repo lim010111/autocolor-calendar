@@ -11,7 +11,7 @@ For invariant rules see [architecture-guidelines.md](architecture-guidelines.md)
 - `src/` — Cloudflare Workers backend (Hono routes, Queue consumers, services). See [../src/CLAUDE.md](../src/CLAUDE.md).
 - `drizzle/` — Postgres schema migrations (drizzle-kit + hand-written RLS). See [../drizzle/CLAUDE.md](../drizzle/CLAUDE.md).
 - `scripts/` — Operational scripts (secret generation, secret sync, failure simulator). See [../scripts/CLAUDE.md](../scripts/CLAUDE.md).
-- `docs/` — Architecture documents and decision records. See [decisions/README.md](decisions/README.md).
+- `docs/` — Architecture documents and decision records. See [adr/README.md](adr/README.md).
 
 ## Module map
 
@@ -61,4 +61,4 @@ document stays stable as internal layout evolves.
 - [architecture-diagram.md](architecture-diagram.md) — sync flow + AI engine detail
 - [architecture-guidelines.md](architecture-guidelines.md) — cross-cutting invariants
 - [../src/CLAUDE.md](../src/CLAUDE.md) — backend operational rules
-- [decisions/README.md](decisions/README.md) — ADR scaffold (none recorded yet)
+- [adr/README.md](adr/README.md) — ADR scaffold (none recorded yet)

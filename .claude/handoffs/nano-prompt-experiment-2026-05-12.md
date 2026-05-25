@@ -7,7 +7,7 @@ RCA in `evals/report-2026-05-12-nano-rca.md`. Read this entire file, then start
 with §10. Decisions in §4 are settled — do not re-litigate them. The closest
 prior artefact is the RCA report; the closest prior handoff is
 `.claude/handoffs/nano-prompt-rca-2026-05-12.md`. ADR-0002
-(`docs/decisions/0002-llm-classifier-model.md`) is **not superseded** by this
+(`docs/adr/0002-llm-classifier-model.md`) is **not superseded** by this
 experiment — Frame B means this experiment _measures_ ADR-0002's tentativeness
 without forcing a swap.
 
@@ -360,7 +360,7 @@ cells) — rejected, marginal value for +$0.55.
 - Author `evals/report-2026-05-13-nano-prompt-final.md` — full results, the
   3D matrix table (model × prompt × lang), recommendation.
 - Optional separate commit: append a "See also" link in
-  `docs/decisions/0002-llm-classifier-model.md`'s References section. Do
+  `docs/adr/0002-llm-classifier-model.md`'s References section. Do
   not modify ADR-0002 text.
 
 **Why:** Three-PR cadence matches the staged measurement structure. Negative
@@ -495,7 +495,7 @@ experiment's PR scope.
 - `src/services/prompts/classifierPrompts.ts` — add 5 new variants.
 - `src/services/prompts/_generated.ts` — regenerate.
 - `evals/agent-results.json` — append 6 (Stage 2) + up to 2 (Scope β) rows.
-- (Optional, separate commit) `docs/decisions/0002-llm-classifier-model.md`
+- (Optional, separate commit) `docs/adr/0002-llm-classifier-model.md`
   — append link to final report in "References" section. Do not edit body.
 
 ## Implementation plan
@@ -552,7 +552,7 @@ experiment's PR scope.
       (model × prompt × lang), winner narrative, ADR-0003 trigger
       recommendation (or null-result statement).
    6. Optional separate commit: edit
-      `docs/decisions/0002-llm-classifier-model.md`'s "References" section
+      `docs/adr/0002-llm-classifier-model.md`'s "References" section
       to append a link to the final report.
    7. Open PR-γ.
 

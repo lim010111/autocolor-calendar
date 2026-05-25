@@ -128,7 +128,7 @@ CJK collapse 가 reasoning_effort 의 _전부냐 일부냐_ 의 차이라면, `l
 | 파일 | 변경 | 비고 |
 |------|------|------|
 | `evals/report-2026-05-12-nano-rca.md` | 신규 | 본 보고서 |
-| `docs/decisions/0002-llm-classifier-model.md` | 신규 ADR | Outcome C — gpt-5.4-nano lock |
+| `docs/adr/0002-llm-classifier-model.md` | 신규 ADR | Outcome C — gpt-5.4-nano lock |
 | `evals/agent-results.json` | append-only — Wave 1 + Wave 5 (3) + Wave 6 (2) = **6 rows** | 기존 row 보존 |
 
 (`evals/scripts/preflight-minimal.ts` 가 1-shot pre-flight 검증에 일회성으로 사용됐고, 본 PR 머지 전 삭제됨.)
@@ -148,7 +148,7 @@ CJK collapse 가 reasoning_effort 의 _전부냐 일부냐_ 의 차이라면, `l
 
 **구체 산출물**:
 
-- `docs/decisions/0002-llm-classifier-model.md` 신규 ADR — `LLM_MODEL = "gpt-5.4-nano"` 결정 + re-evaluation triggers.
+- `docs/adr/0002-llm-classifier-model.md` 신규 ADR — `LLM_MODEL = "gpt-5.4-nano"` 결정 + re-evaluation triggers.
 - `src/services/llmClassifier.ts` / `src/services/prompts/classifierPrompts.ts` **무변경**.
 - `prompts/classifier/system.v3.md` 보존 (rollback path / 향후 5-nano 재평가용).
 
@@ -189,6 +189,6 @@ Langfuse Cloud (Hobby free tier, 50k units/month) 사용량: 1153 traces × ~ 2 
 
 - `evals/report-2026-05-11-gpt-5-nano-migration.md` — 본 RCA 의 trigger
 - `evals/report-2026-05-11-prompt-rewrite.md` — gpt-5.4-nano + v2 baseline 수치 source
-- `docs/decisions/0001-langfuse-eval-only.md` — Langfuse 도입 ADR (이 PR 의 측정 surface)
+- `docs/adr/0001-langfuse-eval-only.md` — Langfuse 도입 ADR (이 PR 의 측정 surface)
 - `.claude/handoffs/nano-prompt-rca-2026-05-12.md` — planning handoff
 - `prompts/classifier/system.v3.md` — 측정에 사용한 프롬프트 (무변경)

@@ -126,7 +126,7 @@ H3 lang-native semantic 가설의 4-language 검증을 단일 표로 모은다.
 
 - **lock 의 근거:** prod baseline 4 언어 평균 (en 90.1 / ko 88.5 / zh-CN 86.5 / zh-TW 81.8 = **86.7 %**) vs nano-experimental 최고 평균 (en 83.3 / ko 77.1 / zh-CN 78.1 / zh-TW 74.0 = **78.1 %**) — **8.6 %p gap 가 prompt-side dimension 으로 회복되지 않음**.
 - **본 follow-up 의 기여:** PR-β 가 en + ko 에서 lock 근거를 강화했다면, 본 PR 은 동일 결론을 zh-CN + zh-TW 까지 확장한다. **lock 의 단정성은 4 언어 전부에서 검증됨**.
-- **ADR-0002 References 항목** 에 본 보고서 추가 권장 — `docs/decisions/0002-llm-classifier-model.md` 의 References 섹션에 다음 두 줄 추가:
+- **ADR-0002 References 항목** 에 본 보고서 추가 권장 — `docs/adr/0002-llm-classifier-model.md` 의 References 섹션에 다음 두 줄 추가:
   - `evals/report-2026-05-13-nano-prompt-stage1.md` — Stage 1 en + ko 측정
   - `evals/report-2026-05-13-nano-prompt-stage1-zh.md` — Stage 1 zh-CN + zh-TW follow-up 측정 (본 보고서)
 
@@ -153,7 +153,7 @@ H3 lang-native semantic 가설의 4-language 검증을 단일 표로 모은다.
 - 본 PR 프롬프트 source:
   - [`prompts/classifier/system.v4-zh-CN.md`](../prompts/classifier/system.v4-zh-CN.md)
   - [`prompts/classifier/system.v4-zh-TW.md`](../prompts/classifier/system.v4-zh-TW.md)
-- 의사결정 문서: [`docs/decisions/0002-llm-classifier-model.md`](../docs/decisions/0002-llm-classifier-model.md)
+- 의사결정 문서: [`docs/adr/0002-llm-classifier-model.md`](../docs/adr/0002-llm-classifier-model.md)
 - planning artifact: `.claude/handoffs/nano-prompt-experiment-2026-05-12.md`
 - ledger: [`evals/agent-results.json`](agent-results.json) — 본 PR 의 2 개 신규 row 는 모두 `git_sha = ef7f1ec`
 - Langfuse run × 2: 위 §2 의 각 셀 항목 참조.

@@ -53,7 +53,7 @@ edits. Otherwise `0`.
 Set `LANGFUSE_PUBLIC_KEY` / `LANGFUSE_SECRET_KEY` in `.dev.vars` to mirror
 each case into Langfuse as a per-case trace; the runner prints a
 `Langfuse run: <url>` line on success. Soft-dep — eval still runs and
-gates without it. See [ADR-0001](../docs/decisions/0001-langfuse-eval-only.md).
+gates without it. See [ADR-0001](../docs/adr/0001-langfuse-eval-only.md).
 
 ### Cost
 
@@ -133,7 +133,7 @@ into Langfuse via `pnpm tsx evals/scripts/sync-langfuse-dataset.ts all`
 `LANGFUSE_*` keys present in `.dev.vars`, the runner then links each
 trace to its dataset item and prints a `Langfuse run: <url>` line that
 groups all 192 traces — see
-[ADR-0001](../docs/decisions/0001-langfuse-eval-only.md). Same soft-dep
+[ADR-0001](../docs/adr/0001-langfuse-eval-only.md). Same soft-dep
 posture as Layer 3.
 
 Per-run cost (Layer 4): ~192 cases × 4 langs × ≤300 tokens against
@@ -188,7 +188,7 @@ rows with their own `tool` / `run_id` and `lang` in `notes`.
   The integration is **soft-dep**: SDK failure or unset env never
   affects the merge-gate exit code or `agent-results.json` ledger row —
   Langfuse is augmentation, the ledger remains canonical. Scope and
-  trade-offs: [`../docs/decisions/0001-langfuse-eval-only.md`](../docs/decisions/0001-langfuse-eval-only.md).
+  trade-offs: [`../docs/adr/0001-langfuse-eval-only.md`](../docs/adr/0001-langfuse-eval-only.md).
   The runtime / Worker path **does NOT** use Langfuse — see
   [`../src/CLAUDE.md`](../src/CLAUDE.md) "Langfuse trade-off note".
 

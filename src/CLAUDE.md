@@ -308,7 +308,7 @@ decision when (a) prompt version management, (b) LLM-as-judge, or
 (c) Workers-blessed Langfuse path becomes a need — see TODO §6.3.
 
 The **eval surface** is a separate surface and Langfuse landed there
-2026-05-11 — see [`../docs/decisions/0001-langfuse-eval-only.md`](../docs/decisions/0001-langfuse-eval-only.md).
+2026-05-11 — see [`../docs/adr/0001-langfuse-eval-only.md`](../docs/adr/0001-langfuse-eval-only.md).
 The SDK is invoked only from `evals/scripts/run-classification-eval.ts`
 (Node/tsx, never the Worker) via `@langfuse/client` + `@langfuse/tracing`
 (fetch-only, no OTel). Soft-dep: `LANGFUSE_*` env unset or SDK failure
@@ -384,12 +384,12 @@ purge lands with the §3-후속 "세션 GC" job.
 ## LLM semantic matching policy (§5.3)
 
 > **Superseded-by-decision (not yet implemented).** ADR-0004
-> (`docs/decisions/0004-embedding-classifier.md`, 2026-05-20) decided to
+> (`docs/adr/0004-embedding-classifier.md`, 2026-05-20) decided to
 > replace the Stage 1 substring keyword matcher with an embedding kNN
 > classifier. The §5 contract below — substring Stage 1, this LLM Stage 2 —
 > documents the **currently-running** pipeline and remains the live
 > invariant until the implementation PR lands and rewrites §5 in lockstep
-> (`docs/decisions/README.md` Drift policy: this file outranks the ADR).
+> (`docs/adr/README.md` Drift policy: this file outranks the ADR).
 > Stage 2 (the LLM leg described here) survives the redesign; ADR-0002's
 > model decision (gpt-5.4-nano) is **not** superseded.
 

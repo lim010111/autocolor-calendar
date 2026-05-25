@@ -29,7 +29,7 @@ OPENAI_API_KEY=
 # default. Listed here only as documentation — the script does not inject it.
 # LLM_DAILY_LIMIT=200
 
-# Langfuse (eval-side only — see docs/decisions/0001-langfuse-eval-only.md).
+# Langfuse (eval-side only — see docs/adr/0001-langfuse-eval-only.md).
 # Used by `evals/scripts/run-classification-eval.ts` + `sync-langfuse-dataset.ts`
 # to push per-case traces and dataset runs to Langfuse Cloud. Read locally via
 # dotenv; deliberately NOT in `scripts/sync-secrets.ts` REQUIRED_SECRETS, so
