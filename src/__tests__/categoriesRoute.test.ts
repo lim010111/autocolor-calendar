@@ -15,25 +15,19 @@ vi.mock("../queues/syncProducer", () => ({
 
 import { app } from "../index";
 import { getDb } from "../db";
-import { syncState } from "../db/schema";
 import { enqueueSync } from "../queues/syncProducer";
 import { verifySession } from "../services/sessionService";
+
+import {
+  type FakeDbHandle,
+  type Row,
+  makeFakeDb,
+} from "./_helpers/fakeDb";
 
 const USER_A = "00000000-0000-0000-0000-00000000000a";
 const USER_B = "00000000-0000-0000-0000-00000000000b";
 const CAT_A_ID = "11111111-1111-1111-1111-11111111111a";
 const CAT_B_ID = "22222222-2222-2222-2222-22222222222b";
-
-type Row = {
-  id: string;
-  userId: string;
-  name: string;
-  colorId: string;
-  keywords: string[];
-  priority: number;
-  createdAt: Date;
-  updatedAt: Date;
-};
 
 function row(overrides: Partial<Row>): Row {
   return {
@@ -46,231 +40,6 @@ function row(overrides: Partial<Row>): Row {
     createdAt: overrides.createdAt ?? new Date("2026-04-19T00:00:00Z"),
     updatedAt: overrides.updatedAt ?? new Date("2026-04-19T00:00:00Z"),
   };
-}
-
-// SQL-column → Row field map (schema.ts snake_case ↔ TS camelCase).
-const COL_MAP: Record<string, keyof Row> = {
-  id: "id",
-  user_id: "userId",
-  name: "name",
-  color_id: "colorId",
-  priority: "priority",
-  created_at: "createdAt",
-  updated_at: "updatedAt",
-};
-
-// Walks a drizzle SQL tree to extract `col = val` constraints.
-// Pattern we care about: queryChunks = [_, Column, StringChunk(" = "), Param, _].
-function extractEq(
-  node: unknown,
-  out: Record<string, unknown> = {},
-): Record<string, unknown> {
-  if (!node || typeof node !== "object") return out;
-  const chunks = (node as { queryChunks?: unknown[] }).queryChunks;
-  if (!chunks) return out;
-  for (let i = 0; i < chunks.length; i++) {
-    const c = chunks[i] as { name?: string; queryChunks?: unknown[] };
-    if (c && typeof c.name === "string" && !Array.isArray((c as { queryChunks?: unknown }).queryChunks)) {
-      const nxt = chunks[i + 1] as { value?: unknown };
-      const param = chunks[i + 2] as { value?: unknown };
-      if (
-        typeof (nxt as { value?: unknown[] })?.value !== "undefined" &&
-        Array.isArray((nxt as { value?: unknown[] }).value) &&
-        ((nxt as { value?: string[] }).value ?? [])[0]?.includes(" = ") &&
-        param &&
-        "value" in param
-      ) {
-        out[c.name] = (param as { value: unknown }).value;
-      }
-    }
-    if (Array.isArray((c as { queryChunks?: unknown }).queryChunks)) {
-      extractEq(c, out);
-    }
-  }
-  return out;
-}
-
-function matches(r: Row, whereSql: unknown): boolean {
-  const constraints = extractEq(whereSql);
-  for (const [sqlCol, val] of Object.entries(constraints)) {
-    const field = COL_MAP[sqlCol];
-    if (!field) return false;
-    if (r[field] !== val) return false;
-  }
-  return true;
-}
-
-// Extract the first column `.name` found inside a drizzle SQL node — the
-// shape used by `asc(col)` / `desc(col)` wrappers.
-function firstColumnName(node: unknown): string | null {
-  if (!node || typeof node !== "object") return null;
-  const self = node as { name?: unknown; queryChunks?: unknown[] };
-  if (typeof self.name === "string" && !Array.isArray(self.queryChunks)) {
-    return self.name;
-  }
-  if (Array.isArray(self.queryChunks)) {
-    for (const c of self.queryChunks) {
-      const found = firstColumnName(c);
-      if (found) return found;
-    }
-  }
-  return null;
-}
-
-function sortBy(rows: Row[], orderArgs: unknown[]): Row[] {
-  const cols = orderArgs
-    .map(firstColumnName)
-    .filter((v): v is string => typeof v === "string");
-  const sorted = [...rows];
-  sorted.sort((a, b) => {
-    for (const sqlCol of cols) {
-      const field = COL_MAP[sqlCol] ?? (sqlCol as keyof Row);
-      const av = a[field] as unknown;
-      const bv = b[field] as unknown;
-      const an = av instanceof Date ? av.getTime() : (av as number | string);
-      const bn = bv instanceof Date ? bv.getTime() : (bv as number | string);
-      if (an < bn) return -1;
-      if (an > bn) return 1;
-    }
-    return 0;
-  });
-  return sorted;
-}
-
-class DuplicateNameError extends Error {
-  readonly code = "23505";
-  readonly constraint_name = "categories_user_id_name_unique";
-  constructor() {
-    super("duplicate key value violates unique constraint");
-  }
-}
-
-type SyncStateRow = { userId: string; calendarId: string };
-
-type FakeDbHandle = {
-  db: unknown;
-  close: () => Promise<void>;
-  state: { rows: Row[]; syncStateRows: SyncStateRow[] };
-};
-
-function makeFakeDb(initial: Row[] = []): FakeDbHandle {
-  const state = { rows: [...initial], syncStateRows: [] as SyncStateRow[] };
-
-  const db = {
-    select(_cols: unknown) {
-      return {
-        from(table: unknown) {
-          if (table === syncState) {
-            return {
-              where(whereSql: unknown) {
-                const constraints = extractEq(whereSql);
-                const uid = constraints["user_id"];
-                const filtered = state.syncStateRows.filter(
-                  (r) => r.userId === uid,
-                );
-                return Promise.resolve(filtered);
-              },
-            };
-          }
-          // default: categories table
-          void table;
-          return {
-            where(whereSql: unknown) {
-              const filtered = state.rows.filter((r) => matches(r, whereSql));
-              return {
-                orderBy: async (...args: unknown[]) => sortBy(filtered, args),
-                limit: async () => filtered.slice(),
-              };
-            },
-          };
-        },
-      };
-    },
-    insert(_table: unknown) {
-      return {
-        values(v: Partial<Row>) {
-          return {
-            returning: async (_cols: unknown) => {
-              const dup = state.rows.find(
-                (r) => r.userId === v.userId && r.name === v.name,
-              );
-              if (dup) throw new DuplicateNameError();
-              const now = new Date();
-              const patch: Partial<Row> = {
-                id:
-                  v.id ??
-                  "99999999-9999-9999-9999-" +
-                    Math.floor(Math.random() * 1e12)
-                      .toString()
-                      .padStart(12, "0"),
-                priority: v.priority ?? 100,
-                createdAt: now,
-                updatedAt: now,
-              };
-              if (v.userId !== undefined) patch.userId = v.userId;
-              if (v.name !== undefined) patch.name = v.name;
-              if (v.colorId !== undefined) patch.colorId = v.colorId;
-              if (v.keywords !== undefined) patch.keywords = v.keywords;
-              const inserted: Row = row(patch);
-              state.rows.push(inserted);
-              return [inserted];
-            },
-            onConflictDoNothing: async () => undefined,
-          };
-        },
-      };
-    },
-    update(_table: unknown) {
-      return {
-        set(patch: Partial<Row>) {
-          return {
-            where(whereSql: unknown) {
-              return {
-                returning: async (_cols: unknown) => {
-                  const matched = state.rows.filter((r) =>
-                    matches(r, whereSql),
-                  );
-                  if (matched.length === 0) return [];
-                  for (const r of matched) {
-                    // duplicate-name check on update (scoped per user)
-                    if (
-                      patch.name !== undefined &&
-                      patch.name !== r.name &&
-                      state.rows.some(
-                        (o) =>
-                          o !== r &&
-                          o.userId === r.userId &&
-                          o.name === patch.name,
-                      )
-                    ) {
-                      throw new DuplicateNameError();
-                    }
-                    Object.assign(r, patch);
-                  }
-                  return matched.slice();
-                },
-              };
-            },
-          };
-        },
-      };
-    },
-    delete(_table: unknown) {
-      return {
-        where(whereSql: unknown) {
-          return {
-            returning: async (_cols: unknown) => {
-              const toDelete = state.rows.filter((r) => matches(r, whereSql));
-              state.rows = state.rows.filter((r) => !toDelete.includes(r));
-              return toDelete.map((r) => ({ id: r.id }));
-            },
-          };
-        },
-      };
-    },
-  };
-
-  return { db, close: async () => undefined, state };
 }
 
 const baseEnv = {
@@ -362,7 +131,7 @@ describe("/api/categories — auth gate", () => {
 
 describe("/api/categories — list (GET)", () => {
   it("returns only rows owned by the requesting user, ordered by priority then createdAt", async () => {
-    currentDb.state.rows.push(
+    currentDb.state.categories.push(
       row({
         id: CAT_A_ID,
         userId: USER_A,
@@ -411,8 +180,8 @@ describe("/api/categories — create (POST)", () => {
     const body = (await res.json()) as { category: { name: string; userId?: string } };
     expect(body.category.name).toBe("주간회의");
     // stored row is scoped to user A
-    expect(currentDb.state.rows).toHaveLength(1);
-    expect(currentDb.state.rows[0]?.userId).toBe(USER_A);
+    expect(currentDb.state.categories).toHaveLength(1);
+    expect(currentDb.state.categories[0]?.userId).toBe(USER_A);
   });
 
   it("400 when colorId is outside 1..11", async () => {
@@ -443,7 +212,7 @@ describe("/api/categories — create (POST)", () => {
   });
 
   it("409 duplicate_name when same-user row with the same name exists", async () => {
-    currentDb.state.rows.push(
+    currentDb.state.categories.push(
       row({ id: CAT_A_ID, userId: USER_A, name: "주간회의" }),
     );
     const res = await post({
@@ -457,7 +226,7 @@ describe("/api/categories — create (POST)", () => {
   });
 
   it("allows a different user to reuse the same name (unique is per-user)", async () => {
-    currentDb.state.rows.push(
+    currentDb.state.categories.push(
       row({ id: CAT_B_ID, userId: USER_B, name: "주간회의" }),
     );
     const res = await post({
@@ -472,7 +241,7 @@ describe("/api/categories — create (POST)", () => {
     // Webhook-driven incremental sync only sees changed events. Without this
     // fan-out, a freshly added rule never reaches existing un-mutated events
     // until something else perturbs them.
-    currentDb.state.syncStateRows.push(
+    currentDb.state.syncStates.push(
       { userId: USER_A, calendarId: "primary" },
       { userId: USER_A, calendarId: "secondary@group.calendar.google.com" },
       { userId: USER_B, calendarId: "other-user-cal" },
@@ -511,10 +280,10 @@ describe("/api/categories — create (POST)", () => {
   });
 
   it("does NOT enqueue when create fails (409 duplicate_name)", async () => {
-    currentDb.state.rows.push(
+    currentDb.state.categories.push(
       row({ id: CAT_A_ID, userId: USER_A, name: "주간회의" }),
     );
-    currentDb.state.syncStateRows.push({
+    currentDb.state.syncStates.push({
       userId: USER_A,
       calendarId: "primary",
     });
@@ -530,7 +299,7 @@ describe("/api/categories — create (POST)", () => {
 
 describe("/api/categories — patch (PATCH)", () => {
   it("200 when row is owned by the requesting user", async () => {
-    currentDb.state.rows.push(
+    currentDb.state.categories.push(
       row({ id: CAT_A_ID, userId: USER_A, name: "주간회의", colorId: "9" }),
     );
     const res = await invoke(`/api/categories/${CAT_A_ID}`, {
@@ -542,11 +311,11 @@ describe("/api/categories — patch (PATCH)", () => {
     expect(res.status).toBe(200);
     const body = (await res.json()) as { category: { colorId: string } };
     expect(body.category.colorId).toBe("3");
-    expect(currentDb.state.rows[0]?.colorId).toBe("3");
+    expect(currentDb.state.categories[0]?.colorId).toBe("3");
   });
 
   it("404 when the id belongs to another user (tenant isolation)", async () => {
-    currentDb.state.rows.push(
+    currentDb.state.categories.push(
       row({ id: CAT_B_ID, userId: USER_B, name: "B's rule" }),
     );
     const res = await invoke(`/api/categories/${CAT_B_ID}`, {
@@ -557,7 +326,7 @@ describe("/api/categories — patch (PATCH)", () => {
     });
     expect(res.status).toBe(404);
     // user B's row must be untouched
-    expect(currentDb.state.rows[0]?.colorId).toBe("9");
+    expect(currentDb.state.categories[0]?.colorId).toBe("9");
   });
 
   it("400 on an invalid uuid path parameter", async () => {
@@ -571,7 +340,7 @@ describe("/api/categories — patch (PATCH)", () => {
   });
 
   it("400 on an empty patch", async () => {
-    currentDb.state.rows.push(row({ id: CAT_A_ID, userId: USER_A }));
+    currentDb.state.categories.push(row({ id: CAT_A_ID, userId: USER_A }));
     const res = await invoke(`/api/categories/${CAT_A_ID}`, {
       method: "PATCH",
       userToken: "token-a",
@@ -582,7 +351,7 @@ describe("/api/categories — patch (PATCH)", () => {
   });
 
   it("409 when the new name collides with another row owned by the same user", async () => {
-    currentDb.state.rows.push(
+    currentDb.state.categories.push(
       row({ id: CAT_A_ID, userId: USER_A, name: "주간회의" }),
       row({
         id: "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaa02",
@@ -600,8 +369,8 @@ describe("/api/categories — patch (PATCH)", () => {
   });
 
   it("enqueues full_resync per calendar when colorId changes", async () => {
-    currentDb.state.rows.push(row({ id: CAT_A_ID, userId: USER_A }));
-    currentDb.state.syncStateRows.push(
+    currentDb.state.categories.push(row({ id: CAT_A_ID, userId: USER_A }));
+    currentDb.state.syncStates.push(
       { userId: USER_A, calendarId: "primary" },
       { userId: USER_A, calendarId: "work@group.calendar.google.com" },
     );
@@ -618,8 +387,8 @@ describe("/api/categories — patch (PATCH)", () => {
   });
 
   it("enqueues full_resync when keywords change", async () => {
-    currentDb.state.rows.push(row({ id: CAT_A_ID, userId: USER_A }));
-    currentDb.state.syncStateRows.push({
+    currentDb.state.categories.push(row({ id: CAT_A_ID, userId: USER_A }));
+    currentDb.state.syncStates.push({
       userId: USER_A,
       calendarId: "primary",
     });
@@ -634,8 +403,8 @@ describe("/api/categories — patch (PATCH)", () => {
   });
 
   it("enqueues full_resync when priority changes (tiebreaker reordering)", async () => {
-    currentDb.state.rows.push(row({ id: CAT_A_ID, userId: USER_A }));
-    currentDb.state.syncStateRows.push({
+    currentDb.state.categories.push(row({ id: CAT_A_ID, userId: USER_A }));
+    currentDb.state.syncStates.push({
       userId: USER_A,
       calendarId: "primary",
     });
@@ -650,8 +419,8 @@ describe("/api/categories — patch (PATCH)", () => {
   });
 
   it("does NOT enqueue when only name changes (metadata, no classification impact)", async () => {
-    currentDb.state.rows.push(row({ id: CAT_A_ID, userId: USER_A }));
-    currentDb.state.syncStateRows.push({
+    currentDb.state.categories.push(row({ id: CAT_A_ID, userId: USER_A }));
+    currentDb.state.syncStates.push({
       userId: USER_A,
       calendarId: "primary",
     });
@@ -666,7 +435,7 @@ describe("/api/categories — patch (PATCH)", () => {
   });
 
   it("does NOT enqueue when PATCH fails (404 not found)", async () => {
-    currentDb.state.syncStateRows.push({
+    currentDb.state.syncStates.push({
       userId: USER_A,
       calendarId: "primary",
     });
@@ -683,18 +452,18 @@ describe("/api/categories — patch (PATCH)", () => {
 
 describe("/api/categories — delete (DELETE)", () => {
   it("204 on success and removes the row", async () => {
-    currentDb.state.rows.push(row({ id: CAT_A_ID, userId: USER_A }));
+    currentDb.state.categories.push(row({ id: CAT_A_ID, userId: USER_A }));
     const res = await invoke(`/api/categories/${CAT_A_ID}`, {
       method: "DELETE",
       userToken: "token-a",
     });
     expect(res.status).toBe(204);
-    expect(currentDb.state.rows).toHaveLength(0);
+    expect(currentDb.state.categories).toHaveLength(0);
   });
 
   it("enqueues one color_rollback job per calendar in sync_state", async () => {
-    currentDb.state.rows.push(row({ id: CAT_A_ID, userId: USER_A }));
-    currentDb.state.syncStateRows.push(
+    currentDb.state.categories.push(row({ id: CAT_A_ID, userId: USER_A }));
+    currentDb.state.syncStates.push(
       { userId: USER_A, calendarId: "primary" },
       { userId: USER_A, calendarId: "secondary@group.calendar.google.com" },
       { userId: USER_B, calendarId: "other-user-cal" },
@@ -719,7 +488,7 @@ describe("/api/categories — delete (DELETE)", () => {
   });
 
   it("enqueues nothing when user has no sync_state rows", async () => {
-    currentDb.state.rows.push(row({ id: CAT_A_ID, userId: USER_A }));
+    currentDb.state.categories.push(row({ id: CAT_A_ID, userId: USER_A }));
     const res = await invoke(`/api/categories/${CAT_A_ID}`, {
       method: "DELETE",
       userToken: "token-a",
@@ -741,13 +510,13 @@ describe("/api/categories — delete (DELETE)", () => {
   });
 
   it("404 when id belongs to another user (tenant isolation)", async () => {
-    currentDb.state.rows.push(row({ id: CAT_B_ID, userId: USER_B }));
+    currentDb.state.categories.push(row({ id: CAT_B_ID, userId: USER_B }));
     const res = await invoke(`/api/categories/${CAT_B_ID}`, {
       method: "DELETE",
       userToken: "token-a",
     });
     expect(res.status).toBe(404);
-    expect(currentDb.state.rows).toHaveLength(1);
+    expect(currentDb.state.categories).toHaveLength(1);
   });
 
   it("400 on invalid uuid", async () => {
