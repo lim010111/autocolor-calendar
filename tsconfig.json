@@ -20,6 +20,6 @@
     "jsx": "react-jsx",
     "jsxImportSource": "hono/jsx"
   },
-  "include": ["src/**/*.ts", "scripts/**/*.ts", "vitest.config.ts", "drizzle.config.ts"],
+  "include": ["src/**/*.ts", "scripts/**/*.ts", "evals/scripts/**/*.ts", "vitest.config.ts", "drizzle.config.ts"],
   "exclude": ["node_modules", "dist", ".wrangler"]
 }
