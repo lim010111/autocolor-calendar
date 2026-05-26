@@ -9,6 +9,7 @@ import {
   reserveLlmCall,
   type ReserveLlmCallFn,
 } from "../services/llmClassifier";
+import { redactEventForLlm, type RedactedEvent } from "../services/piiRedactor";
 import type { Rule } from "../services/ruleService";
 import { synthesizeSeeds } from "../services/ruleService";
 
@@ -30,8 +31,24 @@ function cat(partial: Partial<Rule> = {}): Rule {
   };
 }
 
-function ev(partial: Partial<CalendarEvent> = {}): CalendarEvent {
-  return { id: partial.id ?? "e-1", ...partial };
+// All fixtures used in this file flow into `buildPrompt` or
+// `classifyWithLlm`, both of which require `RedactedEvent` (§5.2). The
+// helper mints the brand via the only legitimate path (`redactEventForLlm`).
+// The redactor is idempotent on its own output, so threading short
+// PII-free fixtures (`{ summary: "x" }`) through it leaves prompt bytes
+// unchanged — preserving the "behaviour change: 0" guarantee of this PR.
+function ev(partial: Partial<CalendarEvent> = {}): RedactedEvent {
+  const raw: CalendarEvent = { id: partial.id ?? "e-1", ...partial };
+  return redactEventForLlm(raw);
+}
+
+// §5.2 compile-time contract pin: `classifyWithLlm` and `buildPrompt`
+// reject a raw `CalendarEvent`. If this `@ts-expect-error` ever passes
+// type-check without an error, the brand has been broken.
+function _rawCalendarEventRejectedByContract(): void {
+  const raw: CalendarEvent = { id: "raw-pin" };
+  // @ts-expect-error - §5.2: raw CalendarEvent must be redacted first
+  buildPrompt(raw, []);
 }
 
 function makeEnv(overrides: Partial<Bindings> = {}): Bindings {

@@ -5,8 +5,7 @@ import { llmUsageDaily, llmUsageGlobalDaily } from "../db/schema";
 import type { Bindings } from "../env";
 import type { RuleRef } from "./classifierOutcomes";
 import type { Rule } from "./ruleService";
-import { redactEventForLlm } from "./piiRedactor";
-import type { CalendarEvent } from "./googleCalendar";
+import type { RedactedEvent } from "./piiRedactor";
 import {
   DEFAULT_CLASSIFIER_PROMPT_VERSION,
   loadClassifierPrompt,
@@ -27,8 +26,10 @@ export {
 //   intentionally exposes only a discriminated kind + http status (no body)
 //   so the chain can bump counters without touching PII. Error messages
 //   thrown anywhere in this module must not embed event content.
-// - PII redaction (`redactEventForLlm`) happens inside `classifyWithLlm`
-//   before prompt build. Callers pass the raw event.
+// - PII redaction (`redactEventForLlm`) is a precondition enforced via the
+//   `RedactedEvent` branded type (§5.2). Callers (today: `classifierChain`'s
+//   LLM leg) MUST mint a `RedactedEvent` via `redactEventForLlm` before
+//   invoking this function — raw `CalendarEvent` is rejected at compile time.
 // - Halt-on-failure: any non-"hit" outcome collapses to a silent `no_match`
 //   at `calendarSync.processEvent`. There is no fall-through to rule-based
 //   logic here (rule leg runs BEFORE this module in `classifierChain`).
@@ -171,7 +172,7 @@ export type LlmClassifyDeps = {
 // adds little classification signal. `start/end` omitted (time-of-day
 // classification is §5 후속).
 export function buildPrompt(
-  redactedEvent: CalendarEvent,
+  redactedEvent: RedactedEvent,
   categories: Rule[],
   version: ClassifierPromptVersion = DEFAULT_CLASSIFIER_PROMPT_VERSION,
 ): ChatMessage[] {
@@ -393,7 +394,11 @@ export function parseCategoryName(content: string): string | null | undefined {
 }
 
 export async function classifyWithLlm(
-  event: CalendarEvent,
+  // §5.2 branded contract — caller MUST redact via `redactEventForLlm`
+  // first. Raw `CalendarEvent` is rejected at compile time. The redaction
+  // step thus moves to `classifierChain`'s LLM leg; this function trusts
+  // its input is already redacted.
+  event: RedactedEvent,
   categories: Rule[],
   deps: LlmClassifyDeps,
 ): Promise<{ outcome: LlmOutcome; record: LlmCallRecord }> {
@@ -453,8 +458,7 @@ export async function classifyWithLlm(
   const reservation = await reserve(deps.db, deps.userId, perUserLimit, globalLimit);
   if (!reservation.ok) return finish({ kind: "quota_exceeded" });
 
-  const redacted = redactEventForLlm(event);
-  const messages = buildPrompt(redacted, categories);
+  const messages = buildPrompt(event, categories);
   promptSummary = extractUserMessage(messages);
 
   let lastOutcome: LlmOutcome = { kind: "bad_response" };
