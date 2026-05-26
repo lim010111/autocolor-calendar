@@ -1,7 +1,7 @@
-import { and, asc, eq, sql } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import type { PostgresJsDatabase } from "drizzle-orm/postgres-js";
 
-import { categories, syncState } from "../db/schema";
+import { syncState } from "../db/schema";
 import type { Bindings } from "../env";
 import type { ClassifyContext, ClassifyEventFn } from "./classifier";
 import { buildDefaultClassifier } from "./classifierChain";
@@ -14,6 +14,7 @@ import {
   patchEventColor,
   type CalendarEvent,
 } from "./googleCalendar";
+import { listRules } from "./ruleService";
 import { ReauthRequiredError, getValidAccessToken } from "./tokenRefresh";
 
 export type SyncSummary = {
@@ -117,17 +118,7 @@ async function loadCategories(
   db: PostgresJsDatabase,
   userId: string,
 ): Promise<ClassifyContext["categories"]> {
-  return await db
-    .select({
-      id: categories.id,
-      name: categories.name,
-      colorId: categories.colorId,
-      keywords: categories.keywords,
-      priority: categories.priority,
-    })
-    .from(categories)
-    .where(eq(categories.userId, userId))
-    .orderBy(asc(categories.priority), asc(categories.createdAt));
+  return await listRules(db, userId);
 }
 
 async function processEvent(

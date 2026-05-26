@@ -1,22 +1,30 @@
 import { describe, expect, it } from "vitest";
 
-import type { Category, ClassifyContext } from "../services/classifier";
+import type { ClassifyContext } from "../services/classifier";
 import { classifyEvent } from "../services/classifier";
 import type { CalendarEvent } from "../services/googleCalendar";
+import type { Rule } from "../services/ruleService";
+import { synthesizeSeeds } from "../services/ruleService";
 
 const USER = "00000000-0000-0000-0000-000000000001";
 
-function cat(partial: Partial<Category> = {}): Category {
+function cat(partial: Partial<Rule> = {}): Rule {
+  const name = partial.name ?? "주간회의";
+  const keywords = partial.keywords ?? ["주간회의"];
   return {
     id: partial.id ?? "c-1",
-    name: partial.name ?? "주간회의",
+    userId: partial.userId ?? USER,
+    name,
     colorId: partial.colorId ?? "9",
-    keywords: partial.keywords ?? ["주간회의"],
+    keywords,
     priority: partial.priority ?? 100,
+    seeds: partial.seeds ?? synthesizeSeeds({ name, keywords }),
+    createdAt: partial.createdAt ?? new Date("2026-04-19T00:00:00Z"),
+    updatedAt: partial.updatedAt ?? new Date("2026-04-19T00:00:00Z"),
   };
 }
 
-function ctxOf(categories: Category[]): ClassifyContext {
+function ctxOf(categories: Rule[]): ClassifyContext {
   return { userId: USER, categories };
 }
 

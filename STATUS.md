@@ -50,14 +50,15 @@ outside the narrative block; mechanical sections are regenerated every run._
 
 ## architecture-deepening
 
-`░░░░░░░░░░░░░░░░░░░░░░` 0/42 acceptance criteria met (0%)
+`████░░░░░░░░░░░░░░░░░░` 9/48 acceptance criteria met (19%)
 
 | # | Issue | Triage | Criteria | State | Blocked by |
 |---|-------|--------|----------|-------|-----------|
-| 01 | Rule module aggregate | `ready-for-agent` | 0/9 | ⬜ todo | — |
-| 02 | Classifier chain deepening | `ready-for-agent` | 0/11 | ⛔ blocked | #01 |
+| 01 | Rule module aggregate | `ready-for-agent` | 9/9 | ✅ done | — |
+| 02 | Classifier chain deepening | `ready-for-agent` | 0/11 | ⬜ todo | #01 |
 | 03 | Branded pii types | `ready-for-agent` | 0/9 | ⛔ blocked | #02 |
 | 04 | Integration test harness | `ready-for-agent` | 0/13 | ⛔ blocked | #03 |
+| 05 | Fakedb test helper extraction | `ready-for-agent` | 0/6 | ⬜ todo | — |
 
 ## embedding-classifier
 
