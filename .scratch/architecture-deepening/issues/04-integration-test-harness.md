@@ -1,6 +1,47 @@
-Status: ready-for-agent
+Status: wontfix
 
-## What to build
+## Deferred (2026-05-26)
+
+본 issue는 **wontfix (deferred)** 로 마크된다. 결정 근거 — `/harden-issue`
+세션 + `/consult-externals` 외부 council (Codex / agy 양쪽 endorse):
+
+1. 본 harness 의 진짜 load-bearing user 는 ADR-0004 embedding pipeline 이다.
+   현 시점 embedding 코드 경로 0줄 — `EmbeddingService` interface 자체가
+   production 에 존재하지 않으며 (`src/services/classifierChain.ts` 의
+   `ChainDeps` 에 embedding 관련 필드 없음), 벡터 차원 N 도 embedding-
+   classifier #01 모델 eval (HITL, 768 vs 1024 미정) 결과를 기다린다.
+   harness 만 먼저 land 하면 fixture `EmbeddingService` 시그니처 · `rule_seeds`
+   schema · 차원 N 모두를 *추측*으로 굳혀야 하고, ADR-0004 구현 #02 가
+   실제 interface 를 정의하면 사후 재작성 비용이 발생한다.
+
+2. 남는 시나리오 1/2/3/5 는 이미 unit coverage 가 있다 —
+   `classifierChain.test.ts` / `classifier.test.ts` / `llmClassifier.test.ts`
+   / `calendarSync.test.ts` (시나리오 1), `syncRoute.test.ts` §6.4 suite
+   (시나리오 2), `watchRenewal.test.ts` (시나리오 3, millisecond precision
+   invariant 까지 regex guard 로 pin 됨), `categoriesRoute.test.ts` +
+   `colorRollback.test.ts` (시나리오 5). real-Postgres 격차에서 잡힐 추가
+   신호는 실재하지만 *urgent* 하지 않다 (prod incident 0).
+
+3. 다른 architecture-deepening prep (#01/#02/#03/#05) 과 성격이 다르다.
+   다른 셋은 **prod 코드 0줄 + 즉시 navigability 이득**. 본 이슈는
+   **heavy infrastructure 신규 도입** (vitest-pool-workers + Supabase local
+   CLI + 13개 AC + 신규 CI job) **+ 즉시 이득 없음**. 원작이 가정한
+   "ADR-0004 구현 #02 시작 직전 land" 는 #02 가 HITL-blocked 로 ETA 미정인
+   현실에서 깨졌다.
+
+**Folded into**: ADR-0004 구현 트랙. 첫 후보 흡수 지점은
+`.scratch/embedding-classifier/issues/02-embedding-knn-classifier-name-seeds.md`
+— 그 PR (또는 그 직전 별도 PR) 이 harness 도입과 첫 embedding integration
+test 를 같이 land 한다. fixture 시그니처가 실제 production
+`EmbeddingService` interface 와 co-design 되어 사후 재작성이 사라진다.
+
+아래 원본 설계 노트는 ADR-0004 #02 가 참고할 reference 로 보존한다 — stack
+선정, 시나리오 우선순위, test 격리 정책, factory shape, CI 통합 비용 추정은
+그 때 그대로 재사용 가능하다.
+
+---
+
+## What to build (원본 — reference only, deferred)
 
 Deepened Classifier pipeline의 첫 integration coverage 도입. 기존 unit
 test는 mock-heavy해서 cross-module seam bug — `classifierChain.ts:52-53`의
