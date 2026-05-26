@@ -17,25 +17,14 @@ import {
   synthesizeSeeds,
   updateRule,
 } from "../services/ruleService";
-import { categories, syncState } from "../db/schema";
+import { categories } from "../db/schema";
+
+import { type Row, makeFakeDb } from "./_helpers/fakeDb";
 
 const USER_A = "00000000-0000-0000-0000-00000000000a";
 const USER_B = "00000000-0000-0000-0000-00000000000b";
 const RULE_A = "11111111-1111-1111-1111-11111111111a";
 const RULE_B = "22222222-2222-2222-2222-22222222222b";
-
-type Row = {
-  id: string;
-  userId: string;
-  name: string;
-  colorId: string;
-  keywords: string[];
-  priority: number;
-  createdAt: Date;
-  updatedAt: Date;
-};
-
-type SyncStateRow = { userId: string; calendarId: string };
 
 function row(overrides: Partial<Row> = {}): Row {
   return {
@@ -48,201 +37,6 @@ function row(overrides: Partial<Row> = {}): Row {
     createdAt: overrides.createdAt ?? new Date("2026-04-19T00:00:00Z"),
     updatedAt: overrides.updatedAt ?? new Date("2026-04-19T00:00:00Z"),
   };
-}
-
-class DuplicateNameError extends Error {
-  readonly code = "23505";
-  readonly constraint_name = "categories_user_id_name_unique";
-  constructor() {
-    super("duplicate key value violates unique constraint");
-  }
-}
-
-type SqlWhere = {
-  __userId?: string | undefined;
-  __ruleId?: string | undefined;
-};
-
-// Lightweight chainable db mock — verifies that ruleService routes through
-// drizzle's builder methods correctly without walking the SQL AST. The
-// route-level test (`categoriesRoute.test.ts`) keeps the broader AST-walk
-// contract so the wire shape stays pinned.
-function makeFakeDb(initial: {
-  rules?: Row[];
-  calendars?: SyncStateRow[];
-  failInsertWith?: Error;
-  failUpdateWith?: Error;
-} = {}) {
-  const state = {
-    rules: [...(initial.rules ?? [])],
-    calendars: [...(initial.calendars ?? [])],
-  };
-
-  // Lifted from the categoriesRoute fake: extract eq(table.col, val)
-  // constraints out of a drizzle SQL tree so where clauses are honored.
-  function extractEq(
-    node: unknown,
-    out: Record<string, unknown> = {},
-  ): Record<string, unknown> {
-    if (!node || typeof node !== "object") return out;
-    const chunks = (node as { queryChunks?: unknown[] }).queryChunks;
-    if (!chunks) return out;
-    for (let i = 0; i < chunks.length; i++) {
-      const c = chunks[i] as { name?: string; queryChunks?: unknown[] };
-      if (
-        c &&
-        typeof c.name === "string" &&
-        !Array.isArray((c as { queryChunks?: unknown }).queryChunks)
-      ) {
-        const nxt = chunks[i + 1] as { value?: unknown };
-        const param = chunks[i + 2] as { value?: unknown };
-        if (
-          typeof (nxt as { value?: unknown[] })?.value !== "undefined" &&
-          Array.isArray((nxt as { value?: unknown[] }).value) &&
-          ((nxt as { value?: string[] }).value ?? [])[0]?.includes(" = ") &&
-          param &&
-          "value" in param
-        ) {
-          out[c.name] = (param as { value: unknown }).value;
-        }
-      }
-      if (Array.isArray((c as { queryChunks?: unknown }).queryChunks)) {
-        extractEq(c, out);
-      }
-    }
-    return out;
-  }
-
-  function whereMatcher(whereSql: unknown): SqlWhere {
-    const constraints = extractEq(whereSql);
-    return {
-      __userId: constraints["user_id"] as string | undefined,
-      __ruleId: constraints["id"] as string | undefined,
-    };
-  }
-
-  const db = {
-    select(_cols: unknown) {
-      return {
-        from(table: unknown) {
-          if (table === syncState) {
-            return {
-              where(whereSql: unknown) {
-                const { __userId } = whereMatcher(whereSql);
-                const out = state.calendars.filter(
-                  (c) => c.userId === __userId,
-                );
-                return Promise.resolve(out);
-              },
-            };
-          }
-          // categories
-          return {
-            where(whereSql: unknown) {
-              const m = whereMatcher(whereSql);
-              const filtered = state.rules.filter((r) => {
-                if (m.__userId && r.userId !== m.__userId) return false;
-                if (m.__ruleId && r.id !== m.__ruleId) return false;
-                return true;
-              });
-              return {
-                orderBy: async () => filtered.slice(),
-                limit: async (_n: number) => filtered.slice(0, _n),
-              };
-            },
-          };
-        },
-      };
-    },
-    insert(_table: unknown) {
-      return {
-        values(v: Partial<Row>) {
-          return {
-            returning: async (_cols: unknown) => {
-              if (initial.failInsertWith) throw initial.failInsertWith;
-              const dup = state.rules.find(
-                (r) => r.userId === v.userId && r.name === v.name,
-              );
-              if (dup) throw new DuplicateNameError();
-              const overrides: Partial<Row> = {
-                id:
-                  v.id ??
-                  "99999999-9999-9999-9999-" +
-                    Math.floor(Math.random() * 1e12)
-                      .toString()
-                      .padStart(12, "0"),
-              };
-              if (v.userId !== undefined) overrides.userId = v.userId;
-              if (v.name !== undefined) overrides.name = v.name;
-              if (v.colorId !== undefined) overrides.colorId = v.colorId;
-              if (v.keywords !== undefined) overrides.keywords = v.keywords;
-              if (v.priority !== undefined) overrides.priority = v.priority;
-              const inserted = row(overrides);
-              state.rules.push(inserted);
-              return [inserted];
-            },
-          };
-        },
-      };
-    },
-    update(_table: unknown) {
-      return {
-        set(patch: Partial<Row>) {
-          return {
-            where(whereSql: unknown) {
-              return {
-                returning: async (_cols: unknown) => {
-                  if (initial.failUpdateWith) throw initial.failUpdateWith;
-                  const m = whereMatcher(whereSql);
-                  const matched = state.rules.filter((r) => {
-                    if (m.__userId && r.userId !== m.__userId) return false;
-                    if (m.__ruleId && r.id !== m.__ruleId) return false;
-                    return true;
-                  });
-                  for (const r of matched) {
-                    if (
-                      patch.name !== undefined &&
-                      patch.name !== r.name &&
-                      state.rules.some(
-                        (o) =>
-                          o !== r &&
-                          o.userId === r.userId &&
-                          o.name === patch.name,
-                      )
-                    ) {
-                      throw new DuplicateNameError();
-                    }
-                    Object.assign(r, patch);
-                  }
-                  return matched.slice();
-                },
-              };
-            },
-          };
-        },
-      };
-    },
-    delete(_table: unknown) {
-      return {
-        where(whereSql: unknown) {
-          return {
-            returning: async (_cols: unknown) => {
-              const m = whereMatcher(whereSql);
-              const toDelete = state.rules.filter((r) => {
-                if (m.__userId && r.userId !== m.__userId) return false;
-                if (m.__ruleId && r.id !== m.__ruleId) return false;
-                return true;
-              });
-              state.rules = state.rules.filter((r) => !toDelete.includes(r));
-              return toDelete.map((r) => ({ id: r.id }));
-            },
-          };
-        },
-      };
-    },
-  };
-
-  return { db: db as never, state };
 }
 
 const env = {
@@ -282,12 +76,12 @@ describe("synthesizeSeeds", () => {
 describe("listRules", () => {
   it("returns rules scoped to userId with seeds populated", async () => {
     const { db } = makeFakeDb({
-      rules: [
+      categories: [
         row({ id: RULE_A, userId: USER_A, name: "회의" }),
         row({ id: RULE_B, userId: USER_B, name: "공부" }),
       ],
     });
-    const rules = await listRules(db, USER_A);
+    const rules = await listRules(db as never, USER_A);
     expect(rules).toHaveLength(1);
     expect(rules[0]?.id).toBe(RULE_A);
     expect(rules[0]?.seeds).toEqual([
@@ -297,43 +91,43 @@ describe("listRules", () => {
   });
 
   it("returns empty array when the user owns no rules", async () => {
-    const { db } = makeFakeDb({ rules: [] });
-    expect(await listRules(db, USER_A)).toEqual([]);
+    const { db } = makeFakeDb({ categories: [] });
+    expect(await listRules(db as never, USER_A)).toEqual([]);
   });
 });
 
 describe("getRule", () => {
   it("returns the rule with seeds when found", async () => {
     const { db } = makeFakeDb({
-      rules: [row({ id: RULE_A, userId: USER_A })],
+      categories: [row({ id: RULE_A, userId: USER_A })],
     });
-    const rule = await getRule(db, USER_A, RULE_A);
+    const rule = await getRule(db as never, USER_A, RULE_A);
     expect(rule?.id).toBe(RULE_A);
     expect(rule?.seeds?.length).toBeGreaterThan(0);
   });
 
   it("returns null when the rule belongs to another user", async () => {
     const { db } = makeFakeDb({
-      rules: [row({ id: RULE_A, userId: USER_B })],
+      categories: [row({ id: RULE_A, userId: USER_B })],
     });
-    expect(await getRule(db, USER_A, RULE_A)).toBeNull();
+    expect(await getRule(db as never, USER_A, RULE_A)).toBeNull();
   });
 
   it("returns null when the rule does not exist", async () => {
-    const { db } = makeFakeDb({ rules: [] });
-    expect(await getRule(db, USER_A, RULE_A)).toBeNull();
+    const { db } = makeFakeDb({ categories: [] });
+    expect(await getRule(db as never, USER_A, RULE_A)).toBeNull();
   });
 });
 
 describe("createRule", () => {
   it("inserts a rule and fans out full_resync to every user calendar", async () => {
     const { db } = makeFakeDb({
-      calendars: [
+      syncStates: [
         { userId: USER_A, calendarId: "primary" },
         { userId: USER_A, calendarId: "work@group" },
       ],
     });
-    const { rule, sideEffects } = await createRule(db, env, USER_A, {
+    const { rule, sideEffects } = await createRule(db as never, env, USER_A, {
       name: "회의",
       colorId: "9",
       keywords: ["회의"],
@@ -354,8 +148,8 @@ describe("createRule", () => {
   });
 
   it("skips fan-out when the user has no calendars in sync_state", async () => {
-    const { db } = makeFakeDb({ calendars: [] });
-    const { sideEffects } = await createRule(db, env, USER_A, {
+    const { db } = makeFakeDb({ syncStates: [] });
+    const { sideEffects } = await createRule(db as never, env, USER_A, {
       name: "회의",
       colorId: "9",
       keywords: ["회의"],
@@ -366,10 +160,10 @@ describe("createRule", () => {
 
   it("throws DuplicateRuleNameError on a unique-name violation", async () => {
     const { db } = makeFakeDb({
-      rules: [row({ id: RULE_A, userId: USER_A, name: "회의" })],
+      categories: [row({ id: RULE_A, userId: USER_A, name: "회의" })],
     });
     await expect(
-      createRule(db, env, USER_A, {
+      createRule(db as never, env, USER_A, {
         name: "회의",
         colorId: "9",
         keywords: ["회의"],
@@ -381,10 +175,12 @@ describe("createRule", () => {
 describe("updateRule", () => {
   it("updates and fans out full_resync when colorId/keywords/priority changes", async () => {
     const { db } = makeFakeDb({
-      rules: [row({ id: RULE_A, userId: USER_A })],
-      calendars: [{ userId: USER_A, calendarId: "primary" }],
+      categories: [row({ id: RULE_A, userId: USER_A })],
+      syncStates: [{ userId: USER_A, calendarId: "primary" }],
     });
-    const result = await updateRule(db, env, USER_A, RULE_A, { colorId: "3" });
+    const result = await updateRule(db as never, env, USER_A, RULE_A, {
+      colorId: "3",
+    });
     expect(result?.rule.colorId).toBe("3");
     await result?.sideEffects;
     expect(vi.mocked(enqueueSync)).toHaveBeenCalledTimes(1);
@@ -395,10 +191,10 @@ describe("updateRule", () => {
 
   it("does NOT fan out when only the name (metadata) changes", async () => {
     const { db } = makeFakeDb({
-      rules: [row({ id: RULE_A, userId: USER_A })],
-      calendars: [{ userId: USER_A, calendarId: "primary" }],
+      categories: [row({ id: RULE_A, userId: USER_A })],
+      syncStates: [{ userId: USER_A, calendarId: "primary" }],
     });
-    const result = await updateRule(db, env, USER_A, RULE_A, {
+    const result = await updateRule(db as never, env, USER_A, RULE_A, {
       name: "주간회의(수정)",
     });
     expect(result?.rule.name).toBe("주간회의(수정)");
@@ -407,21 +203,21 @@ describe("updateRule", () => {
   });
 
   it("returns null when the rule does not exist for this user", async () => {
-    const { db } = makeFakeDb({ rules: [] });
+    const { db } = makeFakeDb({ categories: [] });
     expect(
-      await updateRule(db, env, USER_A, RULE_A, { colorId: "3" }),
+      await updateRule(db as never, env, USER_A, RULE_A, { colorId: "3" }),
     ).toBeNull();
   });
 
   it("throws DuplicateRuleNameError when renaming into another rule's name", async () => {
     const { db } = makeFakeDb({
-      rules: [
+      categories: [
         row({ id: RULE_A, userId: USER_A, name: "회의" }),
         row({ id: RULE_B, userId: USER_A, name: "공부" }),
       ],
     });
     await expect(
-      updateRule(db, env, USER_A, RULE_A, { name: "공부" }),
+      updateRule(db as never, env, USER_A, RULE_A, { name: "공부" }),
     ).rejects.toBeInstanceOf(DuplicateRuleNameError);
   });
 });
@@ -429,13 +225,13 @@ describe("updateRule", () => {
 describe("deleteRule", () => {
   it("deletes and fans out color_rollback to every user calendar", async () => {
     const { db } = makeFakeDb({
-      rules: [row({ id: RULE_A, userId: USER_A })],
-      calendars: [
+      categories: [row({ id: RULE_A, userId: USER_A })],
+      syncStates: [
         { userId: USER_A, calendarId: "primary" },
         { userId: USER_A, calendarId: "work@group" },
       ],
     });
-    const result = await deleteRule(db, env, USER_A, RULE_A);
+    const result = await deleteRule(db as never, env, USER_A, RULE_A);
     expect(result).not.toBeNull();
     await result?.sideEffects;
     expect(vi.mocked(enqueueSync)).toHaveBeenCalledTimes(2);
@@ -447,17 +243,19 @@ describe("deleteRule", () => {
   });
 
   it("returns null and skips fan-out when the rule does not exist", async () => {
-    const { db } = makeFakeDb({ rules: [] });
-    expect(await deleteRule(db, env, USER_A, RULE_A)).toBeNull();
+    const { db } = makeFakeDb({ categories: [] });
+    expect(await deleteRule(db as never, env, USER_A, RULE_A)).toBeNull();
     expect(vi.mocked(enqueueSync)).not.toHaveBeenCalled();
   });
 });
 
 describe("addExample", () => {
   it("resolves without side effects (no-op stub until ADR-0004 #05)", async () => {
-    const { db } = makeFakeDb({ rules: [row({ id: RULE_A, userId: USER_A })] });
+    const { db } = makeFakeDb({
+      categories: [row({ id: RULE_A, userId: USER_A })],
+    });
     await expect(
-      addExample(db, RULE_A, "회의실 잡기"),
+      addExample(db as never, RULE_A, "회의실 잡기"),
     ).resolves.toBeUndefined();
     expect(vi.mocked(enqueueSync)).not.toHaveBeenCalled();
   });
