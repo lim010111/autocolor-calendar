@@ -5,7 +5,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type { Bindings } from "../env";
 import type { SyncContext } from "../services/calendarSync";
 import { runFullResync, runIncrementalSync } from "../services/calendarSync";
-import type { ClassifyEventFn } from "../services/classifier";
+import type { ClassifyEventFn } from "../services/classifierOutcomes";
 
 const USER_ID = "11111111-1111-1111-1111-111111111111";
 const CAL = "primary";
@@ -212,9 +212,9 @@ describe("calendarSync.runIncrementalSync", () => {
     }) as typeof fetch;
 
     const classify: ClassifyEventFn = async () => ({
-      colorId: "3",
-      categoryId: "cat-1",
-      reason: "rule",
+      kind: "ruleHit",
+      rule: { id: "cat-1", name: "cat-1", colorId: "3" },
+      matchedKeyword: "standup",
     });
     const result = await runIncrementalSync({
       db,
@@ -267,9 +267,9 @@ describe("calendarSync.runIncrementalSync", () => {
     }) as typeof fetch;
 
     const classify: ClassifyEventFn = async () => ({
-      colorId: "3",
-      categoryId: "cat-1",
-      reason: "rule",
+      kind: "ruleHit",
+      rule: { id: "cat-1", name: "cat-1", colorId: "3" },
+      matchedKeyword: "standup",
     });
     const result = await runIncrementalSync({
       db,
@@ -314,9 +314,9 @@ describe("calendarSync.runIncrementalSync", () => {
     }) as typeof fetch;
 
     const classify: ClassifyEventFn = async () => ({
-      colorId: "3",
-      categoryId: "cat-1",
-      reason: "rule",
+      kind: "ruleHit",
+      rule: { id: "cat-1", name: "cat-1", colorId: "3" },
+      matchedKeyword: "standup",
     });
     const result = await runIncrementalSync({
       db,
@@ -367,9 +367,9 @@ describe("calendarSync.runIncrementalSync", () => {
     }) as typeof fetch;
 
     const classify: ClassifyEventFn = async () => ({
-      colorId: "3",
-      categoryId: "cat-1",
-      reason: "rule",
+      kind: "ruleHit",
+      rule: { id: "cat-1", name: "cat-1", colorId: "3" },
+      matchedKeyword: "standup",
     });
     const result = await runIncrementalSync({
       db,
@@ -455,9 +455,9 @@ describe("calendarSync — §5.4 ownership-aware color application", () => {
   }
 
   const classifyToBlue: ClassifyEventFn = async () => ({
-    colorId: "3",
-    categoryId: "cat-1",
-    reason: "rule",
+    kind: "ruleHit",
+    rule: { id: "cat-1", name: "cat-1", colorId: "3" },
+    matchedKeyword: "kw",
   });
 
   it("PATCHes empty-color event with marker payload", async () => {
@@ -703,7 +703,7 @@ describe("calendarSync — §5.3 LLM fallback counter wiring", () => {
       ),
     ]);
 
-    const nullClassify: ClassifyEventFn = async () => null;
+    const nullClassify: ClassifyEventFn = async () => ({ kind: "noMatch" });
     const result = await runIncrementalSync({
       db,
       env,
@@ -714,8 +714,11 @@ describe("calendarSync — §5.3 LLM fallback counter wiring", () => {
 
     expect(result.ok).toBe(true);
     if (!result.ok) return;
-    expect(result.summary.no_match).toBe(1);
-    // Injection seam bypasses the chain entirely → LLM counters stay at 0.
+    // Injection seam bypasses the chain entirely → no sinks are installed,
+    // so neither `no_match` nor any LLM counter is bumped. In production
+    // the default chain owns these counters via syncSummarySink (verified
+    // by the "default chain + no OPENAI_API_KEY" case below).
+    expect(result.summary.no_match).toBe(0);
     expect(result.summary.llm_attempted).toBe(0);
     expect(result.summary.llm_succeeded).toBe(0);
     expect(result.summary.llm_timeout).toBe(0);

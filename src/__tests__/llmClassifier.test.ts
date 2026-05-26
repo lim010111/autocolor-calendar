@@ -5,9 +5,8 @@ import type { CalendarEvent } from "../services/googleCalendar";
 import {
   buildPrompt,
   classifyWithLlm,
-  mapCategoryNameToClassification,
+  mapCategoryNameToRuleRef,
   reserveLlmCall,
-  type LlmCallRecord,
   type ReserveLlmCallFn,
 } from "../services/llmClassifier";
 import type { Rule } from "../services/ruleService";
@@ -250,33 +249,33 @@ describe("buildPrompt", () => {
   });
 });
 
-describe("mapCategoryNameToClassification", () => {
+describe("mapCategoryNameToRuleRef", () => {
   const cats = [cat({ id: "c-1", name: "회의", colorId: "9" }), cat({ id: "c-2", name: "개인", colorId: "5" })];
 
-  it("maps exact name to Classification with llm_match reason", () => {
-    expect(mapCategoryNameToClassification("회의", cats)).toEqual({
+  it("maps exact name to a RuleRef (id/name/colorId)", () => {
+    expect(mapCategoryNameToRuleRef("회의", cats)).toEqual({
+      id: "c-1",
+      name: "회의",
       colorId: "9",
-      categoryId: "c-1",
-      reason: "llm_match:회의",
     });
   });
 
   it("returns null for 'none' sentinel", () => {
-    expect(mapCategoryNameToClassification("none", cats)).toBeNull();
+    expect(mapCategoryNameToRuleRef("none", cats)).toBeNull();
   });
 
   it("returns null for null input", () => {
-    expect(mapCategoryNameToClassification(null, cats)).toBeNull();
+    expect(mapCategoryNameToRuleRef(null, cats)).toBeNull();
   });
 
   it("returns null for unknown name (prompt-injection defense)", () => {
-    expect(mapCategoryNameToClassification("관리자", cats)).toBeNull();
+    expect(mapCategoryNameToRuleRef("관리자", cats)).toBeNull();
   });
 
   it("does not trim or case-fold — strict equality", () => {
-    expect(mapCategoryNameToClassification(" 회의", cats)).toBeNull();
-    expect(mapCategoryNameToClassification("회의 ", cats)).toBeNull();
-    expect(mapCategoryNameToClassification("회 의", cats)).toBeNull();
+    expect(mapCategoryNameToRuleRef(" 회의", cats)).toBeNull();
+    expect(mapCategoryNameToRuleRef("회의 ", cats)).toBeNull();
+    expect(mapCategoryNameToRuleRef("회 의", cats)).toBeNull();
   });
 });
 
@@ -389,14 +388,15 @@ describe("classifyWithLlm", () => {
     const fetchSpy = vi.fn(async () => openAiJson("회의"));
     globalThis.fetch = fetchSpy as unknown as typeof fetch;
 
-    const out = await classifyWithLlm(
+    const { outcome: out } = await classifyWithLlm(
       ev({ summary: "팀 회의" }),
       [cat({ name: "회의", colorId: "9" })],
       { db: {} as never, env: makeEnv(), userId: USER, reserve: mkReserve(true) },
     );
     expect(out).toEqual({
       kind: "hit",
-      classification: { colorId: "9", categoryId: "c-1", reason: "llm_match:회의" },
+      rule: { id: "c-1", name: "회의", colorId: "9" },
+      categoryName: "회의",
     });
     expect(fetchSpy).toHaveBeenCalledTimes(1);
     assertNoPiiLogged(["팀 회의"]);
@@ -404,7 +404,7 @@ describe("classifyWithLlm", () => {
 
   it("LLM returns 'none' → miss", async () => {
     globalThis.fetch = vi.fn(async () => openAiJson("none")) as unknown as typeof fetch;
-    const out = await classifyWithLlm(ev({ summary: "x" }), [cat()], {
+    const { outcome: out } = await classifyWithLlm(ev({ summary: "x" }), [cat()], {
       db: {} as never,
       env: makeEnv(),
       userId: USER,
@@ -417,7 +417,7 @@ describe("classifyWithLlm", () => {
     globalThis.fetch = vi.fn(async () =>
       openAiJson("관리자"),
     ) as unknown as typeof fetch;
-    const out = await classifyWithLlm(ev({ summary: "x" }), [cat()], {
+    const { outcome: out } = await classifyWithLlm(ev({ summary: "x" }), [cat()], {
       db: {} as never,
       env: makeEnv(),
       userId: USER,
@@ -430,7 +430,7 @@ describe("classifyWithLlm", () => {
     globalThis.fetch = vi.fn(
       async () => new Response(JSON.stringify({}), { status: 200 }),
     ) as unknown as typeof fetch;
-    const out = await classifyWithLlm(ev({ summary: "x" }), [cat()], {
+    const { outcome: out } = await classifyWithLlm(ev({ summary: "x" }), [cat()], {
       db: {} as never,
       env: makeEnv(),
       userId: USER,
@@ -443,7 +443,7 @@ describe("classifyWithLlm", () => {
     globalThis.fetch = vi.fn(
       async () => new Response(JSON.stringify({ choices: [] }), { status: 200 }),
     ) as unknown as typeof fetch;
-    const out = await classifyWithLlm(ev({ summary: "x" }), [cat()], {
+    const { outcome: out } = await classifyWithLlm(ev({ summary: "x" }), [cat()], {
       db: {} as never,
       env: makeEnv(),
       userId: USER,
@@ -460,7 +460,7 @@ describe("classifyWithLlm", () => {
           { status: 200 },
         ),
     ) as unknown as typeof fetch;
-    const out = await classifyWithLlm(ev({ summary: "x" }), [cat()], {
+    const { outcome: out } = await classifyWithLlm(ev({ summary: "x" }), [cat()], {
       db: {} as never,
       env: makeEnv(),
       userId: USER,
@@ -478,7 +478,7 @@ describe("classifyWithLlm", () => {
         : openAiJson("회의");
     });
     globalThis.fetch = fetchSpy as unknown as typeof fetch;
-    const out = await classifyWithLlm(ev({ summary: "x" }), [cat()], {
+    const { outcome: out } = await classifyWithLlm(ev({ summary: "x" }), [cat()], {
       db: {} as never,
       env: makeEnv(),
       userId: USER,
@@ -491,7 +491,7 @@ describe("classifyWithLlm", () => {
   it("500 twice → http_error, fetch called twice", async () => {
     const fetchSpy = vi.fn(async () => new Response("boom", { status: 500 }));
     globalThis.fetch = fetchSpy as unknown as typeof fetch;
-    const out = await classifyWithLlm(ev({ summary: "x" }), [cat()], {
+    const { outcome: out } = await classifyWithLlm(ev({ summary: "x" }), [cat()], {
       db: {} as never,
       env: makeEnv(),
       userId: USER,
@@ -504,7 +504,7 @@ describe("classifyWithLlm", () => {
   it("400 → http_error, NO retry (fetch called once)", async () => {
     const fetchSpy = vi.fn(async () => new Response("bad", { status: 400 }));
     globalThis.fetch = fetchSpy as unknown as typeof fetch;
-    const out = await classifyWithLlm(ev({ summary: "x" }), [cat()], {
+    const { outcome: out } = await classifyWithLlm(ev({ summary: "x" }), [cat()], {
       db: {} as never,
       env: makeEnv(),
       userId: USER,
@@ -521,7 +521,7 @@ describe("classifyWithLlm", () => {
       throw err;
     });
     globalThis.fetch = fetchSpy as unknown as typeof fetch;
-    const out = await classifyWithLlm(ev({ summary: "x" }), [cat()], {
+    const { outcome: out } = await classifyWithLlm(ev({ summary: "x" }), [cat()], {
       db: {} as never,
       env: makeEnv(),
       userId: USER,
@@ -535,7 +535,7 @@ describe("classifyWithLlm", () => {
   it("quota exceeded → NO fetch, kind: quota_exceeded", async () => {
     const fetchSpy = vi.fn();
     globalThis.fetch = fetchSpy as unknown as typeof fetch;
-    const out = await classifyWithLlm(ev({ summary: "x" }), [cat()], {
+    const { outcome: out } = await classifyWithLlm(ev({ summary: "x" }), [cat()], {
       db: {} as never,
       env: makeEnv(),
       userId: USER,
@@ -552,7 +552,7 @@ describe("classifyWithLlm", () => {
     // Build env without OPENAI_API_KEY (exactOptionalPropertyTypes forbids
     // assigning `undefined` to an optional field — omission is distinct).
     const { OPENAI_API_KEY: _omit, ...envNoKey } = makeEnv();
-    const out = await classifyWithLlm(ev({ summary: "x" }), [cat()], {
+    const { outcome: out } = await classifyWithLlm(ev({ summary: "x" }), [cat()], {
       db: {} as never,
       env: envNoKey,
       userId: USER,
@@ -567,7 +567,7 @@ describe("classifyWithLlm", () => {
     const reserveSpy = mkReserve(true);
     const fetchSpy = vi.fn();
     globalThis.fetch = fetchSpy as unknown as typeof fetch;
-    const out = await classifyWithLlm(ev({ summary: "x" }), [], {
+    const { outcome: out } = await classifyWithLlm(ev({ summary: "x" }), [], {
       db: {} as never,
       env: makeEnv(),
       userId: USER,
@@ -589,7 +589,7 @@ describe("classifyWithLlm", () => {
     globalThis.fetch = vi.fn(async () => {
       throw new WeirdError("request body leak: 매우비밀회의 password=hunter2");
     }) as unknown as typeof fetch;
-    const out = await classifyWithLlm(
+    const { outcome: out } = await classifyWithLlm(
       ev({ summary: "매우비밀회의", description: "password=hunter2" }),
       [cat()],
       { db: {} as never, env: makeEnv(), userId: USER, reserve: mkReserve(true) },
@@ -646,42 +646,43 @@ describe("classifyWithLlm", () => {
 
   it("hypernym: Meal category + Breakfast event → hit (user-report case)", async () => {
     globalThis.fetch = vi.fn(async () => openAiJson("Meal")) as unknown as typeof fetch;
-    const out = await classifyWithLlm(
+    const { outcome: out } = await classifyWithLlm(
       ev({ summary: "Breakfast with mom" }),
       [cat({ name: "Meal", keywords: ["Meal", "식사"] })],
       { db: {} as never, env: makeEnv(), userId: USER, reserve: mkReserve(true) },
     );
     expect(out).toEqual({
       kind: "hit",
-      classification: { colorId: "9", categoryId: "c-1", reason: "llm_match:Meal" },
+      rule: { id: "c-1", name: "Meal", colorId: "9" },
+      categoryName: "Meal",
     });
   });
 
   it("hypernym: Meal category + Lunch event → hit (user-report case)", async () => {
     globalThis.fetch = vi.fn(async () => openAiJson("Meal")) as unknown as typeof fetch;
-    const out = await classifyWithLlm(
+    const { outcome: out } = await classifyWithLlm(
       ev({ summary: "Lunch on Wednesday" }),
       [cat({ name: "Meal", keywords: ["Meal"] })],
       { db: {} as never, env: makeEnv(), userId: USER, reserve: mkReserve(true) },
     );
     expect(out.kind).toBe("hit");
-    if (out.kind === "hit") expect(out.classification.reason).toBe("llm_match:Meal");
+    if (out.kind === "hit") expect(out.categoryName).toBe("Meal");
   });
 
   it("morphology+paraphrase: Move category + 'Getting ready to go out' → hit (user-report case)", async () => {
     globalThis.fetch = vi.fn(async () => openAiJson("Move")) as unknown as typeof fetch;
-    const out = await classifyWithLlm(
+    const { outcome: out } = await classifyWithLlm(
       ev({ summary: "Getting ready to go out" }),
       [cat({ name: "Move", keywords: ["Get ready", "move"] })],
       { db: {} as never, env: makeEnv(), userId: USER, reserve: mkReserve(true) },
     );
     expect(out.kind).toBe("hit");
-    if (out.kind === "hit") expect(out.classification.reason).toBe("llm_match:Move");
+    if (out.kind === "hit") expect(out.categoryName).toBe("Move");
   });
 
   it("cross-lingual ko→en: Meal category + 아침식사 event → hit", async () => {
     globalThis.fetch = vi.fn(async () => openAiJson("Meal")) as unknown as typeof fetch;
-    const out = await classifyWithLlm(
+    const { outcome: out } = await classifyWithLlm(
       ev({ summary: "아침식사 약속" }),
       [cat({ name: "Meal", keywords: ["Meal"] })],
       { db: {} as never, env: makeEnv(), userId: USER, reserve: mkReserve(true) },
@@ -691,18 +692,18 @@ describe("classifyWithLlm", () => {
 
   it("cross-lingual en→ko: 식사 category + Breakfast event → hit", async () => {
     globalThis.fetch = vi.fn(async () => openAiJson("식사")) as unknown as typeof fetch;
-    const out = await classifyWithLlm(
+    const { outcome: out } = await classifyWithLlm(
       ev({ summary: "Breakfast" }),
       [cat({ name: "식사", keywords: ["식사"] })],
       { db: {} as never, env: makeEnv(), userId: USER, reserve: mkReserve(true) },
     );
     expect(out.kind).toBe("hit");
-    if (out.kind === "hit") expect(out.classification.reason).toBe("llm_match:식사");
+    if (out.kind === "hit") expect(out.categoryName).toBe("식사");
   });
 
   it("anti-overstretch: Meal category + 'Team Meeting' event → miss when model says 'none' (user-report case)", async () => {
     globalThis.fetch = vi.fn(async () => openAiJson("none")) as unknown as typeof fetch;
-    const out = await classifyWithLlm(
+    const { outcome: out } = await classifyWithLlm(
       ev({ summary: "Team Meeting tomorrow" }),
       [cat({ name: "Meal", keywords: ["Meal"] })],
       { db: {} as never, env: makeEnv(), userId: USER, reserve: mkReserve(true) },
@@ -716,7 +717,7 @@ describe("classifyWithLlm", () => {
     // are equally good. This pins the wiring; whether the real model actually
     // picks the first listed is verified by the offline eval suite.
     globalThis.fetch = vi.fn(async () => openAiJson("Meeting")) as unknown as typeof fetch;
-    const out = await classifyWithLlm(
+    const { outcome: out } = await classifyWithLlm(
       ev({ summary: "Lunch meeting with the design team" }),
       [
         cat({ id: "c-1", name: "Meeting", keywords: ["meeting"], priority: 100 }),
@@ -725,7 +726,7 @@ describe("classifyWithLlm", () => {
       { db: {} as never, env: makeEnv(), userId: USER, reserve: mkReserve(true) },
     );
     expect(out.kind).toBe("hit");
-    if (out.kind === "hit") expect(out.classification.categoryId).toBe("c-1");
+    if (out.kind === "hit") expect(out.rule.id).toBe("c-1");
   });
 });
 
@@ -746,21 +747,6 @@ describe("classifyWithLlm — §6.3 debugging fields", () => {
     vi.restoreAllMocks();
   });
 
-  function captureRecord(): {
-    rec: LlmCallRecord | null;
-    onCall: (r: LlmCallRecord) => void;
-  } {
-    const wrap: { rec: LlmCallRecord | null } = { rec: null };
-    return {
-      get rec() {
-        return wrap.rec;
-      },
-      onCall: (r) => {
-        wrap.rec = r;
-      },
-    };
-  }
-
   function mkReserve(ok: boolean, count = 1): ReserveLlmCallFn {
     return vi.fn(async () => ({ ok, count }));
   }
@@ -773,11 +759,10 @@ describe("classifyWithLlm — §6.3 debugging fields", () => {
   }
 
   it("hit: populates eventId / promptSummary / rawResponse / availableCategories + categoryName", async () => {
-    const cap = captureRecord();
     globalThis.fetch = vi.fn(async () =>
       openAiText(JSON.stringify({ category_name: "회의" })),
     ) as unknown as typeof fetch;
-    await classifyWithLlm(
+    const { record: r } = await classifyWithLlm(
       ev({ id: "evt-42", summary: "팀 회의" }),
       [cat({ name: "회의" }), cat({ id: "c-2", name: "개인" })],
       {
@@ -785,11 +770,8 @@ describe("classifyWithLlm — §6.3 debugging fields", () => {
         env: makeEnv(),
         userId: USER,
         reserve: mkReserve(true),
-        onCall: cap.onCall,
       },
     );
-    expect(cap.rec).not.toBeNull();
-    const r = cap.rec!;
     expect(r.outcome).toBe("hit");
     expect(r.categoryName).toBe("회의");
     expect(r.eventId).toBe("evt-42");
@@ -801,18 +783,15 @@ describe("classifyWithLlm — §6.3 debugging fields", () => {
   });
 
   it("miss: rawResponse populated, categoryName undefined", async () => {
-    const cap = captureRecord();
     globalThis.fetch = vi.fn(async () =>
       openAiText(JSON.stringify({ category_name: "none" })),
     ) as unknown as typeof fetch;
-    await classifyWithLlm(ev({ id: "e1" }), [cat()], {
+    const { record: r } = await classifyWithLlm(ev({ id: "e1" }), [cat()], {
       db: {} as never,
       env: makeEnv(),
       userId: USER,
       reserve: mkReserve(true),
-      onCall: cap.onCall,
     });
-    const r = cap.rec!;
     expect(r.outcome).toBe("miss");
     expect(r.categoryName).toBeUndefined();
     expect(r.rawResponse).toContain("none");
@@ -821,7 +800,6 @@ describe("classifyWithLlm — §6.3 debugging fields", () => {
   });
 
   it("bad_response: malformed body still recorded into rawResponse", async () => {
-    const cap = captureRecord();
     globalThis.fetch = vi.fn(
       async () =>
         new Response(
@@ -829,32 +807,31 @@ describe("classifyWithLlm — §6.3 debugging fields", () => {
           { status: 200 },
         ),
     ) as unknown as typeof fetch;
-    await classifyWithLlm(ev({ id: "e1" }), [cat()], {
+    const { record: r } = await classifyWithLlm(ev({ id: "e1" }), [cat()], {
       db: {} as never,
       env: makeEnv(),
       userId: USER,
       reserve: mkReserve(true),
-      onCall: cap.onCall,
     });
-    const r = cap.rec!;
     expect(r.outcome).toBe("bad_response");
     expect(r.rawResponse).toContain("not-json");
     expect(r.promptSummary).toBeDefined();
   });
 
   it("http_error: 4xx body captured in rawResponse, promptSummary captured pre-fetch", async () => {
-    const cap = captureRecord();
     globalThis.fetch = vi.fn(
       async () => new Response("invalid request payload", { status: 400 }),
     ) as unknown as typeof fetch;
-    await classifyWithLlm(ev({ id: "e1", summary: "x" }), [cat()], {
-      db: {} as never,
-      env: makeEnv(),
-      userId: USER,
-      reserve: mkReserve(true),
-      onCall: cap.onCall,
-    });
-    const r = cap.rec!;
+    const { record: r } = await classifyWithLlm(
+      ev({ id: "e1", summary: "x" }),
+      [cat()],
+      {
+        db: {} as never,
+        env: makeEnv(),
+        userId: USER,
+        reserve: mkReserve(true),
+      },
+    );
     expect(r.outcome).toBe("http_error");
     expect(r.httpStatus).toBe(400);
     expect(r.rawResponse).toBe("invalid request payload");
@@ -863,20 +840,17 @@ describe("classifyWithLlm — §6.3 debugging fields", () => {
   });
 
   it("timeout: rawResponse undefined (no body received)", async () => {
-    const cap = captureRecord();
     globalThis.fetch = vi.fn(async () => {
       const err = new Error("timed out");
       err.name = "TimeoutError";
       throw err;
     }) as unknown as typeof fetch;
-    await classifyWithLlm(ev({ id: "e1" }), [cat()], {
+    const { record: r } = await classifyWithLlm(ev({ id: "e1" }), [cat()], {
       db: {} as never,
       env: makeEnv(),
       userId: USER,
       reserve: mkReserve(true),
-      onCall: cap.onCall,
     });
-    const r = cap.rec!;
     expect(r.outcome).toBe("timeout");
     expect(r.rawResponse).toBeUndefined();
     // promptSummary is captured pre-fetch, so it survives the timeout.
@@ -885,17 +859,18 @@ describe("classifyWithLlm — §6.3 debugging fields", () => {
   });
 
   it("quota_exceeded: NO promptSummary, NO rawResponse — but availableCategories present", async () => {
-    const cap = captureRecord();
     const fetchSpy = vi.fn();
     globalThis.fetch = fetchSpy as unknown as typeof fetch;
-    await classifyWithLlm(ev({ id: "e1" }), [cat({ name: "회의" })], {
-      db: {} as never,
-      env: makeEnv(),
-      userId: USER,
-      reserve: mkReserve(false, 201),
-      onCall: cap.onCall,
-    });
-    const r = cap.rec!;
+    const { record: r } = await classifyWithLlm(
+      ev({ id: "e1" }),
+      [cat({ name: "회의" })],
+      {
+        db: {} as never,
+        env: makeEnv(),
+        userId: USER,
+        reserve: mkReserve(false, 201),
+      },
+    );
     expect(r.outcome).toBe("quota_exceeded");
     expect(r.promptSummary).toBeUndefined();
     expect(r.rawResponse).toBeUndefined();
@@ -905,16 +880,13 @@ describe("classifyWithLlm — §6.3 debugging fields", () => {
   });
 
   it("disabled (no API key): promptSummary / rawResponse / availableCategories all undefined", async () => {
-    const cap = captureRecord();
     const { OPENAI_API_KEY: _omit, ...envNoKey } = makeEnv();
-    await classifyWithLlm(ev({ id: "e1" }), [cat()], {
+    const { record: r } = await classifyWithLlm(ev({ id: "e1" }), [cat()], {
       db: {} as never,
       env: envNoKey,
       userId: USER,
       reserve: mkReserve(true),
-      onCall: cap.onCall,
     });
-    const r = cap.rec!;
     expect(r.outcome).toBe("disabled");
     expect(r.promptSummary).toBeUndefined();
     expect(r.rawResponse).toBeUndefined();
@@ -923,15 +895,12 @@ describe("classifyWithLlm — §6.3 debugging fields", () => {
   });
 
   it("disabled (zero categories): all debug fields undefined", async () => {
-    const cap = captureRecord();
-    await classifyWithLlm(ev({ id: "e1" }), [], {
+    const { record: r } = await classifyWithLlm(ev({ id: "e1" }), [], {
       db: {} as never,
       env: makeEnv(),
       userId: USER,
       reserve: mkReserve(true),
-      onCall: cap.onCall,
     });
-    const r = cap.rec!;
     expect(r.outcome).toBe("disabled");
     expect(r.promptSummary).toBeUndefined();
     expect(r.rawResponse).toBeUndefined();
@@ -939,21 +908,18 @@ describe("classifyWithLlm — §6.3 debugging fields", () => {
   });
 
   it("availableCategories reflects post-slice cap (50 of 60 owned)", async () => {
-    const cap = captureRecord();
     globalThis.fetch = vi.fn(async () =>
       openAiText(JSON.stringify({ category_name: "cat-0" })),
     ) as unknown as typeof fetch;
     const cats = Array.from({ length: 60 }, (_, i) =>
       cat({ id: `c-${i}`, name: `cat-${i}` }),
     );
-    await classifyWithLlm(ev({ id: "e1" }), cats, {
+    const { record: r } = await classifyWithLlm(ev({ id: "e1" }), cats, {
       db: {} as never,
       env: makeEnv(),
       userId: USER,
       reserve: mkReserve(true),
-      onCall: cap.onCall,
     });
-    const r = cap.rec!;
     expect(r.availableCategories).toHaveLength(50);
     expect(r.availableCategories?.[0]).toBe("cat-0");
     expect(r.availableCategories?.[49]).toBe("cat-49");

@@ -39,9 +39,7 @@ describe("classifyEvent — rule-based (Step 1)", () => {
       ctxOf([cat()]),
     );
     expect(result).toEqual({
-      colorId: "9",
-      categoryId: "c-1",
-      reason: "rule_match:주간회의",
+      rule: { id: "c-1", name: "주간회의", colorId: "9" },
       matchedKeyword: "주간회의",
     });
   });
@@ -51,7 +49,7 @@ describe("classifyEvent — rule-based (Step 1)", () => {
       ev({ summary: "", description: "팀 주간회의 노트" }),
       ctxOf([cat()]),
     );
-    expect(result?.colorId).toBe("9");
+    expect(result?.rule.colorId).toBe("9");
   });
 
   it("is case-insensitive for ASCII keywords", async () => {
@@ -59,7 +57,7 @@ describe("classifyEvent — rule-based (Step 1)", () => {
       ev({ summary: "Daily Standup Notes" }),
       ctxOf([cat({ keywords: ["standup"] })]),
     );
-    expect(result?.colorId).toBe("9");
+    expect(result?.rule.colorId).toBe("9");
   });
 
   it("matches Korean keywords as substrings (no word boundary)", async () => {
@@ -67,7 +65,7 @@ describe("classifyEvent — rule-based (Step 1)", () => {
       ev({ summary: "오늘의주간회의노트" }),
       ctxOf([cat({ keywords: ["주간회의"] })]),
     );
-    expect(result?.categoryId).toBe("c-1");
+    expect(result?.rule.id).toBe("c-1");
   });
 
   it("returns the first matching category in priority order", async () => {
@@ -77,8 +75,8 @@ describe("classifyEvent — rule-based (Step 1)", () => {
       ev({ summary: "팀 회의" }),
       ctxOf([first, second]),
     );
-    expect(result?.categoryId).toBe("c-a");
-    expect(result?.colorId).toBe("2");
+    expect(result?.rule.id).toBe("c-a");
+    expect(result?.rule.colorId).toBe("2");
   });
 
   it("returns null when no category matches", async () => {
@@ -96,7 +94,7 @@ describe("classifyEvent — rule-based (Step 1)", () => {
       ev({ summary: "주간회의" }),
       ctxOf([empty, match]),
     );
-    expect(result?.categoryId).toBe("c-match");
+    expect(result?.rule.id).toBe("c-match");
   });
 
   it("returns null when the categories list is empty", async () => {
@@ -115,14 +113,6 @@ describe("classifyEvent — rule-based (Step 1)", () => {
       ctxOf([cat()]),
     );
     expect(result).toBeNull();
-  });
-
-  it("reason field echoes the matched keyword verbatim (preserves case)", async () => {
-    const result = await classifyEvent(
-      ev({ summary: "daily standup" }),
-      ctxOf([cat({ keywords: ["Standup"] })]),
-    );
-    expect(result?.reason).toBe("rule_match:Standup");
   });
 
   it("populates matchedKeyword with the exact keyword that hit", async () => {

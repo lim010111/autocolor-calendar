@@ -3,8 +3,13 @@ import type { PostgresJsDatabase } from "drizzle-orm/postgres-js";
 
 import { syncState } from "../db/schema";
 import type { Bindings } from "../env";
-import type { ClassifyContext, ClassifyEventFn } from "./classifier";
+import type { ClassifyContext } from "./classifier";
 import { buildDefaultClassifier } from "./classifierChain";
+import type {
+  ClassificationOutcome,
+  ClassifyEventFn,
+} from "./classifierOutcomes";
+import { llmCallsBufferSink, syncSummarySink } from "./classifierSinks";
 import type { LlmCallRecord } from "./llmClassifier";
 import {
   AUTOCOLOR_KEYS,
@@ -136,14 +141,16 @@ async function processEvent(
   }
   summary.evaluated += 1;
 
-  const classification = await classify(event, classifyCtx);
-  if (!classification) {
-    summary.no_match += 1;
-    return;
-  }
+  // Outcome counters (no_match / llm_*) are now owned by `syncSummarySink`,
+  // composed into the chain in `runPagedList`. processEvent only handles
+  // lifecycle counters (seen / cancelled / evaluated / skipped_* / updated)
+  // that derive from §5.4 ownership marker checks + `patchEventColor`.
+  const outcome: ClassificationOutcome = await classify(event, classifyCtx);
+  const hit = outcomeToRuleHit(outcome);
+  if (hit === null) return;
 
   const current = event.colorId ?? "";
-  const target = classification.colorId;
+  const target = hit.colorId;
   // Invariant: the marker is stamped only on colors *this code actually
   // wrote*. We never retro-claim ownership of a color that happens to match
   // our target, even if the colorId equality lets us short-circuit the
@@ -174,9 +181,31 @@ async function processEvent(
   await patchEventColor(accessToken, ctx.calendarId, event.id, target, {
     [AUTOCOLOR_KEYS.version]: AUTOCOLOR_MARKER_VERSION,
     [AUTOCOLOR_KEYS.color]: target,
-    [AUTOCOLOR_KEYS.category]: classification.categoryId,
+    [AUTOCOLOR_KEYS.category]: hit.id,
   });
   summary.updated += 1;
+}
+
+// Hit narrowing — collapses every outcome shape down to "do we PATCH?".
+// Returns the RuleRef for hit-shaped outcomes (`ruleHit` / `llmHit` /
+// `embeddingHit`) and `null` for everything else. Lives next to processEvent
+// because this is purely a hit-vs-miss decision at the lifecycle layer.
+function outcomeToRuleHit(
+  outcome: ClassificationOutcome,
+): { id: string; name: string; colorId: string } | null {
+  switch (outcome.kind) {
+    case "ruleHit":
+    case "llmHit":
+    case "embeddingHit":
+      return outcome.rule;
+    case "embeddingMiss":
+    case "ambiguous":
+    case "llmTimeout":
+    case "llmQuotaExceeded":
+    case "llmBadResponse":
+    case "noMatch":
+      return null;
+  }
 }
 
 export async function runIncrementalSync(ctx: SyncContext): Promise<RunResult> {
@@ -256,21 +285,12 @@ async function runPagedList(
       db: ctx.db,
       env: ctx.env,
       userId: ctx.userId,
-      onLlmAttempted: () => {
-        summary.llm_attempted += 1;
-      },
-      onLlmSucceeded: () => {
-        summary.llm_succeeded += 1;
-      },
-      onLlmTimeout: () => {
-        summary.llm_timeout += 1;
-      },
-      onLlmQuotaExceeded: () => {
-        summary.llm_quota_exceeded += 1;
-      },
-      onLlmCall: (rec) => {
-        llmCallBuffer.push(rec);
-      },
+      sinks: [
+        syncSummarySink(summary),
+        llmCallsBufferSink((rec) => {
+          llmCallBuffer.push(rec);
+        }),
+      ],
     });
 
   try {

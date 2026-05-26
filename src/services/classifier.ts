@@ -1,3 +1,4 @@
+import type { RuleRef } from "./classifierOutcomes";
 import type { CalendarEvent } from "./googleCalendar";
 import type { Rule } from "./ruleService";
 
@@ -6,21 +7,10 @@ export type ClassifyContext = {
   categories: Rule[];
 };
 
-export type Classification = {
-  colorId: string;
-  categoryId: string;
-  reason: string;
-  // Populated only on rule-based hits. The specific user-authored keyword
-  // whose substring matched — surfaced through the preview endpoint so the
-  // sidebar can show "키워드: <kw>". LLM hits leave this undefined (the LLM
-  // reasons about category, not per-keyword evidence).
-  matchedKeyword?: string;
-};
-
-export type ClassifyEventFn = (
-  event: CalendarEvent,
-  ctx: ClassifyContext,
-) => Promise<Classification | null>;
+// Stage 1 substring hit shape — just the rule + matched keyword. The chain
+// wraps this into a `ClassificationOutcome.ruleHit`; leg identity is now
+// the outcome's `kind`, not a `reason: "rule_match:..."` string.
+export type RuleHit = { rule: RuleRef; matchedKeyword: string };
 
 // §5.1 rule-based matching (Step 1).
 //
@@ -37,7 +27,10 @@ export type ClassifyEventFn = (
 // - First keyword hit in the first matching category wins. Remaining
 //   categories are not consulted.
 // - Returns null on no match. Never throws.
-export const classifyEvent: ClassifyEventFn = async (event, ctx) => {
+export async function classifyEvent(
+  event: CalendarEvent,
+  ctx: ClassifyContext,
+): Promise<RuleHit | null> {
   if (ctx.categories.length === 0) return null;
 
   const summary = event.summary ?? "";
@@ -52,13 +45,11 @@ export const classifyEvent: ClassifyEventFn = async (event, ctx) => {
       if (needle.length === 0) continue;
       if (haystack.includes(needle)) {
         return {
-          colorId: cat.colorId,
-          categoryId: cat.id,
-          reason: `rule_match:${kw}`,
+          rule: { id: cat.id, name: cat.name, colorId: cat.colorId },
           matchedKeyword: kw,
         };
       }
     }
   }
   return null;
-};
+}

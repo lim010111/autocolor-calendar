@@ -746,7 +746,7 @@ async function runCase(
     if (ruleResult === null) {
       rule = { hit: false, categoryName: null, pass: c.expected.category_name === "none" };
     } else {
-      const matched = cats.find((cat) => cat.id === ruleResult.categoryId);
+      const matched = cats.find((cat) => cat.id === ruleResult.rule.id);
       const name = matched?.name ?? null;
       rule = { hit: true, categoryName: name, pass: name === c.expected.category_name };
     }

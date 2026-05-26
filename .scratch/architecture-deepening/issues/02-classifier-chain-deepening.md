@@ -58,6 +58,10 @@ sink를 owner로 보유한다 (옵션 C — union 반환 + chain owns default si
 - 새 `embedding*` outcome의 실제 emit — ADR-0004 구현 이슈 #02.
 - Branded PII type 강제 — 본 feature 이슈 #03.
 - Integration test 신설 — 본 feature 이슈 #04.
+- lifecycle 카운터 (`seen` / `cancelled` / `evaluated` / `skipped_equal` /
+  `skipped_manual` / `updated`) sink 이주 — chain outcome과 무관 (§5.4
+  ownership marker + `patchEventColor` 결과에 묶임), processEvent 잔존이
+  정합.
 
 ## Acceptance criteria
 
@@ -68,8 +72,9 @@ sink를 owner로 보유한다 (옵션 C — union 반환 + chain owns default si
       병렬 emit
 - [ ] `llmClassifier`의 observability emit 로직이 chain default sink로 이동,
       `llmClassifier`는 순수 LLM 호출만 담당
-- [ ] `calendarSync.processEvent`의 직접 `SyncSummary` increment 제거 —
-      `syncSummarySink`로 일원화
+- [ ] calendarSync.processEvent의 **classifier-outcome 카운터**
+      (`no_match`, `llm_attempted` / `llm_succeeded` / `llm_timeout` /
+      `llm_quota_exceeded`) 직접 increment 제거 — syncSummarySink로 일원화
 - [ ] 모든 optional callback (`onLlmAttempted` 등) 제거, `syncConsumer`
       wiring 갱신
 - [ ] 기존 `preview` route가 union 통해 동등하거나 더 풍부한 정보 노출,
