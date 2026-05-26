@@ -8,8 +8,13 @@ import type { HonoEnv } from "../env";
 import { authMiddleware } from "../middleware/auth";
 import { classifyEvent } from "../services/classifier";
 import { buildDefaultClassifier } from "../services/classifierChain";
+import type {
+  ClassificationOutcome,
+  RuleRef,
+} from "../services/classifierOutcomes";
+import { previewLlmCallSink } from "../services/classifierSinks";
 import type { LlmCallRecord } from "../services/llmClassifier";
-import { listRules } from "../services/ruleService";
+import { listRules, type Rule } from "../services/ruleService";
 
 // Cost guardrail (§5/§6 후속) — preview-LLM throttle window.
 //
@@ -45,6 +50,63 @@ const PreviewBody = z.object({
   // 분류 확인" button so we do not burn quota on every event the user opens.
   llm: z.boolean().optional(),
 });
+
+type PreviewResponse =
+  | { source: "rule"; category: PreviewCategory; matchedKeyword: string }
+  | { source: "llm"; category: PreviewCategory }
+  | {
+      source: "no_match";
+      llmAvailable: boolean;
+      llmTried?: true;
+      llmQuotaExceeded?: true;
+    };
+
+type PreviewCategory = { id: string; name: string; colorId: string };
+
+function lookupCategory(rule: RuleRef, rows: Rule[]): PreviewCategory {
+  const matched = rows.find((r) => r.id === rule.id);
+  return matched
+    ? { id: matched.id, name: matched.name, colorId: matched.colorId }
+    : { id: rule.id, name: rule.name, colorId: rule.colorId };
+}
+
+// Single helper that owns the outcome → wire-shape mapping. ADR-0004 #02
+// will edit this function to surface embedding fields; today the embedding
+// cases are unreachable (chain never emits them) so they fold into the
+// existing `no_match` shape.
+function outcomeToPreviewResponse(
+  outcome: ClassificationOutcome,
+  rows: Rule[],
+  llmAvailable: boolean,
+): PreviewResponse {
+  switch (outcome.kind) {
+    case "ruleHit":
+      return {
+        source: "rule",
+        category: lookupCategory(outcome.rule, rows),
+        matchedKeyword: outcome.matchedKeyword,
+      };
+    case "llmHit":
+      return { source: "llm", category: lookupCategory(outcome.rule, rows) };
+    case "embeddingHit":
+      // ADR-0004 #02 will rewrite this case to surface seed / grade / score.
+      return { source: "llm", category: lookupCategory(outcome.rule, rows) };
+    case "noMatch":
+    case "embeddingMiss":
+    case "ambiguous":
+      return { source: "no_match", llmAvailable };
+    case "llmTimeout":
+    case "llmBadResponse":
+      return { source: "no_match", llmAvailable, llmTried: true };
+    case "llmQuotaExceeded":
+      return {
+        source: "no_match",
+        llmAvailable,
+        llmTried: true,
+        llmQuotaExceeded: true,
+      };
+  }
+}
 
 // §5 후속 A — sidebar classify preview.
 //
@@ -114,47 +176,48 @@ classifyRoutes.post("/preview", async (c) => {
       return c.json({ source: "no_match" as const, llmAvailable });
     }
 
-    // llmTried flips to true exactly when the chain engaged the LLM leg
-    // (post key/cats guard). Preview builds a fresh `buildDefaultClassifier`
-    // closure per request, so the quota-latch path inside the chain is
-    // unreachable here — a latched skip needs ≥2 rule-miss events sharing a
-    // closure, which this endpoint never produces.
-    let llmTried = false;
+    // Preview builds a fresh `buildDefaultClassifier` closure per request,
+    // so the quota-latch path inside the chain is unreachable here — a
+    // latched skip needs ≥2 rule-miss events sharing a closure, which this
+    // endpoint never produces.
     let llmCallRecord: LlmCallRecord | null = null;
-    // Mirror `outcome` into a separate slot so the post-classify branch can
-    // read it without tripping TS control-flow narrowing on `llmCallRecord`
-    // (the `if (llmCallRecord !== null)` insert block above narrows the
-    // variable to `never` for the rest of the function — callback writes are
-    // invisible to flow analysis).
-    let llmOutcome: LlmCallRecord["outcome"] | null = null;
-    const classifyFn = useLlm
-      ? buildDefaultClassifier({
-          db,
-          env: c.env,
-          userId,
-          onLlmAttempted: () => {
-            llmTried = true;
-          },
-          onLlmCall: (rec) => {
-            llmCallRecord = rec;
-            llmOutcome = rec.outcome;
-          },
-        })
-      : classifyEvent;
 
-    const classification = await classifyFn(
-      {
-        id: "preview",
-        summary: parsed.data.summary,
-        ...(parsed.data.description !== undefined
-          ? { description: parsed.data.description }
-          : {}),
-        ...(parsed.data.location !== undefined
-          ? { location: parsed.data.location }
-          : {}),
-      },
-      { userId, categories: rows },
-    );
+    const event = {
+      id: "preview",
+      summary: parsed.data.summary,
+      ...(parsed.data.description !== undefined
+        ? { description: parsed.data.description }
+        : {}),
+      ...(parsed.data.location !== undefined
+        ? { location: parsed.data.location }
+        : {}),
+    };
+
+    let outcome: ClassificationOutcome;
+    if (useLlm) {
+      const classifyFn = buildDefaultClassifier({
+        db,
+        env: c.env,
+        userId,
+        sinks: [
+          previewLlmCallSink((rec) => {
+            llmCallRecord = rec;
+          }),
+        ],
+      });
+      outcome = await classifyFn(event, { userId, categories: rows });
+    } else {
+      // Rule-only path: avoid building the full chain when the caller opted
+      // out (default). Map directly to a `ruleHit` / `noMatch` outcome.
+      const hit = await classifyEvent(event, { userId, categories: rows });
+      outcome = hit
+        ? {
+            kind: "ruleHit",
+            rule: hit.rule,
+            matchedKeyword: hit.matchedKeyword,
+          }
+        : { kind: "noMatch" };
+    }
 
     // §6 Wave A — preview's single-call LlmCallRecord gets its own
     // one-row insert (sync's bulk insert lives in `runPagedList`). Same
@@ -199,38 +262,7 @@ classifyRoutes.post("/preview", async (c) => {
       );
     }
 
-    // §5/§6 후속 — surface LLM quota exhaustion to the sidebar so users can
-    // tell "AI 분류 한도 소진"과 "AI 분류했지만 매칭 없음"을 구분. quota_exceeded는
-    // OpenAI 호출 자체가 막힌 상태 — 새 프롬프트가 정상이라도 자정(UTC) 전까지
-    // 모든 호출이 동일하게 fail. 다른 outcome(`http_error`/`bad_response`/`timeout`)은
-    // 사용자 입장에서 "AI 분류 시도했지만 실패"라는 일반 문구로 충분 — quota만
-    // 별도 분기.
-    const llmQuotaExceeded = llmOutcome === "quota_exceeded";
-
-    if (!classification) {
-      return c.json({
-        source: "no_match" as const,
-        llmAvailable,
-        ...(llmTried ? { llmTried: true as const } : {}),
-        ...(llmQuotaExceeded ? { llmQuotaExceeded: true as const } : {}),
-      });
-    }
-
-    const matched = rows.find((r) => r.id === classification.categoryId);
-    const isLlmHit = classification.reason.startsWith("llm_match:");
-    return c.json({
-      source: isLlmHit ? ("llm" as const) : ("rule" as const),
-      category: matched
-        ? { id: matched.id, name: matched.name, colorId: matched.colorId }
-        : {
-            id: classification.categoryId,
-            name: "",
-            colorId: classification.colorId,
-          },
-      ...(classification.matchedKeyword !== undefined
-        ? { matchedKeyword: classification.matchedKeyword }
-        : {}),
-    });
+    return c.json(outcomeToPreviewResponse(outcome, rows, llmAvailable));
   } finally {
     c.executionCtx.waitUntil(close());
   }

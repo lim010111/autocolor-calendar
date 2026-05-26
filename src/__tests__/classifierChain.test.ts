@@ -3,6 +3,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { Bindings } from "../env";
 import type { ClassifyContext } from "../services/classifier";
 import { buildDefaultClassifier } from "../services/classifierChain";
+import type { ClassificationOutcome } from "../services/classifierOutcomes";
+import type { Sink } from "../services/classifierSinks";
 import type { CalendarEvent } from "../services/googleCalendar";
 import type { ReserveLlmCallFn } from "../services/llmClassifier";
 import type { Rule } from "../services/ruleService";
@@ -60,6 +62,17 @@ function openAiJson(name: string): Response {
   );
 }
 
+// Build a recording sink that captures every outcome it receives. Used to
+// assert (a) the chain emitted exactly the expected outcome(s), and (b) the
+// sink was invoked the expected number of times.
+function recordingSink(): { sink: Sink; outcomes: ClassificationOutcome[] } {
+  const outcomes: ClassificationOutcome[] = [];
+  const sink: Sink = async (o) => {
+    outcomes.push(o);
+  };
+  return { sink, outcomes };
+}
+
 describe("buildDefaultClassifier — rule → LLM chain", () => {
   const originalFetch = globalThis.fetch;
   beforeEach(() => vi.restoreAllMocks());
@@ -68,151 +81,119 @@ describe("buildDefaultClassifier — rule → LLM chain", () => {
     vi.restoreAllMocks();
   });
 
-  it("rule hit short-circuits — LLM never invoked", async () => {
+  it("rule hit short-circuits — LLM never invoked, emits ruleHit", async () => {
     const fetchSpy = vi.fn();
     globalThis.fetch = fetchSpy as unknown as typeof fetch;
-    const counters = {
-      onLlmAttempted: vi.fn(),
-      onLlmSucceeded: vi.fn(),
-    };
+    const rec = recordingSink();
     const classify = buildDefaultClassifier({
       db: {} as never,
       env: makeEnv(),
       userId: USER,
       reserve: okReserve,
-      ...counters,
+      sinks: [rec.sink],
     });
     const out = await classify(ev({ summary: "주간 회의" }), ctxOf([cat()]));
     expect(out).toEqual({
-      colorId: "9",
-      categoryId: "c-1",
-      reason: "rule_match:회의",
+      kind: "ruleHit",
+      rule: { id: "c-1", name: "회의", colorId: "9" },
       matchedKeyword: "회의",
     });
     expect(fetchSpy).not.toHaveBeenCalled();
-    expect(counters.onLlmAttempted).not.toHaveBeenCalled();
-    expect(counters.onLlmSucceeded).not.toHaveBeenCalled();
+    expect(rec.outcomes).toHaveLength(1);
+    expect(rec.outcomes[0]!.kind).toBe("ruleHit");
   });
 
-  it("rule miss + LLM hit → returns classification, bumps attempted+succeeded", async () => {
+  it("rule miss + LLM hit → emits llmHit with llmRecord attached", async () => {
     globalThis.fetch = vi.fn(async () => openAiJson("회의")) as unknown as typeof fetch;
-    const counters = {
-      onLlmAttempted: vi.fn(),
-      onLlmSucceeded: vi.fn(),
-      onLlmTimeout: vi.fn(),
-      onLlmQuotaExceeded: vi.fn(),
-    };
+    const rec = recordingSink();
     const classify = buildDefaultClassifier({
       db: {} as never,
       env: makeEnv(),
       userId: USER,
       reserve: okReserve,
-      ...counters,
+      sinks: [rec.sink],
     });
     const out = await classify(
       ev({ summary: "totally unrelated" }),
       ctxOf([cat({ name: "회의", colorId: "9" })]),
     );
-    expect(out).toEqual({
-      colorId: "9",
-      categoryId: "c-1",
-      reason: "llm_match:회의",
-    });
-    expect(counters.onLlmAttempted).toHaveBeenCalledTimes(1);
-    expect(counters.onLlmSucceeded).toHaveBeenCalledTimes(1);
-    expect(counters.onLlmTimeout).not.toHaveBeenCalled();
-    expect(counters.onLlmQuotaExceeded).not.toHaveBeenCalled();
+    expect(out.kind).toBe("llmHit");
+    if (out.kind !== "llmHit") return;
+    expect(out.rule).toEqual({ id: "c-1", name: "회의", colorId: "9" });
+    expect(out.llmRecord.outcome).toBe("hit");
+    expect(rec.outcomes).toHaveLength(1);
+    expect(rec.outcomes[0]!.kind).toBe("llmHit");
   });
 
-  it("rule miss + LLM timeout → null, bumps attempted+timeout", async () => {
+  it("rule miss + LLM timeout → emits llmTimeout", async () => {
     globalThis.fetch = vi.fn(async () => {
       const err = new Error("timed out");
       err.name = "TimeoutError";
       throw err;
     }) as unknown as typeof fetch;
-    const counters = {
-      onLlmAttempted: vi.fn(),
-      onLlmSucceeded: vi.fn(),
-      onLlmTimeout: vi.fn(),
-    };
+    const rec = recordingSink();
     const classify = buildDefaultClassifier({
       db: {} as never,
       env: makeEnv(),
       userId: USER,
       reserve: okReserve,
-      ...counters,
+      sinks: [rec.sink],
     });
     const out = await classify(ev({ summary: "x" }), ctxOf([cat()]));
-    expect(out).toBeNull();
-    expect(counters.onLlmAttempted).toHaveBeenCalledTimes(1);
-    expect(counters.onLlmTimeout).toHaveBeenCalledTimes(1);
-    expect(counters.onLlmSucceeded).not.toHaveBeenCalled();
+    expect(out.kind).toBe("llmTimeout");
+    if (out.kind !== "llmTimeout") return;
+    expect(out.llmRecord.outcome).toBe("timeout");
+    expect(rec.outcomes.map((o) => o.kind)).toEqual(["llmTimeout"]);
   });
 
-  it("rule miss + LLM bad_response (unknown category name) → null, succeeded NOT bumped", async () => {
+  it("rule miss + LLM bad_response (unknown category name) → emits llmBadResponse", async () => {
     globalThis.fetch = vi.fn(async () => openAiJson("관리자")) as unknown as typeof fetch;
-    const counters = {
-      onLlmAttempted: vi.fn(),
-      onLlmSucceeded: vi.fn(),
-    };
+    const rec = recordingSink();
     const classify = buildDefaultClassifier({
       db: {} as never,
       env: makeEnv(),
       userId: USER,
       reserve: okReserve,
-      ...counters,
+      sinks: [rec.sink],
     });
     const out = await classify(ev({ summary: "x" }), ctxOf([cat()]));
-    expect(out).toBeNull();
-    expect(counters.onLlmAttempted).toHaveBeenCalledTimes(1);
-    expect(counters.onLlmSucceeded).not.toHaveBeenCalled();
+    expect(out.kind).toBe("llmBadResponse");
+    expect(rec.outcomes.map((o) => o.kind)).toEqual(["llmBadResponse"]);
   });
 
-  it("rule miss + quota exceeded → null, bumps attempted+quotaExceeded", async () => {
+  it("rule miss + quota exceeded → emits llmQuotaExceeded, no fetch", async () => {
     const fetchSpy = vi.fn();
     globalThis.fetch = fetchSpy as unknown as typeof fetch;
-    const counters = {
-      onLlmAttempted: vi.fn(),
-      onLlmQuotaExceeded: vi.fn(),
-    };
+    const rec = recordingSink();
     const classify = buildDefaultClassifier({
       db: {} as never,
       env: makeEnv(),
       userId: USER,
       reserve: async () => ({ ok: false, count: 201 }),
-      ...counters,
+      sinks: [rec.sink],
     });
     const out = await classify(ev({ summary: "x" }), ctxOf([cat()]));
-    expect(out).toBeNull();
-    expect(counters.onLlmAttempted).toHaveBeenCalledTimes(1);
-    expect(counters.onLlmQuotaExceeded).toHaveBeenCalledTimes(1);
+    expect(out.kind).toBe("llmQuotaExceeded");
     expect(fetchSpy).not.toHaveBeenCalled();
+    expect(rec.outcomes.map((o) => o.kind)).toEqual(["llmQuotaExceeded"]);
   });
 
-  it("OPENAI_API_KEY absent → null, no LLM counters bumped, no fetch", async () => {
+  it("OPENAI_API_KEY absent → emits noMatch, no fetch", async () => {
     const fetchSpy = vi.fn();
     globalThis.fetch = fetchSpy as unknown as typeof fetch;
-    const counters = {
-      onLlmAttempted: vi.fn(),
-      onLlmSucceeded: vi.fn(),
-      onLlmTimeout: vi.fn(),
-      onLlmQuotaExceeded: vi.fn(),
-    };
+    const rec = recordingSink();
     const { OPENAI_API_KEY: _omit, ...envNoKey } = makeEnv();
     const classify = buildDefaultClassifier({
       db: {} as never,
       env: envNoKey,
       userId: USER,
       reserve: okReserve,
-      ...counters,
+      sinks: [rec.sink],
     });
     const out = await classify(ev({ summary: "x" }), ctxOf([cat()]));
-    expect(out).toBeNull();
+    expect(out).toEqual({ kind: "noMatch" });
     expect(fetchSpy).not.toHaveBeenCalled();
-    expect(counters.onLlmAttempted).not.toHaveBeenCalled();
-    expect(counters.onLlmSucceeded).not.toHaveBeenCalled();
-    expect(counters.onLlmTimeout).not.toHaveBeenCalled();
-    expect(counters.onLlmQuotaExceeded).not.toHaveBeenCalled();
+    expect(rec.outcomes.map((o) => o.kind)).toEqual(["noMatch"]);
   });
 
   it("quota latch — after first quota_exceeded, subsequent rule-miss events skip reserve() and fetch()", async () => {
@@ -222,99 +203,93 @@ describe("buildDefaultClassifier — rule → LLM chain", () => {
     const fetchSpy = vi.fn();
     globalThis.fetch = fetchSpy as unknown as typeof fetch;
     const reserveSpy = vi.fn(async () => ({ ok: false, count: 201 }));
-    const counters = {
-      onLlmAttempted: vi.fn(),
-      onLlmSucceeded: vi.fn(),
-      onLlmQuotaExceeded: vi.fn(),
-    };
+    const rec = recordingSink();
     const classify = buildDefaultClassifier({
       db: {} as never,
       env: makeEnv(),
       userId: USER,
       reserve: reserveSpy,
-      ...counters,
+      sinks: [rec.sink],
     });
 
     // First rule-miss → reserve called, returns over-quota → latch engages.
-    expect(await classify(ev({ summary: "x" }), ctxOf([cat()]))).toBeNull();
+    expect((await classify(ev({ summary: "x" }), ctxOf([cat()]))).kind).toBe(
+      "llmQuotaExceeded",
+    );
     // Next three rule-misses should NOT re-invoke reserve or fetch.
-    expect(await classify(ev({ summary: "y" }), ctxOf([cat()]))).toBeNull();
-    expect(await classify(ev({ summary: "z" }), ctxOf([cat()]))).toBeNull();
-    expect(await classify(ev({ summary: "w" }), ctxOf([cat()]))).toBeNull();
+    expect((await classify(ev({ summary: "y" }), ctxOf([cat()]))).kind).toBe(
+      "llmQuotaExceeded",
+    );
+    expect((await classify(ev({ summary: "z" }), ctxOf([cat()]))).kind).toBe(
+      "llmQuotaExceeded",
+    );
+    expect((await classify(ev({ summary: "w" }), ctxOf([cat()]))).kind).toBe(
+      "llmQuotaExceeded",
+    );
 
     expect(reserveSpy).toHaveBeenCalledTimes(1);
     expect(fetchSpy).not.toHaveBeenCalled();
-    // Attempted + quotaExceeded still bump every time (summary accuracy).
-    expect(counters.onLlmAttempted).toHaveBeenCalledTimes(4);
-    expect(counters.onLlmQuotaExceeded).toHaveBeenCalledTimes(4);
-    expect(counters.onLlmSucceeded).not.toHaveBeenCalled();
+    // Sink saw every event (summary accuracy parity with the pre-PR
+    // onLlmAttempted/onLlmQuotaExceeded callback counts).
+    expect(rec.outcomes).toHaveLength(4);
+    expect(rec.outcomes.every((o) => o.kind === "llmQuotaExceeded")).toBe(true);
   });
 
-  it("onLlmCall fires once with outcome='hit', attempts>=1, categoryCount, categoryName", async () => {
-    // §6 Wave A telemetry contract. `classifyWithLlm` threads `onCall` through
-    // the chain so `calendarSync`'s bulk buffer sees every call.
+  it("llmHit outcome carries the llmRecord with outcome='hit', attempts>=1, categoryCount, categoryName", async () => {
+    // §6 Wave A telemetry contract. `classifyWithLlm` returns the record
+    // alongside the outcome; the chain attaches it to the matching
+    // `ClassificationOutcome.llmRecord` field.
     globalThis.fetch = vi.fn(async () => openAiJson("회의")) as unknown as typeof fetch;
-    const onLlmCall = vi.fn();
+    const rec = recordingSink();
     const classify = buildDefaultClassifier({
       db: {} as never,
       env: makeEnv(),
       userId: USER,
       reserve: okReserve,
-      onLlmCall,
+      sinks: [rec.sink],
     });
     const out = await classify(
       ev({ summary: "unrelated" }),
       ctxOf([cat({ name: "회의", colorId: "9" })]),
     );
-    expect(out).toBeTruthy();
-    expect(onLlmCall).toHaveBeenCalledTimes(1);
-    const rec = onLlmCall.mock.calls[0]![0] as {
-      outcome: string;
-      attempts: number;
-      categoryCount: number;
-      categoryName?: string;
-      latencyMs: number;
-    };
-    expect(rec.outcome).toBe("hit");
-    expect(rec.attempts).toBeGreaterThanOrEqual(1);
-    expect(rec.categoryCount).toBe(1);
-    expect(rec.categoryName).toBe("회의");
-    expect(rec.latencyMs).toBeGreaterThanOrEqual(0);
+    expect(out.kind).toBe("llmHit");
+    if (out.kind !== "llmHit") return;
+    expect(out.llmRecord.outcome).toBe("hit");
+    expect(out.llmRecord.attempts).toBeGreaterThanOrEqual(1);
+    expect(out.llmRecord.categoryCount).toBe(1);
+    expect(out.llmRecord.categoryName).toBe("회의");
+    expect(out.llmRecord.latencyMs).toBeGreaterThanOrEqual(0);
   });
 
-  it("onLlmCall fires on quota-latched skip path with attempts:0, latencyMs:0", async () => {
+  it("quota-latched synthetic record carries attempts:0 / latencyMs:0", async () => {
     // Second+ rule-miss events after the latch engages do NOT call
-    // `classifyWithLlm`. The chain itself must still emit a synthetic
-    // record so the §6 log captures the intent to call.
+    // `classifyWithLlm`. The chain itself synthesizes the record so the §6
+    // log captures the intent to call.
     const fetchSpy = vi.fn();
     globalThis.fetch = fetchSpy as unknown as typeof fetch;
     const reserveSpy = vi.fn(async () => ({ ok: false, count: 201 }));
-    const onLlmCall = vi.fn();
+    const rec = recordingSink();
     const classify = buildDefaultClassifier({
       db: {} as never,
       env: makeEnv(),
       userId: USER,
       reserve: reserveSpy,
-      onLlmCall,
+      sinks: [rec.sink],
     });
 
-    // First call engages latch (onCall fires from classifyWithLlm with
-    // attempts:0 since reserve blocks before any attempt).
+    // First call engages latch (record from classifyWithLlm with attempts:0
+    // since reserve blocks before any attempt).
     await classify(ev({ summary: "x" }), ctxOf([cat()]));
     // Second call is the synthetic latched path.
-    await classify(ev({ summary: "y" }), ctxOf([cat()]));
+    const out = await classify(ev({ summary: "y" }), ctxOf([cat()]));
 
-    expect(onLlmCall).toHaveBeenCalledTimes(2);
-    const second = onLlmCall.mock.calls[1]![0] as {
-      outcome: string;
-      attempts: number;
-      latencyMs: number;
-      categoryCount: number;
-    };
-    expect(second.outcome).toBe("quota_exceeded");
-    expect(second.attempts).toBe(0);
-    expect(second.latencyMs).toBe(0);
-    expect(second.categoryCount).toBe(1);
+    expect(rec.outcomes).toHaveLength(2);
+    expect(out.kind).toBe("llmQuotaExceeded");
+    if (out.kind !== "llmQuotaExceeded") return;
+    expect(out.llmRecord.outcome).toBe("quota_exceeded");
+    expect(out.llmRecord.attempts).toBe(0);
+    expect(out.llmRecord.latencyMs).toBe(0);
+    expect(out.llmRecord.categoryCount).toBe(1);
   });
 
   it("§6.3 후속 — quota-latched synthetic record carries eventId + availableCategories (NOT promptSummary / rawResponse)", async () => {
@@ -324,53 +299,72 @@ describe("buildDefaultClassifier — rule → LLM chain", () => {
     // known cheaply and would be useful for debugging which event tripped
     // the over-quota fallthrough.
     const reserveSpy = vi.fn(async () => ({ ok: false, count: 201 }));
-    const onLlmCall = vi.fn();
+    const rec = recordingSink();
     const classify = buildDefaultClassifier({
       db: {} as never,
       env: makeEnv(),
       userId: USER,
       reserve: reserveSpy,
-      onLlmCall,
+      sinks: [rec.sink],
     });
 
     // First call latches via classifyWithLlm.
     await classify(ev({ id: "evt-A", summary: "x" }), ctxOf([cat()]));
     // Second call is the chain's synthetic skip.
-    await classify(
+    const out = await classify(
       ev({ id: "evt-B", summary: "y" }),
       ctxOf([cat({ name: "회의" }), cat({ id: "c-2", name: "개인" })]),
     );
 
-    expect(onLlmCall).toHaveBeenCalledTimes(2);
-    const synth = onLlmCall.mock.calls[1]![0] as {
-      eventId?: string;
-      availableCategories?: string[];
-      promptSummary?: string;
-      rawResponse?: string;
-    };
-    expect(synth.eventId).toBe("evt-B");
-    expect(synth.availableCategories).toEqual(["회의", "개인"]);
-    expect(synth.promptSummary).toBeUndefined();
-    expect(synth.rawResponse).toBeUndefined();
+    expect(out.kind).toBe("llmQuotaExceeded");
+    if (out.kind !== "llmQuotaExceeded") return;
+    expect(out.llmRecord.eventId).toBe("evt-B");
+    expect(out.llmRecord.availableCategories).toEqual(["회의", "개인"]);
+    expect(out.llmRecord.promptSummary).toBeUndefined();
+    expect(out.llmRecord.rawResponse).toBeUndefined();
   });
 
-  it("empty categories → null, no LLM counters bumped (LLM leg short-circuits)", async () => {
+  it("empty categories → emits noMatch, no LLM leg engagement", async () => {
     const fetchSpy = vi.fn();
     globalThis.fetch = fetchSpy as unknown as typeof fetch;
-    const counters = {
-      onLlmAttempted: vi.fn(),
-      onLlmSucceeded: vi.fn(),
+    const rec = recordingSink();
+    const classify = buildDefaultClassifier({
+      db: {} as never,
+      env: makeEnv(),
+      userId: USER,
+      reserve: okReserve,
+      sinks: [rec.sink],
+    });
+    const out = await classify(ev({ summary: "x" }), ctxOf([]));
+    expect(out).toEqual({ kind: "noMatch" });
+    expect(fetchSpy).not.toHaveBeenCalled();
+    expect(rec.outcomes.map((o) => o.kind)).toEqual(["noMatch"]);
+  });
+
+  it("AC #8 — sink failure isolation: throwing sink does NOT fail classify, warn 1줄 emitted, other sinks still ran", async () => {
+    // Observability writes must never cause retry (`src/CLAUDE.md`). A sink
+    // that throws is logged via warn and silently swallowed; the chain
+    // still returns the outcome and other sinks still see it.
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const goodSink = vi.fn(async (_o: ClassificationOutcome) => {});
+    const badSink: Sink = async () => {
+      throw new Error("sink boom");
     };
     const classify = buildDefaultClassifier({
       db: {} as never,
       env: makeEnv(),
       userId: USER,
       reserve: okReserve,
-      ...counters,
+      sinks: [badSink, goodSink],
     });
-    const out = await classify(ev({ summary: "x" }), ctxOf([]));
-    expect(out).toBeNull();
-    expect(fetchSpy).not.toHaveBeenCalled();
-    expect(counters.onLlmAttempted).not.toHaveBeenCalled();
+    const out = await classify(ev({ summary: "주간 회의" }), ctxOf([cat()]));
+    expect(out.kind).toBe("ruleHit");
+    expect(goodSink).toHaveBeenCalledTimes(1);
+    // Exactly one warn line referencing the sink failure.
+    const sinkFailLogs = warnSpy.mock.calls.filter((c) =>
+      c.some((arg) => typeof arg === "string" && arg.includes("classifier sink failed")),
+    );
+    expect(sinkFailLogs).toHaveLength(1);
+    warnSpy.mockRestore();
   });
 });

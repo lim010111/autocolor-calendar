@@ -1,26 +1,33 @@
 import type { PostgresJsDatabase } from "drizzle-orm/postgres-js";
 
 import type { Bindings } from "../env";
-import type { ClassifyEventFn } from "./classifier";
 import { classifyEvent as ruleClassify } from "./classifier";
+import type {
+  ClassificationOutcome,
+  ClassifyEventFn,
+} from "./classifierOutcomes";
+import { runSinks, type Sink } from "./classifierSinks";
 import {
   classifyWithLlm,
   LLM_PROMPT_MAX_CATEGORIES,
   type LlmCallRecord,
-  type LlmOutcome,
   type ReserveLlmCallFn,
 } from "./llmClassifier";
 
-// §5.3 chain composition: rule → LLM fallback → null.
+// §5.3 chain composition: rule → LLM fallback → ClassificationOutcome.
 //
 // Contract:
-// - Runs `ruleClassify` first. A hit short-circuits (LLM never called).
+// - Runs `ruleClassify` first. A hit short-circuits (LLM never called) and
+//   emits a `ruleHit` outcome.
 // - On rule-miss, if `env.OPENAI_API_KEY` is present AND the user has at
-//   least one category, delegates to `classifyWithLlm`.
-// - Any LLM outcome other than "hit" collapses to null; the chain stays
-//   silent and `calendarSync.processEvent` bumps `summary.no_match`.
-// - Counter callbacks are narrow and optional — the chain never reaches into
-//   SyncSummary directly, which keeps it testable and reusable.
+//   least one category, delegates to `classifyWithLlm` and maps the LLM
+//   outcome to the matching `ClassificationOutcome` case
+//   (`llmHit` / `llmTimeout` / `llmQuotaExceeded` / `llmBadResponse`).
+// - All other paths emit `noMatch`. There is no fall-through to rule-based
+//   logic on the LLM leg (Halt on Failure).
+// - Sink emission: every emitted outcome is passed to all configured sinks
+//   in parallel via `runSinks`. Sink failures are warn-only — they do NOT
+//   fail classify (§6 observability discipline).
 // - Per-run quota latch: once `quota_exceeded` fires for any event in the
 //   current `buildDefaultClassifier` closure, every subsequent rule-miss
 //   event skips the LLM leg (including `reserveLlmCall`) for the rest of
@@ -32,15 +39,10 @@ export type ChainDeps = {
   db: PostgresJsDatabase;
   env: Bindings;
   userId: string;
-  onLlmAttempted?: () => void;
-  onLlmSucceeded?: () => void;
-  onLlmTimeout?: () => void;
-  onLlmQuotaExceeded?: () => void;
-  // §6 Wave A — per-call telemetry. Fired once per event that engaged the
-  // LLM leg, including the quota-latched short-circuit (latencyMs:0,
-  // attempts:0). Pass-through from classifyWithLlm's `onCall` plus a
-  // synthetic record for the latch path.
-  onLlmCall?: (record: LlmCallRecord) => void;
+  // Sinks receive every emitted outcome in parallel. Composition is the
+  // caller's responsibility (see calendarSync wiring for the sync path
+  // and routes/classify.ts for the preview path).
+  sinks: ReadonlyArray<Sink>;
   // Test-only: inject a custom reserve fn to bypass the real drizzle writer.
   reserve?: ReserveLlmCallFn;
 };
@@ -49,23 +51,31 @@ export function buildDefaultClassifier(deps: ChainDeps): ClassifyEventFn {
   let quotaLatched = false;
 
   return async (event, ctx) => {
-    const ruleHit = await ruleClassify(event, ctx);
-    if (ruleHit) return ruleHit;
+    // Stage 1: substring matcher.
+    const hit = await ruleClassify(event, ctx);
+    if (hit) {
+      const outcome: ClassificationOutcome = {
+        kind: "ruleHit",
+        rule: hit.rule,
+        matchedKeyword: hit.matchedKeyword,
+      };
+      await runSinks(outcome, deps.sinks);
+      return outcome;
+    }
 
-    if (!deps.env.OPENAI_API_KEY) return null;
-    if (ctx.categories.length === 0) return null;
+    // Skips that never engage the LLM leg.
+    if (!deps.env.OPENAI_API_KEY || ctx.categories.length === 0) {
+      const outcome: ClassificationOutcome = { kind: "noMatch" };
+      await runSinks(outcome, deps.sinks);
+      return outcome;
+    }
+
+    // Quota-latched short-circuit — synthesize an LlmCallRecord so the §6.3
+    // debugging row shape stays consistent with the non-latched path.
+    // `promptSummary` and `rawResponse` stay undefined because no prompt
+    // was built and no response was received.
     if (quotaLatched) {
-      // Quota already confirmed exhausted earlier in this run — skip both
-      // the LLM fetch and the `reserveLlmCall` UPSERT. Still count the
-      // event so the summary reflects that the chain wanted to call LLM.
-      // §6.3 후속: even though no fetch fires, populate `eventId` and
-      // `availableCategories` so the row is consistent with non-latched
-      // `quota_exceeded` rows from `classifyWithLlm`. `promptSummary` and
-      // `rawResponse` stay undefined because no prompt was built and no
-      // response was received.
-      deps.onLlmAttempted?.();
-      deps.onLlmQuotaExceeded?.();
-      deps.onLlmCall?.({
+      const record: LlmCallRecord = {
         outcome: "quota_exceeded",
         latencyMs: 0,
         categoryCount: Math.min(LLM_PROMPT_MAX_CATEGORIES, ctx.categories.length),
@@ -74,35 +84,51 @@ export function buildDefaultClassifier(deps: ChainDeps): ClassifyEventFn {
         availableCategories: ctx.categories
           .slice(0, LLM_PROMPT_MAX_CATEGORIES)
           .map((c) => c.name),
-      });
-      return null;
+      };
+      const outcome: ClassificationOutcome = {
+        kind: "llmQuotaExceeded",
+        llmRecord: record,
+      };
+      await runSinks(outcome, deps.sinks);
+      return outcome;
     }
 
-    deps.onLlmAttempted?.();
-    const outcome: LlmOutcome = await classifyWithLlm(event, ctx.categories, {
-      db: deps.db,
-      env: deps.env,
-      userId: deps.userId,
-      ...(deps.reserve !== undefined ? { reserve: deps.reserve } : {}),
-      ...(deps.onLlmCall !== undefined ? { onCall: deps.onLlmCall } : {}),
-    });
+    // LLM leg.
+    const { outcome: llmOut, record } = await classifyWithLlm(
+      event,
+      ctx.categories,
+      {
+        db: deps.db,
+        env: deps.env,
+        userId: deps.userId,
+        ...(deps.reserve !== undefined ? { reserve: deps.reserve } : {}),
+      },
+    );
 
-    switch (outcome.kind) {
+    let outcome: ClassificationOutcome;
+    switch (llmOut.kind) {
       case "hit":
-        deps.onLlmSucceeded?.();
-        return outcome.classification;
+        outcome = { kind: "llmHit", rule: llmOut.rule, llmRecord: record };
+        break;
       case "timeout":
-        deps.onLlmTimeout?.();
-        return null;
+        outcome = { kind: "llmTimeout", llmRecord: record };
+        break;
       case "quota_exceeded":
         quotaLatched = true;
-        deps.onLlmQuotaExceeded?.();
-        return null;
+        outcome = { kind: "llmQuotaExceeded", llmRecord: record };
+        break;
+      // `disabled` is unreachable here because the explicit
+      // `!OPENAI_API_KEY || ctx.categories.length === 0` guard above already
+      // short-circuited. Keep the arm defensive (fold to `llmBadResponse`)
+      // so future refactors that reorder the guards don't drop a row.
       case "miss":
       case "http_error":
       case "bad_response":
       case "disabled":
-        return null;
+        outcome = { kind: "llmBadResponse", llmRecord: record };
+        break;
     }
+    await runSinks(outcome, deps.sinks);
+    return outcome;
   };
 }

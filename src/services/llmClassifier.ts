@@ -3,7 +3,7 @@ import type { PostgresJsDatabase } from "drizzle-orm/postgres-js";
 
 import { llmUsageDaily, llmUsageGlobalDaily } from "../db/schema";
 import type { Bindings } from "../env";
-import type { Classification } from "./classifier";
+import type { RuleRef } from "./classifierOutcomes";
 import type { Rule } from "./ruleService";
 import { redactEventForLlm } from "./piiRedactor";
 import type { CalendarEvent } from "./googleCalendar";
@@ -94,7 +94,7 @@ const LLM_MAX_COMPLETION_TOKENS = 64;
 export type ChatMessage = { role: "system" | "user"; content: string };
 
 export type LlmOutcome =
-  | { kind: "hit"; classification: Classification }
+  | { kind: "hit"; rule: RuleRef; categoryName: string }
   | { kind: "miss" } // model returned "none"
   | { kind: "timeout" }
   | { kind: "quota_exceeded" }
@@ -163,10 +163,6 @@ export type LlmClassifyDeps = {
   // callers omit this and get the real `reserveLlmCall`; tests inject a stub
   // to bypass the drizzle builder chain without touching the DB.
   reserve?: ReserveLlmCallFn;
-  // §6 Wave A telemetry hook — called exactly once before every return with
-  // the per-call record. Kept as a callback (not a return-type extension) so
-  // the existing `LlmOutcome` shape stays stable across 13+ test assertions.
-  onCall?: (record: LlmCallRecord) => void;
 };
 
 // Pure, exported for testing. Whitelist-based: only `summary`, `description`,
@@ -219,18 +215,20 @@ export function buildPrompt(
 // Pure, exported for testing. `"none"` → null (miss). Unknown name → null.
 // Strict equality — no trimming, no case-folding — because categories are
 // user-authored and the LLM is constrained by structured outputs to echo
-// one of the provided names verbatim.
-export function mapCategoryNameToClassification(
+// one of the provided names verbatim. Leg identity (rule / llm / embedding)
+// is now carried by `ClassificationOutcome.kind`, so this helper returns the
+// matched rule reference only — no `reason: "llm_match:..."` string.
+export function mapCategoryNameToRuleRef(
   name: string | null,
   categories: Rule[],
-): Classification | null {
+): RuleRef | null {
   if (name === null || name === "none") return null;
   const match = categories.find((c) => c.name === name);
   if (!match) return null;
   return {
+    id: match.id,
+    name: match.name,
     colorId: match.colorId,
-    categoryId: match.id,
-    reason: `llm_match:${name}`,
   };
 }
 
@@ -398,11 +396,13 @@ export async function classifyWithLlm(
   event: CalendarEvent,
   categories: Rule[],
   deps: LlmClassifyDeps,
-): Promise<LlmOutcome> {
+): Promise<{ outcome: LlmOutcome; record: LlmCallRecord }> {
   // §6 Wave A — single emission point. Every return in this function routes
   // through `finish()` so the per-call record (latency, attempts, outcome,
   // §6.3 후속 debugging columns) is always emitted exactly once. Skipping
-  // `finish()` would silently drop a row from the observability log.
+  // `finish()` would silently drop a row from the observability log. The
+  // record now travels back to the caller alongside the outcome (chain
+  // wraps it into the matching `ClassificationOutcome.llmRecord` field).
   const t0 = Date.now();
   const categoryCount = Math.min(LLM_MAX_CATEGORIES, categories.length);
   let attempts = 0;
@@ -417,7 +417,7 @@ export async function classifyWithLlm(
   let promptSummary: string | undefined;
   let rawResponse: string | undefined;
 
-  function finish(outcome: LlmOutcome): LlmOutcome {
+  function finish(outcome: LlmOutcome): { outcome: LlmOutcome; record: LlmCallRecord } {
     const rec: LlmCallRecord = {
       outcome: outcome.kind,
       latencyMs: Date.now() - t0,
@@ -425,13 +425,12 @@ export async function classifyWithLlm(
       attempts,
     };
     if (outcome.kind === "http_error") rec.httpStatus = outcome.status;
-    if (outcome.kind === "hit") rec.categoryName = outcome.classification.reason.replace(/^llm_match:/, "");
+    if (outcome.kind === "hit") rec.categoryName = outcome.categoryName;
     rec.eventId = eventId;
     if (availableCategories !== undefined) rec.availableCategories = availableCategories;
     if (promptSummary !== undefined) rec.promptSummary = promptSummary;
     if (rawResponse !== undefined) rec.rawResponse = rawResponse;
-    deps.onCall?.(rec);
-    return outcome;
+    return { outcome, record: rec };
   }
 
   const apiKey = deps.env.OPENAI_API_KEY;
@@ -497,12 +496,15 @@ export async function classifyWithLlm(
       const name = parseCategoryName(content);
       if (name === undefined) return finish({ kind: "bad_response" });
 
-      const classification = mapCategoryNameToClassification(name, categories);
-      if (classification === null) {
+      const rule = mapCategoryNameToRuleRef(name, categories);
+      if (rule === null) {
         // Either explicit "none" or unknown name — both fold to silent miss.
         return finish(name === null ? { kind: "miss" } : { kind: "bad_response" });
       }
-      return finish({ kind: "hit", classification });
+      // `rule !== null` implies `name !== null` (mapCategoryNameToRuleRef
+      // returns null for null input). TS can't narrow that across the helper
+      // boundary — the assertion is safe by construction.
+      return finish({ kind: "hit", rule, categoryName: name as string });
     } catch (err) {
       if (err instanceof Error && err.name === "TimeoutError") {
         lastOutcome = { kind: "timeout" };

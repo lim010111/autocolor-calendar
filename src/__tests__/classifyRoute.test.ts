@@ -16,12 +16,13 @@ import { getDb } from "../db";
 import { verifySession } from "../services/sessionService";
 import { buildDefaultClassifier } from "../services/classifierChain";
 import type { ChainDeps } from "../services/classifierChain";
+import type { ClassifyContext } from "../services/classifier";
 import type {
-  Classification,
-  ClassifyContext,
+  ClassificationOutcome,
   ClassifyEventFn,
-} from "../services/classifier";
+} from "../services/classifierOutcomes";
 import type { CalendarEvent } from "../services/googleCalendar";
+import type { LlmCallRecord } from "../services/llmClassifier";
 
 const USER_A = "00000000-0000-0000-0000-00000000000a";
 const USER_B = "00000000-0000-0000-0000-00000000000b";
@@ -224,22 +225,35 @@ beforeEach(() => {
 });
 
 // Helper — returns a stub `ChainDeps → ClassifyEventFn` builder that invokes
-// the provided hooks in the order the real chain would, then returns the
-// configured classification. Default `reason` prefix drives the route's
-// rule-vs-llm response branch.
+// the configured sinks with the synthesized outcome before returning it.
+// `opts.outcome` is the union case the chain would emit for this test;
+// `opts.llmCallRecord` is the record attached when the LLM leg engaged.
 function stubChain(opts: {
-  result: Classification | null;
-  engageLlmLeg?: boolean;
-  llmCallRecord?: Parameters<NonNullable<ChainDeps["onLlmCall"]>>[0];
+  outcome: ClassificationOutcome;
 }): (deps: ChainDeps) => ClassifyEventFn {
   return (deps: ChainDeps): ClassifyEventFn =>
     async (_event: CalendarEvent, _ctx: ClassifyContext) => {
-      if (opts.engageLlmLeg) {
-        deps.onLlmAttempted?.();
-        if (opts.llmCallRecord) deps.onLlmCall?.(opts.llmCallRecord);
+      for (const sink of deps.sinks) {
+        await sink(opts.outcome);
       }
-      return opts.result;
+      return opts.outcome;
     };
+}
+
+// Convenience helpers that build common outcomes used across the
+// preview-LLM suite — keeps the test bodies readable.
+function ruleHit(
+  rule: { id: string; name: string; colorId: string },
+  matchedKeyword: string,
+): ClassificationOutcome {
+  return { kind: "ruleHit", rule, matchedKeyword };
+}
+
+function llmHit(
+  rule: { id: string; name: string; colorId: string },
+  rec: LlmCallRecord,
+): ClassificationOutcome {
+  return { kind: "llmHit", rule, llmRecord: rec };
 }
 
 afterEach(() => {
@@ -369,10 +383,11 @@ describe("POST /api/classify/preview", () => {
 
   it("llm:true + OPENAI_API_KEY absent — no_match without llmTried (chain bails at key check)", async () => {
     currentDb.state.rows.push(row({}));
-    // Chain bails before onLlmAttempted fires (stub mirrors classifierChain's
-    // env.OPENAI_API_KEY check returning null without invoking the hook).
+    // Chain emits a plain `noMatch` (no LLM leg engagement) when the key
+    // guard short-circuits — no llmRecord, so the route response carries
+    // no `llmTried`.
     vi.mocked(buildDefaultClassifier).mockImplementation(
-      stubChain({ result: null, engageLlmLeg: false }),
+      stubChain({ outcome: { kind: "noMatch" } }),
     );
     const res = await invoke("/api/classify/preview", {
       method: "POST",
@@ -384,18 +399,18 @@ describe("POST /api/classify/preview", () => {
     expect(await res.json()).toEqual({ source: "no_match", llmAvailable: false });
   });
 
-  it("llm:true + rule hit (via chain) — source:'rule', onLlmAttempted not called", async () => {
+  it("llm:true + rule hit (via chain) — source:'rule', LLM leg never engages", async () => {
     currentDb.state.rows.push(row({ keywords: ["회의"] }));
     vi.mocked(buildDefaultClassifier).mockImplementation(
       stubChain({
-        result: {
-          colorId: "9",
-          categoryId: "11111111-1111-1111-1111-111111111111",
-          reason: "rule_match:회의",
-          matchedKeyword: "회의",
-        },
-        // Rule hit short-circuits inside the chain — LLM leg never engages.
-        engageLlmLeg: false,
+        outcome: ruleHit(
+          {
+            id: "11111111-1111-1111-1111-111111111111",
+            name: "주간회의",
+            colorId: "9",
+          },
+          "회의",
+        ),
       }),
     );
     const res = await invoke("/api/classify/preview", {
@@ -422,19 +437,20 @@ describe("POST /api/classify/preview", () => {
     );
     vi.mocked(buildDefaultClassifier).mockImplementation(
       stubChain({
-        result: {
-          colorId: "9",
-          categoryId: "11111111-1111-1111-1111-111111111111",
-          reason: "llm_match:회의",
-        },
-        engageLlmLeg: true,
-        llmCallRecord: {
-          outcome: "hit",
-          latencyMs: 42,
-          categoryCount: 1,
-          attempts: 1,
-          categoryName: "회의",
-        },
+        outcome: llmHit(
+          {
+            id: "11111111-1111-1111-1111-111111111111",
+            name: "회의",
+            colorId: "9",
+          },
+          {
+            outcome: "hit",
+            latencyMs: 42,
+            categoryCount: 1,
+            attempts: 1,
+            categoryName: "회의",
+          },
+        ),
       }),
     );
     const res = await invoke("/api/classify/preview", {
@@ -481,9 +497,15 @@ describe("POST /api/classify/preview", () => {
       currentDb.state.rows.push(row({}));
       vi.mocked(buildDefaultClassifier).mockImplementation(
         stubChain({
-          result: null,
-          engageLlmLeg: true,
-          llmCallRecord: { outcome: "miss", latencyMs: 5, categoryCount: 1, attempts: 1 },
+          outcome: {
+            kind: "llmBadResponse",
+            llmRecord: {
+              outcome: "miss",
+              latencyMs: 5,
+              categoryCount: 1,
+              attempts: 1,
+            },
+          },
         }),
       );
       const reqInit = {
@@ -540,13 +562,14 @@ describe("POST /api/classify/preview", () => {
     currentDb.state.rows.push(row({}));
     vi.mocked(buildDefaultClassifier).mockImplementation(
       stubChain({
-        result: null,
-        engageLlmLeg: true,
-        llmCallRecord: {
-          outcome: "miss",
-          latencyMs: 120,
-          categoryCount: 1,
-          attempts: 1,
+        outcome: {
+          kind: "llmBadResponse",
+          llmRecord: {
+            outcome: "miss",
+            latencyMs: 120,
+            categoryCount: 1,
+            attempts: 1,
+          },
         },
       }),
     );
@@ -579,13 +602,14 @@ describe("POST /api/classify/preview", () => {
     currentDb.state.rows.push(row({}));
     vi.mocked(buildDefaultClassifier).mockImplementation(
       stubChain({
-        result: null,
-        engageLlmLeg: true,
-        llmCallRecord: {
-          outcome: "quota_exceeded",
-          latencyMs: 2,
-          categoryCount: 1,
-          attempts: 0,
+        outcome: {
+          kind: "llmQuotaExceeded",
+          llmRecord: {
+            outcome: "quota_exceeded",
+            latencyMs: 2,
+            categoryCount: 1,
+            attempts: 0,
+          },
         },
       }),
     );
