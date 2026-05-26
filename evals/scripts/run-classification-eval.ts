@@ -31,7 +31,7 @@ import { fileURLToPath } from "node:url";
 import { config as loadEnv } from "dotenv";
 import { LangfuseClient } from "@langfuse/client";
 
-import { classifyEvent, type Category } from "../../src/services/classifier";
+import { classifyEvent } from "../../src/services/classifier";
 import type { CalendarEvent } from "../../src/services/googleCalendar";
 import {
   buildPrompt,
@@ -40,6 +40,7 @@ import {
   parseCategoryName,
   type ClassifierPromptVersion,
 } from "../../src/services/llmClassifier";
+import { synthesizeSeeds, type Rule } from "../../src/services/ruleService";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -465,7 +466,9 @@ class LangfuseSink {
               name: "pass",
               value: cr.pass ? 1 : 0,
               dataType: "NUMERIC",
-              comment: cr.pass ? undefined : `expected=${cr.expected} got=${cr.got}`,
+              ...(cr.pass
+                ? {}
+                : { comment: `expected=${cr.expected} got=${cr.got}` }),
             },
           },
           // §10 nano-prompt-experiment custom scores. Per-trace numeric
@@ -613,13 +616,18 @@ function gitSha(): string {
 function buildCategory(
   c: EvalCase["categories"][number],
   i: number,
-): Category {
+): Rule {
+  const now = new Date(0);
   return {
     id: `c-${i}`,
+    userId: "eval-runner",
     name: c.name,
     colorId: c.colorId,
     keywords: c.keywords,
     priority: 100 + i,
+    seeds: synthesizeSeeds({ name: c.name, keywords: c.keywords }),
+    createdAt: now,
+    updatedAt: now,
   };
 }
 

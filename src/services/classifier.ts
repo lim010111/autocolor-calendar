@@ -1,16 +1,9 @@
 import type { CalendarEvent } from "./googleCalendar";
-
-export type Category = {
-  id: string;
-  name: string;
-  colorId: string;
-  keywords: string[];
-  priority: number;
-};
+import type { Rule } from "./ruleService";
 
 export type ClassifyContext = {
   userId: string;
-  categories: Category[];
+  categories: Rule[];
 };
 
 export type Classification = {

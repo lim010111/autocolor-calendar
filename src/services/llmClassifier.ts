@@ -3,7 +3,8 @@ import type { PostgresJsDatabase } from "drizzle-orm/postgres-js";
 
 import { llmUsageDaily, llmUsageGlobalDaily } from "../db/schema";
 import type { Bindings } from "../env";
-import type { Category, Classification } from "./classifier";
+import type { Classification } from "./classifier";
+import type { Rule } from "./ruleService";
 import { redactEventForLlm } from "./piiRedactor";
 import type { CalendarEvent } from "./googleCalendar";
 import {
@@ -175,7 +176,7 @@ export type LlmClassifyDeps = {
 // classification is §5 후속).
 export function buildPrompt(
   redactedEvent: CalendarEvent,
-  categories: Category[],
+  categories: Rule[],
   version: ClassifierPromptVersion = DEFAULT_CLASSIFIER_PROMPT_VERSION,
 ): ChatMessage[] {
   const categoryList = categories.slice(0, LLM_MAX_CATEGORIES).map((c) => ({
@@ -221,7 +222,7 @@ export function buildPrompt(
 // one of the provided names verbatim.
 export function mapCategoryNameToClassification(
   name: string | null,
-  categories: Category[],
+  categories: Rule[],
 ): Classification | null {
   if (name === null || name === "none") return null;
   const match = categories.find((c) => c.name === name);
@@ -395,7 +396,7 @@ export function parseCategoryName(content: string): string | null | undefined {
 
 export async function classifyWithLlm(
   event: CalendarEvent,
-  categories: Category[],
+  categories: Rule[],
   deps: LlmClassifyDeps,
 ): Promise<LlmOutcome> {
   // §6 Wave A — single emission point. Every return in this function routes

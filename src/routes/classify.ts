@@ -1,14 +1,15 @@
-import { and, asc, eq, isNull, or, sql } from "drizzle-orm";
+import { and, eq, isNull, or, sql } from "drizzle-orm";
 import { Hono } from "hono";
 import { z } from "zod";
 
 import { getDb } from "../db";
-import { categories, llmCalls, users } from "../db/schema";
+import { llmCalls, users } from "../db/schema";
 import type { HonoEnv } from "../env";
 import { authMiddleware } from "../middleware/auth";
 import { classifyEvent } from "../services/classifier";
 import { buildDefaultClassifier } from "../services/classifierChain";
 import type { LlmCallRecord } from "../services/llmClassifier";
+import { listRules } from "../services/ruleService";
 
 // Cost guardrail (§5/§6 후속) — preview-LLM throttle window.
 //
@@ -103,17 +104,7 @@ classifyRoutes.post("/preview", async (c) => {
       }
     }
 
-    const rows = await db
-      .select({
-        id: categories.id,
-        name: categories.name,
-        colorId: categories.colorId,
-        keywords: categories.keywords,
-        priority: categories.priority,
-      })
-      .from(categories)
-      .where(eq(categories.userId, userId))
-      .orderBy(asc(categories.priority), asc(categories.createdAt));
+    const rows = await listRules(db, userId);
 
     // Zero-category short-circuit: skip classifyEvent's internal category
     // loop (guaranteed no-op) and return immediately so tests don't need to
