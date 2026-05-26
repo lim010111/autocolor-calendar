@@ -40,6 +40,7 @@ import {
   parseCategoryName,
   type ClassifierPromptVersion,
 } from "../../src/services/llmClassifier";
+import { redactEventForLlm } from "../../src/services/piiRedactor";
 import { synthesizeSeeds, type Rule } from "../../src/services/ruleService";
 
 const __filename = fileURLToPath(import.meta.url);
@@ -752,7 +753,10 @@ async function runCase(
     }
   }
 
-  const messages = buildPrompt(event, cats, opts.promptVersion);
+  // §5.2: buildPrompt requires `RedactedEvent`. Mirror the production LLM
+  // leg by redacting first — the redactor is idempotent so prompt bytes
+  // are identical to the pre-brand call shape.
+  const messages = buildPrompt(redactEventForLlm(event), cats, opts.promptVersion);
   if (opts.systemBodyOverride !== null && messages[0]) {
     messages[0].content = opts.systemBodyOverride;
   }

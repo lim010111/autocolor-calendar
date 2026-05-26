@@ -119,6 +119,21 @@ counters (`SyncSummary`) and event IDs/status. Error messages from
 the response body. `sync_failures.error_body` stores Google's API error
 envelope only — never the event payload that triggered the failure.
 
+## PII redaction contract (§5.2)
+
+The §5.3 LLM leg never sees raw event text. Redaction is enforced by the
+branded type `RedactedEvent` defined in `src/services/piiRedactor.ts`:
+`classifyWithLlm` and `buildPrompt` accept only `RedactedEvent`, so a
+caller passing a raw `CalendarEvent` is rejected at compile time. The
+unique minter is `redactEventForLlm`. The same file co-locates
+`ConsentedExample` (durable storage of user-provided titles via
+`rule_seeds.seed_text` — ADR-0004 #05) and the `ConsentReceipt` type
+required by its minter `consentExample`. All three brands are phantom
+`unique symbol` intersections — zero runtime footprint, no forgeable
+literal, no surface for `JSON.stringify` to leak into a prompt body or
+`llm_calls.prompt_summary`. Sibling redactors or out-of-file `as
+RedactedEvent` casts break the invariant and must not be introduced.
+
 ## Color ownership marker (§5.4)
 
 When the sync pipeline PATCHes an event color (`src/services/calendarSync.ts`

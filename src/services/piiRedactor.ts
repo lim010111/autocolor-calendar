@@ -2,6 +2,9 @@ import type { CalendarEvent } from "./googleCalendar";
 
 // §5.2 PII redactor — LLM fallback 입력 전용 마스킹.
 //
+// 정식 계약은 `src/CLAUDE.md`의 `## PII redaction contract (§5.2)` heading
+// 아래 한 문단으로 산다 — branded type `RedactedEvent`로 컴파일 타임 강제.
+//
 // SECURITY CONTRACT
 // -----------------
 // - DO NOT LOG OUTPUT. The return value still carries the same PII surface
@@ -15,6 +18,16 @@ import type { CalendarEvent } from "./googleCalendar";
 //   절대 들어가지 않는다 — 코드리뷰 invariant.
 // - `classifier.ts` (rule-based, §5.1)는 raw 텍스트를 그대로 사용한다.
 //   redactor는 오직 §5.3 LLM 경로에서만 호출된다.
+//
+// BRANDED TYPES (§5.2 invariant)
+// ------------------------------
+// `RedactedEvent`, `ConsentedExample`, `ConsentReceipt`는 모두 *phantom*
+// `unique symbol` brand다 — 런타임 객체에 키가 붙지 않는다 (`declare const`는
+// 코드 emit 0; `readonly [B]: 'literal'` 교차는 type-level 추가). 따라서
+// `JSON.stringify`나 object spread가 brand 필드를 prompt body 나
+// `llm_calls.prompt_summary` 컬럼으로 흘려보낼 위험이 없고, 손으로 쓴 literal
+// 도 `unique symbol` 키를 명명할 수 없어 forge 불가능. mint는 이 파일 안의
+// `as <Brand>` 단일 cast로만 일어난다.
 //
 // NEVER THROWS
 // ------------
@@ -44,6 +57,39 @@ import type { CalendarEvent } from "./googleCalendar";
 // - LLM 프롬프트에 "[email] / [url] / [phone]은 opaque placeholder이며
 //   내용 추측 금지" 명시.
 // - `llmClassifier.ts`에서 redactor 출력을 로깅 경로로 절대 흘리지 않는다.
+
+// Phantom unique-symbol brands. `declare const` emits no runtime code; the
+// `readonly [B]: '<tag>'` intersection is purely type-level. Tags are
+// duplicated in string form to make `tsc --diagnostics` errors readable —
+// they never appear on a runtime object.
+declare const RedactedBrand: unique symbol;
+declare const ConsentedExampleBrand: unique symbol;
+declare const ConsentReceiptBrand: unique symbol;
+
+// Output of `redactEventForLlm`. The §5.3 LLM-input contract requires this
+// branded shape; raw `CalendarEvent` callers are rejected at the
+// `classifyWithLlm` / `buildPrompt` boundary by the type system.
+export type RedactedEvent = CalendarEvent & {
+  readonly [RedactedBrand]: "redacted";
+};
+
+// Output of `consentExample`. Brand asserts the joint invariant
+// "consented AND redacted": `consentExample()` body runs `redactString` and
+// validates the receipt. The eventual `addExample(db, example)` sink takes
+// only this branded shape, so a raw `(ruleId, title)` insert is unspellable.
+export type ConsentedExample = {
+  readonly text: string;
+  readonly ruleId: string;
+  readonly [ConsentedExampleBrand]: "consented-example";
+};
+
+// Required 3rd arg to `consentExample`. This PR defines the type only — no
+// exported minter exists. ADR-0004 #05 introduces the first minter (the
+// consent log + receipt issuance flow), unblocking real Instant Feedback
+// writes only after the OAuth re-verification gate clears.
+export type ConsentReceipt = {
+  readonly [ConsentReceiptBrand]: "consent-receipt";
+};
 
 export const PII_TOKENS = {
   EMAIL: "[email]",
@@ -85,7 +131,11 @@ function redactString(s: string): string {
 // `exactOptionalPropertyTypes: true` 아래에서는 optional 필드에 `undefined`를
 // 명시적으로 할당할 수 없어, email 속성을 제거할 때는 destructure-and-omit
 // 패턴을 사용한다.
-export function redactEventForLlm(event: CalendarEvent): CalendarEvent {
+//
+// **Unique minter for `RedactedEvent`.** The final `as RedactedEvent` cast is
+// the only place in the codebase that produces this branded type. Do not
+// add a sibling redactor or `as` cast outside this function.
+export function redactEventForLlm(event: CalendarEvent): RedactedEvent {
   const redacted: CalendarEvent = { ...event };
 
   if (event.summary !== undefined) {
@@ -113,5 +163,26 @@ export function redactEventForLlm(event: CalendarEvent): CalendarEvent {
     });
   }
 
-  return redacted;
+  return redacted as RedactedEvent;
+}
+
+// **Unique minter for `ConsentedExample`.** Runs the same string-level
+// redaction the LLM input passes through, then stamps the brand. Body is
+// pinned now so ADR-0004 #05's Instant Feedback handler has a single
+// branded entry point to call — the actual `rule_seeds` insert / FIFO
+// eviction lives in `ruleService.addExample`, which only accepts the
+// branded value this function produces.
+//
+// The `consent` parameter has no exposed minter in this PR; ADR-0004 #05
+// will introduce the consent log + receipt issuance, at which point the
+// only callers of `consentExample` will be that flow.
+export function consentExample(
+  title: string,
+  ruleId: string,
+  _consent: ConsentReceipt,
+): ConsentedExample {
+  return {
+    text: redactString(title),
+    ruleId,
+  } as ConsentedExample;
 }

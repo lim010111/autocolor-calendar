@@ -8,6 +8,10 @@ vi.mock("../queues/syncProducer", () => ({
 import type { Bindings } from "../env";
 import { enqueueSync } from "../queues/syncProducer";
 import {
+  consentExample,
+  type ConsentReceipt,
+} from "../services/piiRedactor";
+import {
   addExample,
   createRule,
   deleteRule,
@@ -254,9 +258,13 @@ describe("addExample", () => {
     const { db } = makeFakeDb({
       categories: [row({ id: RULE_A, userId: USER_A })],
     });
-    await expect(
-      addExample(db as never, RULE_A, "회의실 잡기"),
-    ).resolves.toBeUndefined();
+    // §5.2: the only branded entry path. `ConsentReceipt` has no exposed
+    // minter in this PR (ADR-0004 #05 introduces consent log + receipt
+    // issuance) — fabricate a brand-only fake here. This is the single
+    // test-side forgery of the receipt brand; production code MUST NOT
+    // cast its way around the type.
+    const example = consentExample("회의실 잡기", RULE_A, {} as ConsentReceipt);
+    await expect(addExample(db as never, example)).resolves.toBeUndefined();
     expect(vi.mocked(enqueueSync)).not.toHaveBeenCalled();
   });
 });

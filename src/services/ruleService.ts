@@ -4,6 +4,7 @@ import type { PostgresJsDatabase } from "drizzle-orm/postgres-js";
 import { categories, syncState } from "../db/schema";
 import type { Bindings } from "../env";
 import { enqueueSync } from "../queues/syncProducer";
+import type { ConsentedExample } from "./piiRedactor";
 
 // Rule aggregate module — single source of truth for the user-defined
 // classification rule. The DB table is still named `categories` (and the
@@ -367,13 +368,18 @@ export async function deleteRule(
 // the embedding-classifier wave; the body is a no-op resolve until the
 // consent + rule_seeds insert + FIFO eviction logic lands.
 //
+// §5.2 branded contract — accepts only `ConsentedExample`. The brand
+// asserts the joint invariant "consented AND redacted", minted exclusively
+// by `consentExample()` in `piiRedactor.ts`. A raw `(ruleId, title)` insert
+// is unspellable at compile time. The `_example.ruleId` already carries
+// the target rule, so no separate `ruleId` arg is needed.
+//
 // Deliberately no-op rather than `throw`: a stray caller during the
 // interim should fall through silently. Wiring this into a route is
 // gated until #05.
 export async function addExample(
   _db: PostgresJsDatabase,
-  _ruleId: string,
-  _title: string,
+  _example: ConsentedExample,
 ): Promise<void> {
   // intentionally no-op until ADR-0004 #05
 }

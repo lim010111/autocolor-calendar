@@ -13,6 +13,7 @@ import {
   type LlmCallRecord,
   type ReserveLlmCallFn,
 } from "./llmClassifier";
+import { redactEventForLlm } from "./piiRedactor";
 
 // §5.3 chain composition: rule → LLM fallback → ClassificationOutcome.
 //
@@ -93,9 +94,13 @@ export function buildDefaultClassifier(deps: ChainDeps): ClassifyEventFn {
       return outcome;
     }
 
-    // LLM leg.
+    // LLM leg. §5.2 branded contract — redact before crossing into the
+    // LLM module. `classifyWithLlm` accepts only `RedactedEvent`; the
+    // redactor is idempotent so output bytes are unchanged from the prior
+    // arrangement (redact inside `classifyWithLlm`).
+    const redactedEvent = redactEventForLlm(event);
     const { outcome: llmOut, record } = await classifyWithLlm(
-      event,
+      redactedEvent,
       ctx.categories,
       {
         db: deps.db,
