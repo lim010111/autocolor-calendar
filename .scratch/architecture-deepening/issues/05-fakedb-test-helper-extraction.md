@@ -98,32 +98,32 @@ Status: ready-for-agent
 
 ## Acceptance criteria
 
-- [ ] `src/__tests__/_helpers/fakeDb.ts` 신설 — 다음을 export:
+- [x] `src/__tests__/_helpers/fakeDb.ts` 신설 — 다음을 export:
       `Row` / `SyncStateRow` 타입, `DuplicateNameError` 클래스,
       `extractEq` 함수, `makeFakeDb` factory
-- [ ] `makeFakeDb` 시그니처가 `initial?: { categories?, syncStates?,
+- [x] `makeFakeDb` 시그니처가 `initial?: { categories?, syncStates?,
       failInsertWith?, failUpdateWith? }` → `{ db, close, state: { categories,
       syncStates } }` 형태와 일치 (production `getDb` 의 `{ db, close }`
       shape 동형)
-- [ ] `orderBy` walker 가 `asc(col)` / `desc(col)` 의 컬럼명을 추출해 실제
+- [x] `orderBy` walker 가 `asc(col)` / `desc(col)` 의 컬럼명을 추출해 실제
       정렬을 수행 (`firstColumnName` + `sortBy` 로직 helper 내부 이동)
-- [ ] `failInsertWith` / `failUpdateWith` 옵션이 `insert.returning` /
+- [x] `failInsertWith` / `failUpdateWith` 옵션이 `insert.returning` /
       `update.returning` 호출 시 해당 Error 를 throw
-- [ ] helper 내부 `from(table)` 분기는 명시적 if/else 로 categories +
+- [x] helper 내부 `from(table)` 분기는 명시적 if/else 로 categories +
       syncState 만 다룸 — `extraTables` 같은 placeholder option 없음
-- [ ] `src/__tests__/_helpers/fakeDb.guard.test.ts` 신설 — 합성
+- [x] `src/__tests__/_helpers/fakeDb.guard.test.ts` 신설 — 합성
       `eq(categories.userId, <uuid>)` 을 `extractEq` 에 통과시켜
       `{ user_id: <uuid> }` 결과를 assert. 실패 시 명확한 메시지로 named
       test 실패
-- [ ] `categoriesRoute.test.ts` 가 helper 만 import — 손글씨 `extractEq` /
+- [x] `categoriesRoute.test.ts` 가 helper 만 import — 손글씨 `extractEq` /
       `firstColumnName` / `sortBy` / `matches` / `makeFakeDb` / `Row` /
       `DuplicateNameError` 블록 전부 삭제, `row()` 도메인 fixture 만 잔존
-- [ ] `ruleService.test.ts` 가 helper 만 import — 손글씨 `extractEq` /
+- [x] `ruleService.test.ts` 가 helper 만 import — 손글씨 `extractEq` /
       `whereMatcher` / `makeFakeDb` / `Row` / `SyncStateRow` /
       `DuplicateNameError` 블록 전부 삭제, `row()` 도메인 fixture 만 잔존
-- [ ] 본 PR 범위 외 test 파일 (`calendarSync.test.ts` 등) 무변경
-- [ ] `pnpm test` / `pnpm typecheck` / `pnpm lint` 통과
-- [ ] `python3 scripts/check-context-paths.py` 통과
+- [x] 본 PR 범위 외 test 파일 (`calendarSync.test.ts` 등) 무변경
+- [x] `pnpm test` / `pnpm typecheck` / `pnpm lint` 통과
+- [x] `python3 scripts/check-context-paths.py` 통과
 
 ## Blocked by
 
