@@ -367,4 +367,34 @@ describe("buildDefaultClassifier — rule → LLM chain", () => {
     expect(sinkFailLogs).toHaveLength(1);
     warnSpy.mockRestore();
   });
+
+  it("AC #8 — synchronous sink throw also isolated (sync-throw, not async rejection)", async () => {
+    // Codex review (PR #96) caught: `Promise.allSettled(sinks.map(s => s(o)))`
+    // does NOT catch sync throws — those escape `sinks.map`'s callback before
+    // any Promise exists. A sink whose body throws BEFORE returning a Promise
+    // (typical for a non-async sink: `() => { somethingThatThrows();
+    // return Promise.resolve(); }`) bypasses `allSettled` and would crash
+    // classify. The `async (s) =>` wrapper in `runSinks` is the fix; this
+    // test pins it.
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const goodSink = vi.fn(async (_o: ClassificationOutcome) => {});
+    const syncThrowSink: Sink = (() => {
+      throw new Error("sync sink boom");
+    }) as unknown as Sink;
+    const classify = buildDefaultClassifier({
+      db: {} as never,
+      env: makeEnv(),
+      userId: USER,
+      reserve: okReserve,
+      sinks: [syncThrowSink, goodSink],
+    });
+    const out = await classify(ev({ summary: "주간 회의" }), ctxOf([cat()]));
+    expect(out.kind).toBe("ruleHit");
+    expect(goodSink).toHaveBeenCalledTimes(1);
+    const sinkFailLogs = warnSpy.mock.calls.filter((c) =>
+      c.some((arg) => typeof arg === "string" && arg.includes("classifier sink failed")),
+    );
+    expect(sinkFailLogs).toHaveLength(1);
+    warnSpy.mockRestore();
+  });
 });

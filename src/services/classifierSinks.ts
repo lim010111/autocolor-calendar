@@ -67,11 +67,18 @@ export function previewLlmCallSink(emit: (r: LlmCallRecord) => void): Sink {
 }
 
 // Helper used by the chain. Sink failure is warn-only — never fails classify.
+// The `async (s) =>` wrapper converts a synchronous throw inside a sink (one
+// that fires before the sink returns its Promise) into a rejected Promise,
+// so `Promise.allSettled` catches both sync throws and async rejections.
+// Without the wrapper a sync throw escapes `sinks.map` and breaks the
+// failure-isolation contract above.
 export async function runSinks(
   outcome: ClassificationOutcome,
   sinks: ReadonlyArray<Sink>,
 ): Promise<void> {
-  const results = await Promise.allSettled(sinks.map((s) => s(outcome)));
+  const results = await Promise.allSettled(
+    sinks.map(async (s) => s(outcome)),
+  );
   for (const r of results) {
     if (r.status === "rejected") {
       console.warn(
