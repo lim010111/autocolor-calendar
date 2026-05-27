@@ -33,13 +33,14 @@ under the entry's narrative block.
 
 | # | PR | Date | Codex (latest run) | Validator | Gate (hard) | Human verdict | FP? | FN? |
 |---|---|---|---|---|---|---|---|---|
-| 1 | [#100](https://github.com/lim010111/autocolor-calendar/pull/100) | 2026-05-27 | `needs-attention`, 2 high + 1 medium + 1 low (validator fallback fail-open · workflow trust boundary · workflow_dispatch BASE_REF · missing ADR link) | `uphold` ×4 (2 blocking) | block | should-block | No | No |
+| 1 | [#100](https://github.com/lim010111/autocolor-calendar/pull/100) | 2026-05-27 | `needs-attention`, 2 high + 2 medium (workflow trust boundary · docs-only context bypass · workflow_dispatch BASE_REF · orphan-i hard-mode blocker) | `uphold` ×4 (2 blocking) | block | should-block | No | No |
 
 ### Entry 1 — notes
 
-The gate surfaced **two separate self-protection finding classes** across
-two runs on this PR. Both were true positives — not false positives
-against the soft→hard criteria.
+The gate surfaced **four progressive self-protection finding layers** across
+four codex runs on this PR. Each fix → re-run cycle peeled back to a
+deeper layer, all true positives. This is the canonical "validator
+hardens itself" pattern that soft-mode shipping is designed to produce.
 
 **Run 1 (commit `0c8056f` — initial merge-gate install)** — Codex found
 that `docs_only_globs` blanket-matched `**/*.md`, so the validator agent
@@ -76,18 +77,72 @@ Both high findings are **vendored harness code** (snapshots of the
 global layer, not autocolor-authored), so they cannot be fixed in this
 repo without diverging from the upstream skill. Tracked upstream as
 `claude-harness-work/.scratch/merge-gate/issues/24-validator-fallback-fail-open.md`
-and `…/25-workflow-trust-boundary.md`. PR #100 waits on at least the
-fallback fix before merge; the workflow trust-boundary fix has more
-options to weigh and may land asynchronously.
+and `…/25-workflow-trust-boundary.md`.
 
-### Cross-codebase signal back to harness `#10`
+**Run 3 (commit `762b1c7` — after `#24` fail-closed fix vendored)** —
+position-only pairing finding surfaces. Codex run `26513634294`:
 
-Run 2 is the kind of data point the PRD's `## Deployments` section
-called out: a parallel deployment finding flaws that the primary
-(`chess_transformer`) hasn't seen yet, because chess's only PR #25 was
-a clean 0-finding pass. autocolor's denser AGENTS.md and broader
-surface area gave Codex more to work with on the gate's own
-installation diff.
+- `aggregate.py:238` *[high]* — `cmd_write_outputs` pairs validator
+  output to Codex findings by index. Reordered validator output
+  silently swaps verdicts. Codex reproduced locally. Tracked as
+  `claude-harness-work/.scratch/merge-gate/issues/26-validator-verdict-pairing-by-position.md`.
+- `codex-review.yml:195` *[high]* — workflow trust boundary (same as
+  run-2; `#25` still ADR-pending).
+- `codex-review.yml:20` *[medium]* — `workflow_dispatch` BASE_REF
+  (same as run-2; carried forward).
+- `aggregate.py:332` *[medium]* — sticky-comment-only (resolved by
+  `#24`'s land in subsequent run).
+
+**Run 4 (commit `5f8dfd7` — after `#26` id-based pairing vendored)** —
+docs-only context bypass + orphan-i blocker surface. Codex run
+`26520623070`:
+
+- ✓ `aggregate.py:238` (position-only pairing) — **gone**, confirming
+  `#26` fix effective. This is the AC #18 verification evidence for
+  `#26`.
+- `codex-review.yml:43` *[high, upheld, blocking]* — `DOCS_ONLY_GLOBS`
+  catches `AGENTS.md`, `CONTEXT-MAP.md`, `docs/adr/**`. A PR can
+  weaken validator trust/context inputs without the gate reviewing
+  the change. Same family as `8a13573`'s narrowing but deeper layer
+  (semantic content of docs-only set, not just glob syntax). Tracked
+  as `claude-harness-work/.scratch/merge-gate/issues/27-docs-only-context-bypass.md`.
+- `aggregate.py:352` *[medium, upheld, non-blocking]* — orphan-i
+  path's `decide_block(severity, verdict)` contradicts the in-code
+  comment ("orphan lines do not block"). Validator can author its
+  own blockers via a `[HIGH] uphold id=made-up …` line — scope
+  contract violation. Tracked as `claude-harness-work/.scratch/merge-gate/issues/28-orphan-validator-line-can-block-hard-mode.md`.
+- `codex-review.yml:195` *[high, upheld]* — workflow trust boundary
+  (same as run-2/3; `#25` still ADR-pending).
+- `codex-review.yml:20` *[medium]* — `workflow_dispatch` BASE_REF
+  (carried forward).
+
+### Cross-codebase signal back to harness PRD `## Deployments`
+
+The four-run cascade on this PR is exactly the deeper-layer-finding
+pattern the PRD's `## Deployments` section anticipated: each fix peels
+back the gate's onion. Findings unique to autocolor's surface so far:
+
+- Run-1 (`**/*.md` blanket docs-only) — surfaced because autocolor's
+  install diff was first to touch the gate's own vendored code under
+  `.claude/**`. chess_transformer's `#08` install diff didn't include
+  the validator skill (vendored later in `#05`).
+- Run-2 (`#24` fail-open + `#25` trust boundary) — surfaced because
+  autocolor was the first PR to exercise the gate's *enforcement*
+  code paths in a structured review against another PR's diff.
+- Run-3 (`#26` position-pairing) — surfaced because the validator
+  parsed lines from a non-trivial finding set (4 findings). chess
+  PR #25 had 0 findings, so the pairing code never got real exercise.
+- Run-4 (`#27` docs-only context + `#28` orphan-i blocker) —
+  surfaced because the `#26` fix introduced the orphan-i path. New
+  code, new attack surface.
+
+`chess_transformer`'s next non-canary PR will inherit `#24`/`#26`/(when
+they land) `#27`/`#28` via the global → vendored path. Whether the
+chess surface organically exercises the new code well enough to
+produce comparable findings is the open question — chess's PR #25
+suggests its codex-review payload tends to run thin (0-finding
+clean passes), so divergence in finding count between the two
+deployments is itself worth noting for `#10`'s soft → hard analysis.
 
 ## Hard-flip decision
 
