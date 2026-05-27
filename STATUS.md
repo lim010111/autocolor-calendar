@@ -8,27 +8,35 @@ outside the narrative block; mechanical sections are regenerated every run._
 
 두 갈래가 병존한다.
 
-1. **embedding-classifier** (ADR-0004 구현) — Stage 1 substring → 임베딩
-   kNN. #01 (모델 eval) HITL 대기 중, 후속 5개는 #01의 벡터 차원에 묶여
-   blocked.
-2. **architecture-deepening** (신규, 2026-05-25) — `/improve-codebase-
-   architecture` 세션이 9개 friction을 추리고 4개를 grill해 4개 이슈로
-   발행. 모두 *동작 변경 0줄 prep PR* 로 명세 — Rule Module + Classifier
-   chain deepening + branded PII types + integration harness. 의도는
-   ADR-0004 구현 (#02부터)이 이 deepened seam 위에서 일어나게 하는 것.
-
-코드 변경은 여전히 0줄.
+1. **architecture-deepening** — prep PR 두 건 연속 land 후 #02 AC 박스
+   정리까지 완료.
+   - #95: Rule aggregate Module 도입 (#01 done, 9/9). `Category`→`Rule`
+     rename + `RuleService` 추출 + seeds synthesize + categories route
+     thin adapter화.
+   - #96: ClassificationOutcome union + Sink interface 도입 (#02 done,
+     11/11). `classifierOutcomes.ts` / `classifierSinks.ts` 신설,
+     callback 폐기 → sink 주입, Codex 리뷰 후속 fix (`runSinks` sync-
+     throw isolation) 반영. 460/460 tests pass, typecheck/lint/check-
+     context-paths 통과 확인 후 박스 체크.
+   - **#05 (Fakedb test helper extraction)**: 워크트리에서 작업했으나
+     커밋 전 worktree 삭제로 코드 유실 — `git fsck --lost-found` +
+     editor history 모두 흔적 없음. 복구 불가, 처음부터 다시.
+2. **embedding-classifier** (ADR-0004 구현) — Stage 1 substring → 임베딩
+   kNN. #01 (모델 eval) HITL 대기 중, 후속 5개는 #01의 벡터 차원에
+   묶여 blocked. 이번 세션에서는 진척 없음.
 
 ## Start here next session
 
-- **architecture-deepening #01 (Rule module aggregate)** 부터 바로 시작
-  가능 — blocker 없음, 동작 변경 0줄. `Category` → `Rule` rename +
-  `RuleService` 추출 + seeds synthesize. embedding-classifier #02가
-  들어오기 전에 land해야 후속 작업이 이 Module 내부 변경으로 흡수됨.
-- embedding-classifier **#01 (임베딩 모델 eval)** 은 운영자 로컬 3080
-  GPU 랩에서 병렬 진행 가능 — architecture-deepening과 독립.
-- architecture-deepening #02 (Classifier chain) / #03 (branded PII) /
-  #04 (integration harness) 는 #01에 직렬 의존.
+- **architecture-deepening #03 (branded pii types)** — #02 done 으로
+  unblock. 동작 변경 0줄.
+- **architecture-deepening #05 (Fakedb test helper extraction)** —
+  blocker 없음, #03 과 독립적으로 병렬 가능. 유실 작업 재구현.
+- **embedding-classifier #01 (임베딩 모델 eval)** — 운영자 로컬 3080
+  GPU 랩에서 여전히 HITL 대기.
+- **사소한 후속 (block 아님)**: PR #96 머지 후 남은 stale 참조 — `src/
+  CLAUDE.md:211, 530` 이 사라진 `onLlmCall` / `onLlmAttempted` 콜백을
+  여전히 언급, `src/services/llmClassifier.ts:105` 코멘트도 동일.
+  다음 PR에 묶어 정리.
 
 ## Open decisions
 
@@ -43,19 +51,19 @@ outside the narrative block; mechanical sections are regenerated every run._
   (2026-05-14 재제출) 통과 전 출시 불가.
 - 남은 architecture-deepening 후보 3개 (route handler / GAS Instant
   Feedback UI / Claim primitive) walking 미진행 — route handler는 #01이
-  자연스럽게 흡수, GAS UI는 OAuth 통과 후 surface, Claim primitive는
-  isolated small PR로 후순위. 필요 시 별도 grill 세션.
+  자연스럽게 흡수했고, GAS UI는 OAuth 통과 후 surface, Claim primitive
+  는 isolated small PR로 후순위. 필요 시 별도 grill 세션.
 
 <!-- narrative:end -->
 
 ## architecture-deepening
 
-`█████████████████░░░░░` 35/46 acceptance criteria met (76%)
+`██████████████████████` 46/46 acceptance criteria met (100%)
 
 | # | Issue | Triage | Criteria | State | Blocked by |
 |---|-------|--------|----------|-------|-----------|
 | 01 | Rule module aggregate | `ready-for-agent` | 9/9 | ✅ done | — |
-| 02 | Classifier chain deepening | `ready-for-agent` | 0/11 | ⬜ todo | #01 |
+| 02 | Classifier chain deepening | `done` | 11/11 | ✅ done | #01 |
 | 03 | Branded pii types | `ready-for-agent` | 15/15 | ✅ done | #02 |
 | 04 | Integration test harness | `wontfix` | 0/13 | 🚫 wontfix | #03 |
 | 05 | Fakedb test helper extraction | `ready-for-agent` | 11/11 | ✅ done | — |

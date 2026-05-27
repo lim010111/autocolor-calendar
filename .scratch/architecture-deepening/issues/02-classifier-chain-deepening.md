@@ -1,4 +1,4 @@
-Status: ready-for-agent
+Status: done
 
 ## What to build
 
@@ -65,24 +65,24 @@ sink를 owner로 보유한다 (옵션 C — union 반환 + chain owns default si
 
 ## Acceptance criteria
 
-- [ ] `ClassificationOutcome` discriminated union 정의 (`src/services/
+- [x] `ClassificationOutcome` discriminated union 정의 (`src/services/
       classifier/outcomes.ts` 또는 유사 위치)
-- [ ] `Sink` Interface 정의 + `llmCallsTableSink` / `syncSummarySink` 구현
-- [ ] `classifierChain` 리팩터 — `classify()` 단일 콜이 union 반환 + sinks
+- [x] `Sink` Interface 정의 + `llmCallsTableSink` / `syncSummarySink` 구현
+- [x] `classifierChain` 리팩터 — `classify()` 단일 콜이 union 반환 + sinks
       병렬 emit
-- [ ] `llmClassifier`의 observability emit 로직이 chain default sink로 이동,
+- [x] `llmClassifier`의 observability emit 로직이 chain default sink로 이동,
       `llmClassifier`는 순수 LLM 호출만 담당
-- [ ] calendarSync.processEvent의 **classifier-outcome 카운터**
+- [x] calendarSync.processEvent의 **classifier-outcome 카운터**
       (`no_match`, `llm_attempted` / `llm_succeeded` / `llm_timeout` /
       `llm_quota_exceeded`) 직접 increment 제거 — syncSummarySink로 일원화
-- [ ] 모든 optional callback (`onLlmAttempted` 등) 제거, `syncConsumer`
+- [x] 모든 optional callback (`onLlmAttempted` 등) 제거, `syncConsumer`
       wiring 갱신
-- [ ] 기존 `preview` route가 union 통해 동등하거나 더 풍부한 정보 노출,
+- [x] 기존 `preview` route가 union 통해 동등하거나 더 풍부한 정보 노출,
       회귀 없음
-- [ ] Sink 실패가 classify를 실패시키지 않고 warn 1줄로 끝남 (test로 검증)
-- [ ] 동작 변경 0줄 — 기존 단위 test 그대로 통과
-- [ ] `pnpm test` / `pnpm typecheck` / `pnpm lint` 통과
-- [ ] `python3 scripts/check-context-paths.py` 통과
+- [x] Sink 실패가 classify를 실패시키지 않고 warn 1줄로 끝남 (test로 검증)
+- [x] 동작 변경 0줄 — 기존 단위 test 그대로 통과
+- [x] `pnpm test` / `pnpm typecheck` / `pnpm lint` 통과
+- [x] `python3 scripts/check-context-paths.py` 통과
 
 ## Blocked by
 
