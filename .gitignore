@@ -40,3 +40,6 @@ evals/dataset-builder/.venv/
 __pycache__/
 *.pyc
 .ruff_cache/
+
+# Claude Code session-local state (per-worktree; not for sharing)
+.claude/handoffs/
