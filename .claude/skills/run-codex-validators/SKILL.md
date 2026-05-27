@@ -147,6 +147,15 @@ python3 "$AGG" write-fallback \
 
 then return success. The workflow handles the rest.
 
+The fallback writes `validators.json` with `aggregate: []` and a non-empty
+`fallback: "<reason>"` key. The workflow's `Decide check outcome` step is
+the sole gate decision-maker and inspects both: under hard mode it fails
+closed when `.fallback` is non-empty AND the normalized Codex payload
+reports critical/high findings (claude-harness-work#24). The runtime's
+"always exit 0" contract is preserved — do NOT change `write-fallback` to
+embed Codex findings into `aggregate[]`; the workflow already has the
+information it needs to decide.
+
 ## What this skill must not do
 
 - Do not call `agy`, `gemini`, or any validator beyond

@@ -428,6 +428,7 @@ jobs:
         # `always()` so this step still fires when `Run Claude validator`
         # exits non-zero (auth / install / network). Hard-mode fail-closed
         # order: missing validators.json → Codex CLI itself errored →
+        # validator runtime fell back while Codex had critical/high →
         # validator-upheld critical/high finding count > 0. Soft mode never
         # blocks, but still logs a Codex failure for visibility.
         #
@@ -440,6 +441,16 @@ jobs:
         #   - "normalize-failed" : jq itself could not parse the raw output
         # Anything other than "ok" is treated as a Codex-side failure under
         # hard mode (fail-closed).
+        #
+        # Validator fallback contract (claude-harness-work#24): the SKILL
+        # runtime's "always exit 0" contract means a mid-flight subagent
+        # failure produces validators.json with `aggregate: []` and a
+        # non-empty `.fallback` reason. Without this step inspecting that
+        # marker, a Codex run that succeeded with critical/high findings
+        # could silently pass hard mode just because the validator dropped
+        # out (`[.aggregate[] | select(.block==true)] | length == 0`).
+        # The fallback-aware branch below fails closed under hard mode iff
+        # `.fallback` is set AND Codex produced critical/high findings.
         if: always() && env.RUN_REVIEW == 'true'
         run: |
           set -euo pipefail
@@ -461,6 +472,21 @@ jobs:
           if [[ -n "${codex_status}" && "${codex_status}" != "ok" ]]; then
             echo "::error title=Codex failed::Codex did not produce a usable review (codex.status=${codex_status}); failing closed under hard mode."
             exit 1
+          fi
+          # claude-harness-work#24 — validator fallback fail-closed.
+          # If the validator runtime fell back, `validators.json` carries a
+          # non-empty `.fallback` reason and `aggregate: []`. Count Codex's
+          # own critical/high findings; if any exist, they were never
+          # validated and hard mode must fail closed instead of waving
+          # them through.
+          fallback_reason=$(jq -r '.fallback // ""' .codex-review/validators.json)
+          if [[ -n "${fallback_reason}" ]]; then
+            critical_high=$(jq -r '[(.result.findings // [])[] | select(.severity == "critical" or .severity == "high")] | length' .codex-review/codex-review.normalized.json 2>/dev/null || echo 0)
+            if [[ "${critical_high}" -gt 0 ]]; then
+              echo "::error title=Validator fallback (fail-closed)::Validator runtime fell back (${fallback_reason}); ${critical_high} unvalidated critical/high Codex finding(s); failing closed under hard mode."
+              exit 1
+            fi
+            echo "::warning title=Validator fallback (benign)::Validator runtime fell back (${fallback_reason}); no critical/high Codex findings to validate."
           fi
           blocked=$(jq -r '[.aggregate[] | select(.block == true)] | length' .codex-review/validators.json)
           if [[ "${blocked}" -gt 0 ]]; then
