@@ -52,6 +52,44 @@ Map per this table — `scripts/aggregate.py build-input` implements it:
 `project_refs` is hardcoded to the validator agent's documented defaults
 (`AGENTS.md`, `docs/adr/*.md`, `CONTEXT-MAP.md`, `src/*/CONTEXT.md`).
 
+## How aggregation works — pairing on finding id
+
+The aggregator (`scripts/aggregate.py write-outputs`) takes two streams
+— Codex's `findings[]` JSON and the validator agent's line-oriented
+stdout — and writes one aggregate entry per finding. Pairing is
+**identity-based** via the finding's `id`:
+
+1. `cmd_build_input` hands each finding to the validator with an
+   explicit `id` (synthesized as `finding-{i}` when Codex omits one).
+2. The validator's `<output_contract>` requires each line to echo
+   `id=<id>` verbatim (see `~/.claude/agents/codex-review-validator.md`).
+3. `cmd_write_outputs` builds a `findings_by_id` lookup and resolves
+   every parsed validator line by id — **not by position**. Order in
+   the validator's stdout no longer matters for correctness.
+4. After id resolution, the aggregator sanity-checks
+   `(file, line, severity)` between the Codex finding and the parsed
+   line. Mismatch demotes that finding to `unsure` with an `stderr`
+   warning naming the id and the divergent fields.
+5. Failure modes fail safely:
+   - Duplicate id from the validator → that finding becomes `unsure`
+     + `stderr` warning naming the id and the count.
+   - Validator line with an id matching no Codex finding → that
+     parsed line becomes an `orphan-i` aggregate entry; the unclaimed
+     Codex finding (if any) falls into the existing "validator output
+     missing" fail-safe.
+   - Codex finding with no validator line claiming its id → the
+     existing "validator output missing" fail-safe (preserves the
+     `#22` parity-check behavior).
+
+Why identity-based: ADR-0008 records the decision. The previous
+positional pairing (`findings[i]` ↔ `parsed[i]`) silently
+mis-applied verdicts when the validator agent reordered its lines —
+a HIGH `uphold` could swap with a LOW `dismiss` and the gate would
+wave the high finding through. Identity-based pairing makes that
+class of defect structurally impossible; the sanity check catches
+the remaining failure mode (model echoes the wrong id but otherwise
+plausible attributes).
+
 ## Verdict → block table (single-model MVP)
 
 Per finding, the aggregator computes `block` from Codex severity × Claude
