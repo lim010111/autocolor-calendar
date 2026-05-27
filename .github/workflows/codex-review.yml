@@ -42,7 +42,7 @@ env:
   SOFT_MODE: ${{ github.event_name == 'workflow_dispatch' && format('{0}', inputs.soft_mode) || 'true' }}
   # JSON array of fnmatch-style globs that count as docs-only. When every
   # changed file matches at least one glob, the gate short-circuits.
-  DOCS_ONLY_GLOBS: '["**/*.md","docs/**","LICENSE","NOTICE"]'
+  DOCS_ONLY_GLOBS: '["*.md","docs/**",".scratch/**/*.md","prompts/**/*.md","LICENSE","NOTICE"]'
   PROJECT_NAME: 'autocolor_for_calendar'
   # Label the PR author / approver applies to skip the gate (audited
   # bypass lane — see operations playbook §4). Filled at install time so
