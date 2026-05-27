@@ -1,0 +1,479 @@
+# merge-gate / codex-review — workflow template
+#
+# This file is rendered by `/setup-merge-gate` into a target project's
+# .github/workflows/codex-review.yml. The installer replaces 7 named
+# placeholders (delimited by doubled-percent signs); see ./README.md
+# for the catalogue and substitution rules.
+#
+# Stable identifiers (DO NOT change in renders):
+#   - workflow name:  `merge-gate`
+#   - main job id:    `codex-review`
+# Together they form the check `merge-gate / codex-review`, which is the
+# branch-protection key. Renaming either breaks every protection rule
+# that references this gate.
+
+name: merge-gate
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review, labeled, unlabeled]
+  workflow_dispatch:
+    inputs:
+      soft_mode:
+        description: "Run in report-only mode (no blocking, regardless of findings)"
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+  pull-requests: write
+  checks: write
+
+concurrency:
+  group: merge-gate-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+env:
+  # Default soft/hard posture is filled at install time. SOFT_MODE=true keeps
+  # the gate report-only; SOFT_MODE=false makes critical/high findings block.
+  # A workflow_dispatch run overrides via the `soft_mode` input — note the
+  # `format()` wrap so an explicit `false` from the dispatch UI is honoured
+  # instead of falling through `||` to the install-time default.
+  SOFT_MODE: ${{ github.event_name == 'workflow_dispatch' && format('{0}', inputs.soft_mode) || 'true' }}
+  # JSON array of fnmatch-style globs that count as docs-only. When every
+  # changed file matches at least one glob, the gate short-circuits.
+  DOCS_ONLY_GLOBS: '["**/*.md","docs/**","LICENSE","NOTICE"]'
+  PROJECT_NAME: 'autocolor_for_calendar'
+  # Label the PR author / approver applies to skip the gate (audited
+  # bypass lane — see operations playbook §4). Filled at install time so
+  # different projects can use different bypass-label conventions.
+  BYPASS_LABEL: 'merge-gate-bypass'
+  COMMENT_HEADER: merge-gate-codex-review
+
+jobs:
+  # Smoke job: cheap pre-checks that decide whether the heavy review must
+  # run at all. Exits fast on the emergency-bypass label or on docs-only PRs.
+  preflight:
+    name: preflight
+    runs-on: ubuntu-latest
+    outputs:
+      bypass: ${{ steps.bypass.outputs.bypass }}
+      docs_only: ${{ steps.docs.outputs.docs_only }}
+    steps:
+      - name: Bypass label check
+        id: bypass
+        env:
+          LABELS_JSON: ${{ toJson(github.event.pull_request.labels.*.name) }}
+        run: |
+          set -euo pipefail
+          labels="${LABELS_JSON:-[]}"
+          if [[ "$labels" == "null" || -z "$labels" ]]; then labels="[]"; fi
+          if echo "$labels" | jq -e --arg lbl "$BYPASS_LABEL" 'index($lbl)' > /dev/null; then
+            echo "${BYPASS_LABEL} label is set — gate will be skipped."
+            echo "bypass=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "bypass=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Checkout
+        if: steps.bypass.outputs.bypass != 'true'
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Docs-only short-circuit
+        id: docs
+        if: steps.bypass.outputs.bypass != 'true'
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+          if [[ -z "${BASE_SHA:-}" || -z "${HEAD_SHA:-}" ]]; then
+            echo "No PR sha pair available — treating as non-docs-only."
+            echo "docs_only=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          changed_file=$(mktemp)
+          git diff --name-only "$BASE_SHA...$HEAD_SHA" > "$changed_file" || true
+          if [[ ! -s "$changed_file" ]]; then
+            echo "Empty diff — treating as non-docs-only (no review needed but we still surface a status)."
+            echo "docs_only=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          docs_only=$(
+            DOCS_ONLY_GLOBS="$DOCS_ONLY_GLOBS" CHANGED_FILE="$changed_file" \
+            python3 <<'PY'
+          import json, os, re, sys
+
+          def to_regex(pattern: str) -> re.Pattern:
+              out, i = [], 0
+              while i < len(pattern):
+                  c = pattern[i]
+                  if pattern[i:i+3] == "**/":
+                      out.append("(?:.*/)?")
+                      i += 3
+                  elif pattern[i:i+2] == "**":
+                      out.append(".*")
+                      i += 2
+                  elif c == "*":
+                      out.append("[^/]*")
+                      i += 1
+                  elif c == "?":
+                      out.append("[^/]")
+                      i += 1
+                  else:
+                      out.append(re.escape(c))
+                      i += 1
+              return re.compile("^" + "".join(out) + "$")
+
+          raw = os.environ.get("DOCS_ONLY_GLOBS", "[]") or "[]"
+          try:
+              globs = json.loads(raw)
+              assert isinstance(globs, list)
+          except Exception as exc:
+              print(f"DOCS_ONLY_GLOBS must be a JSON array of strings (got {raw!r}): {exc}", file=sys.stderr)
+              print("false")
+              sys.exit(0)
+          patterns = [to_regex(g) for g in globs if isinstance(g, str) and g]
+          if not patterns:
+              print("false")
+              sys.exit(0)
+          with open(os.environ["CHANGED_FILE"], "r", encoding="utf-8") as fh:
+              files = [line.strip() for line in fh if line.strip()]
+          docs_only = bool(files) and all(any(p.match(f) for p in patterns) for f in files)
+          print("true" if docs_only else "false")
+          PY
+          )
+          echo "Detected docs_only=$docs_only"
+          echo "docs_only=$docs_only" >> "$GITHUB_OUTPUT"
+
+  # Main gate job. The job id `codex-review` and the workflow name `merge-gate`
+  # together form the protected check `merge-gate / codex-review`.
+  codex-review:
+    name: codex-review
+    needs: preflight
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+      checks: write
+    env:
+      BYPASS: ${{ needs.preflight.outputs.bypass }}
+      DOCS_ONLY: ${{ needs.preflight.outputs.docs_only }}
+      RUN_REVIEW: ${{ needs.preflight.outputs.bypass != 'true' && needs.preflight.outputs.docs_only != 'true' }}
+    steps:
+      - name: Announce mode
+        run: |
+          echo "SOFT_MODE=${SOFT_MODE}"
+          echo "BYPASS=${BYPASS}"
+          echo "DOCS_ONLY=${DOCS_ONLY}"
+          echo "RUN_REVIEW=${RUN_REVIEW}"
+
+      - name: Checkout
+        if: env.RUN_REVIEW == 'true'
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node.js
+        if: env.RUN_REVIEW == 'true'
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install Codex review tooling
+        if: env.RUN_REVIEW == 'true'
+        run: |
+          set -euo pipefail
+          # Placeholder filled by /setup-merge-gate. Must leave a working
+          # `codex` CLI (and any plugin scripts the review invocation needs)
+          # on $PATH. The default below installs the public Codex CLI; the
+          # installer may extend or replace it.
+          npm install -g @openai/codex@latest
+
+      - name: Run Codex adversarial-review
+        id: review
+        if: env.RUN_REVIEW == 'true'
+        env:
+          # Codex CLI `codex exec` reads CODEX_API_KEY for non-interactive auth.
+          # OPENAI_API_KEY is NOT honored by `codex exec` even when set — see
+          # https://developers.openai.com/codex/noninteractive#authenticate-in-ci
+          # (`CODEX_API_KEY is only supported in codex exec`). Leaving
+          # OPENAI_API_KEY here historically masked the real auth path and
+          # produced 401s when CODEX_API_KEY was unset (refs harness-work#19).
+          CODEX_API_KEY: ${{ secrets.CODEX_API_KEY }}
+          BASE_REF: ${{ github.event.pull_request.base.ref }}
+        run: |
+          set -euo pipefail
+          mkdir -p .codex-review
+          # Placeholder filled by /setup-merge-gate. The command writes a JSONL
+          # stream of Codex conversation events to stdout; the final
+          # `item.completed[agent_message]` event carries the structured review
+          # payload (conforming to review-output.schema.json) inside its
+          # `.item.text` field. Stderr is captured separately.
+          #
+          # Typical realisations:
+          #   * `codex exec --json --output-schema .codex-review/schema.json "..."`
+          #   * `node "$CODEX_PLUGIN_ROOT/scripts/codex-companion.mjs" adversarial-review --wait --json --base origin/$BASE_REF --scope branch`
+          #
+          # The next step ("Normalize Codex JSONL") extracts the payload from
+          # this stream into a single-doc file the downstream consumers (jq
+          # sticky-comment builder, Claude validator) read. That step ALSO owns
+          # the "Codex failed" fallback — we no longer guard parseability here.
+          set +e
+          codex exec --json --output-schema .codex-review/schema.json --dangerously-bypass-approvals-and-sandbox "Run an adversarial review of the diff against origin/$BASE_REF" > .codex-review/codex-review.json 2> .codex-review/codex-review.stderr
+          codex_exit=$?
+          set -e
+          echo "codex_exit=$codex_exit" >> "$GITHUB_OUTPUT"
+
+      - name: Normalize Codex JSONL → single-doc review payload
+        # Codex emits JSONL (one JSON object per line, one per conversation
+        # event). The review payload lives inside the LAST
+        # `item.completed[agent_message]` event as a stringified JSON in
+        # `.item.text` — NOT as a top-level `.result` field. Earlier
+        # iterations of this workflow assumed `.result.findings[]` lived at
+        # the top level of a single JSON document, which silently produced
+        # zero findings on every PR. See claude-harness-work#18.
+        #
+        # This step is the SINGLE SOURCE OF TRUTH for producing a parseable
+        # single-doc payload regardless of Codex behaviour:
+        #   - Codex succeeded → extract last agent_message payload, wrap as
+        #     {result: <payload>, codex: {status: "ok"}}
+        #   - Codex exited non-zero → write codex-failed fallback
+        #   - No agent_message in stream → write missing-result fallback
+        #   - .item.text not valid JSON → write malformed-payload fallback
+        #   - jq -s itself failed (raw JSONL malformed) → outer fallback
+        if: always() && env.RUN_REVIEW == 'true'
+        env:
+          CODEX_EXIT: ${{ steps.review.outputs.codex_exit || '0' }}
+        run: |
+          set -euo pipefail
+          mkdir -p .codex-review
+          jq -s --arg codex_exit "${CODEX_EXIT}" '
+            if $codex_exit != "0" then
+              {result: {verdict: "unknown",
+                        summary: ("Codex exited with status " + $codex_exit + ". See codex-review.stderr in the run artefact."),
+                        findings: [], next_steps: []},
+               codex: {status: "codex-failed", exit: ($codex_exit | tonumber? // -1)}}
+            else
+              (map(select(.type == "item.completed"
+                          and ((.item // {}).type // "") == "agent_message"))
+               | last) as $msg
+              | if $msg == null then
+                  {result: {verdict: "unknown",
+                            summary: "Codex returned no agent_message event in its JSONL stream.",
+                            findings: [], next_steps: []},
+                   codex: {status: "missing-result"}}
+                else
+                  (try ($msg.item.text | fromjson) catch null) as $payload
+                  | if $payload == null then
+                      {result: {verdict: "unknown",
+                                summary: "Codex agent_message.text was not valid JSON conforming to review-output.schema.json.",
+                                findings: [], next_steps: []},
+                       codex: {status: "malformed-payload"}}
+                    else
+                      {result: $payload, codex: {status: "ok"}}
+                    end
+                end
+            end
+          ' .codex-review/codex-review.json \
+            > .codex-review/codex-review.normalized.json 2> .codex-review/normalize.stderr \
+            || true
+          # Outer fallback — jq itself failed (raw file is not valid JSONL,
+          # e.g. Codex CLI streaming error text written instead of events).
+          if ! jq -e '.result.verdict' .codex-review/codex-review.normalized.json > /dev/null 2>&1; then
+            jq -n --arg exit "${CODEX_EXIT}" --arg err "$(cat .codex-review/normalize.stderr 2>/dev/null | head -c 500)" '
+              {result: {verdict: "unknown",
+                        summary: ("Normalize step could not parse Codex output (codex_exit=" + $exit + "). See codex-review.stderr and normalize.stderr in the artefact."),
+                        findings: [], next_steps: []},
+               codex: {status: "normalize-failed", exit: ($exit | tonumber? // -1), normalize_stderr: $err}}
+            ' > .codex-review/codex-review.normalized.json
+          fi
+          echo "--- normalized.json ---"
+          jq '.codex' .codex-review/codex-review.normalized.json
+          echo "findings_count=$(jq '.result.findings | length' .codex-review/codex-review.normalized.json)"
+
+      - name: Install Claude CLI
+        if: env.RUN_REVIEW == 'true'
+        run: npm install -g @anthropic-ai/claude-code
+
+      - name: Run Claude validator
+        if: env.RUN_REVIEW == 'true'
+        env:
+          CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+        run: |
+          set -euo pipefail
+          # Writes .codex-review/validators.json + .codex-review/validators.md.
+          # The runtime ALWAYS exits 0 (locked contract with /run-codex-validators);
+          # blocking is decided by the `Decide check outcome` step below, which
+          # reads validators.json. If this step itself fails (CLI install,
+          # auth, network), the sticky-comment and decide-outcome steps below
+          # still run (their `if:` is `always()`) and will surface the failure.
+          #
+          # Reads the NORMALIZED payload, not the raw JSONL. The normalize
+          # step above guarantees this file is a single JSON document with
+          # `.result.findings[]` shape.
+          claude -p "/run-codex-validators --codex-json .codex-review/codex-review.normalized.json --soft-mode ${SOFT_MODE}" \
+            --permission-mode bypassPermissions
+
+      - name: Inspect .codex-review/ before upload
+        # Diagnostic — intentionally kept after claude-harness-work#21.
+        # `actions/upload-artifact@v4` silently drops dot-prefixed paths
+        # by default; without this listing a future regression on the
+        # same filter (or an unrelated working-dir mismatch) is invisible
+        # until the post-hoc artefact bundle is needed and missing.
+        if: always() && env.RUN_REVIEW == 'true'
+        run: |
+          echo "pwd=$(pwd)"
+          ls -la .codex-review/ || echo "(.codex-review/ does not exist)"
+
+      - name: Upload review artefact
+        # `include-hidden-files: true` is required — `.codex-review/` is
+        # a dot-prefixed directory and `actions/upload-artifact@v4`
+        # filters out any path whose segments start with `.` by default
+        # (changed from v3). Without this, the artefact bundle was
+        # silently empty for 5 consecutive runs — claude-harness-work#21.
+        # `if-no-files-found: error` so a future regression on the same
+        # filter surfaces immediately instead of accumulating silent
+        # `warn`s.
+        if: always() && env.RUN_REVIEW == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: codex-review
+          path: .codex-review/
+          include-hidden-files: true
+          if-no-files-found: error
+
+      - name: Build sticky comment (review ran)
+        # `always()` so a failed `Run Claude validator` step (auth, install,
+        # network) still produces a PR comment instead of leaving the sticky
+        # comment empty. The jq below reads `codex-review.normalized.json`
+        # (always present by §"Normalize Codex JSONL" step — that step is
+        # `always()` too and always writes a parseable single-doc payload).
+        if: always() && env.RUN_REVIEW == 'true'
+        run: |
+          set -euo pipefail
+          jq -r --arg soft "${SOFT_MODE}" --arg project "${PROJECT_NAME}" --arg run "${{ github.run_id }}" --arg repo "${{ github.repository }}" '
+            (.result.findings // []) as $f
+            | (.result.summary // "no summary provided") as $sum
+            | (.result.verdict // "unknown") as $verdict
+            | {
+                critical: ($f | map(select(.severity=="critical")) | length),
+                high:     ($f | map(select(.severity=="high"))     | length),
+                medium:   ($f | map(select(.severity=="medium"))   | length),
+                low:      ($f | map(select(.severity=="low"))      | length)
+              } as $counts
+            | ([$f[] | select(.severity=="critical" or .severity=="high")] | sort_by(
+                if .severity=="critical" then 0 else 1 end
+              ))[0:3] as $top
+            | "### `merge-gate / codex-review`\n"
+              + (if $soft == "true"
+                   then "**Mode:** SOFT (report-only — findings shown, not blocking)\n"
+                   else "**Mode:** HARD (blocking on critical/high)\n" end)
+              + "**Verdict:** " + $verdict + "  ·  **Project:** " + $project + "\n\n"
+              + "**Summary:** " + $sum + "\n\n"
+              + "| Severity | Count |\n|---|---:|\n"
+              + "| critical | " + ($counts.critical|tostring) + " |\n"
+              + "| high     | " + ($counts.high|tostring)     + " |\n"
+              + "| medium   | " + ($counts.medium|tostring)   + " |\n"
+              + "| low      | " + ($counts.low|tostring)      + " |\n\n"
+              + "_Blocking decision: see the validator-layer section below (`.codex-review/validators.md`)._\n\n"
+              + (if ($top|length) > 0 then
+                   "**Top findings (critical/high, up to 3):**\n\n"
+                   + ($top | to_entries | map(
+                       "\(.key + 1). **[\(.value.severity)] \(.value.title)** — `\(.value.file):\(.value.line_start)`\n   " + ((.value.body // "") | gsub("\n"; " "))
+                     ) | join("\n\n")) + "\n\n"
+                 else
+                   "_No critical or high findings._\n\n"
+                 end)
+              + "_Full JSON: download the `codex-review` artefact from "
+              + "[this run](https://github.com/" + $repo + "/actions/runs/" + $run + ")._\n"
+          ' .codex-review/codex-review.normalized.json > .codex-review/comment.md
+          if [[ -f .codex-review/validators.md ]]; then
+            printf '\n---\n\n' >> .codex-review/comment.md
+            cat .codex-review/validators.md >> .codex-review/comment.md
+          else
+            printf '\n---\n\n_Validator output missing — the `Run Claude validator` step did not complete. Check the workflow logs._\n' >> .codex-review/comment.md
+          fi
+          cat .codex-review/comment.md
+
+      - name: Build sticky comment (bypass)
+        if: env.BYPASS == 'true'
+        run: |
+          mkdir -p .codex-review
+          cat > .codex-review/comment.md <<EOF
+          ### \`merge-gate / codex-review\` — bypassed
+          The \`${BYPASS_LABEL}\` label is set on this PR, so the Codex adversarial review did not run.
+          Remove the label and re-run the workflow to re-enable the gate.
+          EOF
+
+      - name: Build sticky comment (docs-only)
+        if: env.BYPASS != 'true' && env.DOCS_ONLY == 'true'
+        run: |
+          mkdir -p .codex-review
+          cat > .codex-review/comment.md <<EOF
+          ### \`merge-gate / codex-review\` — docs-only short-circuit
+          Every changed path matched the project's docs-only globs (\`${DOCS_ONLY_GLOBS}\`), so the Codex adversarial review was skipped.
+          EOF
+
+      - name: Post sticky PR comment
+        if: always() && github.event_name == 'pull_request'
+        uses: marocchino/sticky-pull-request-comment@v2
+        with:
+          header: ${{ env.COMMENT_HEADER }}
+          path: .codex-review/comment.md
+
+      - name: Decide check outcome
+        # `always()` so this step still fires when `Run Claude validator`
+        # exits non-zero (auth / install / network). Hard-mode fail-closed
+        # order: missing validators.json → Codex CLI itself errored →
+        # validator-upheld critical/high finding count > 0. Soft mode never
+        # blocks, but still logs a Codex failure for visibility.
+        #
+        # Reads codex.status from the NORMALIZED payload. Status values
+        # produced by the "Normalize Codex JSONL" step:
+        #   - "ok"               : Codex produced a structured review
+        #   - "codex-failed"     : Codex CLI exited non-zero
+        #   - "missing-result"   : no agent_message event in JSONL stream
+        #   - "malformed-payload": agent_message.text was not valid JSON
+        #   - "normalize-failed" : jq itself could not parse the raw output
+        # Anything other than "ok" is treated as a Codex-side failure under
+        # hard mode (fail-closed).
+        if: always() && env.RUN_REVIEW == 'true'
+        run: |
+          set -euo pipefail
+          codex_status=""
+          if [[ -f .codex-review/codex-review.normalized.json ]]; then
+            codex_status=$(jq -r '.codex.status // ""' .codex-review/codex-review.normalized.json 2>/dev/null || echo "")
+          fi
+          if [[ "${SOFT_MODE}" == "true" ]]; then
+            if [[ -n "${codex_status}" && "${codex_status}" != "ok" ]]; then
+              echo "::notice title=Codex failed (soft mode)::Codex did not produce a usable review (codex.status=${codex_status}); not blocking under soft mode."
+            fi
+            echo "::notice title=Soft mode::Report-only — not blocking."
+            exit 0
+          fi
+          if [[ ! -f .codex-review/validators.json ]]; then
+            echo "::error title=Validator infra failure::No validators.json — Run Claude validator step did not complete; failing closed under hard mode."
+            exit 1
+          fi
+          if [[ -n "${codex_status}" && "${codex_status}" != "ok" ]]; then
+            echo "::error title=Codex failed::Codex did not produce a usable review (codex.status=${codex_status}); failing closed under hard mode."
+            exit 1
+          fi
+          blocked=$(jq -r '[.aggregate[] | select(.block == true)] | length' .codex-review/validators.json)
+          if [[ "${blocked}" -gt 0 ]]; then
+            echo "::error title=Merge gate::Blocking ${blocked} validator-upheld critical/high finding(s). See sticky comment for details."
+            exit 1
+          fi
+          echo "::notice title=Merge gate::No validator-upheld critical/high findings — gate passed."
+
+      - name: Bypass / docs-only outcome
+        if: env.RUN_REVIEW != 'true'
+        run: |
+          if [[ "${BYPASS}" == "true" ]]; then
+            echo "::notice title=Gate bypassed::${BYPASS_LABEL} label present; check passes without running Codex."
+          else
+            echo "::notice title=Gate skipped::Docs-only diff per DOCS_ONLY_GLOBS; check passes without running Codex."
+          fi
