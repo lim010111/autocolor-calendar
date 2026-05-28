@@ -116,6 +116,29 @@ docs-only context bypass + orphan-i blocker surface. Codex run
 - `codex-review.yml:20` *[medium]* — `workflow_dispatch` BASE_REF
   (carried forward).
 
+**Run 5 (PR [#101](https://github.com/lim010111/autocolor-calendar/pull/101),
+commit `2d1c1ed` — `#28` orphan-never-blocks re-vendor)** — the `#28` fix
+vendored from the global layer into `.claude/` (`SKILL.md` +
+`scripts/aggregate.py`). A fresh PR was needed because PR #100 is merged and
+its checks can't be re-run; the re-vendor diff is itself the verification
+vehicle. Codex run `26552267546` (soft mode, **verdict: approve**, 0 findings
+across all severities):
+
+- ✓ `aggregate.py:352` (orphan-i blocker) — **gone**, confirming `#28` fix
+  effective. Codex actively exercised the fixed path: "one real high upheld
+  finding plus one invented critical orphan; the real finding still blocks and
+  the orphan remains recorded but nonblocking." This is the AC verification
+  evidence for `#28`.
+- **No other findings surfaced.** The run-4 "expected-persisting" workflow
+  findings (`codex-review.yml:195` `#25` trust boundary; `codex-review.yml:43`
+  `#27` docs-only context bypass; `codex-review.yml:20` `workflow_dispatch`
+  BASE_REF) did **not** reappear — *not* because they were fixed, but because
+  PR #101's diff is scoped to the two vendored files and Codex reviews the diff
+  against `origin/main`; the unchanged `codex-review.yml` is out of review
+  scope. `#25` / `#27` remain open and untouched. This is the cascade's
+  terminal run: with `#28` vendored, the deeper-layer chain on the aggregator
+  is exhausted on a diff that touches only the validator runtime.
+
 ### Cross-codebase signal back to harness PRD `## Deployments`
 
 The four-run cascade on this PR is exactly the deeper-layer-finding
