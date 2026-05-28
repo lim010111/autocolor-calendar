@@ -350,9 +350,13 @@ def cmd_write_outputs(args: argparse.Namespace) -> int:
         })
 
     # Second pass — orphan parsed lines whose id matched no Codex finding.
-    # Preserve the existing `orphan-i` finding_id pattern. These do not
-    # block (severity is taken from the validator only; the verdict-table
-    # function still applies normally).
+    # Orphans never block, regardless of validator-supplied severity/verdict
+    # (refs claude-harness-work#28). The validator's scope contract is
+    # `classify Codex findings`, not `author new findings`; an orphan id is
+    # a protocol violation, so trusting its severity/verdict to drive
+    # `decide_block` would give the validator a side channel to invent its
+    # own blockers. The entry is still recorded in `validators.json` as an
+    # audit trail of the protocol violation.
     for orphan_idx, p in enumerate(parsed):
         if p["id"] in findings_by_id and p["id"] in consumed_parsed_ids:
             continue
@@ -361,19 +365,18 @@ def cmd_write_outputs(args: argparse.Namespace) -> int:
             continue
         err(
             f"validator emitted id={p['id']!r} with no matching Codex "
-            f"finding — recording as orphan"
+            f"finding — recording as orphan (block forced false)"
         )
         severity = p["sev"]
         verdict = p["verdict"]
         finding_id = f"orphan-{orphan_idx}"
         lines.append(p["raw"])
         rendered_locations.append((p["file"], p["line"], p["citation"]))
-        block = decide_block(severity, verdict)
         aggregate.append({
             "finding_id": finding_id,
             "severity": severity,
             "verdict": verdict,
-            "block": block,
+            "block": False,
         })
 
     validators_json = {
