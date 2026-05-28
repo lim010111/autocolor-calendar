@@ -74,9 +74,14 @@ stdout — and writes one aggregate entry per finding. Pairing is
    - Duplicate id from the validator → that finding becomes `unsure`
      + `stderr` warning naming the id and the count.
    - Validator line with an id matching no Codex finding → that
-     parsed line becomes an `orphan-i` aggregate entry; the unclaimed
-     Codex finding (if any) falls into the existing "validator output
-     missing" fail-safe.
+     parsed line becomes an `orphan-i` aggregate entry with
+     `block=false`, regardless of the validator-supplied severity or
+     verdict. The validator's scope contract is **classify Codex
+     findings, not author new ones**; trusting an orphan's
+     severity/verdict to drive `decide_block` would give the validator
+     a side channel to invent its own blockers (refs
+     claude-harness-work#28). The unclaimed Codex finding (if any)
+     falls into the existing "validator output missing" fail-safe.
    - Codex finding with no validator line claiming its id → the
      existing "validator output missing" fail-safe (preserves the
      `#22` parity-check behavior).
