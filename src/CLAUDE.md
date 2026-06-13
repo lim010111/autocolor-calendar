@@ -713,7 +713,7 @@ Google Calendar watch-channel renewal job. Mirrors the claim-with-staleness
 pattern of `in_progress_at` (sync consumer) and `last_manual_trigger_at`
 (manual-trigger rate limit), but is intentionally **separate from both**.
 
-**Sole writer** is `src/services/watchRenewal.ts`'s per-row loop, via
+**Sole writer** is `src/services/watch/renewal.ts`'s per-row loop, via
 `claimWatchRenewal` / `releaseWatchRenewal` in `src/lib/watchClaim.ts`. Any
 future manual-trigger route (e.g. `/admin/watch/renew` once §6.3 Wave B lands
 the admin surface) **must route through the same helpers** — adding a second
@@ -761,7 +761,7 @@ Watch channel registration has exactly two creation paths — the renewal cron
 above only refreshes existing channels, never creates new ones:
 
 - **`/sync/bootstrap`** — onboarding-time, fires once per (user, calendar).
-- **`maybeSelfHealWatch`** (`src/services/watchSelfHeal.ts`) — opportunistic,
+- **`maybeSelfHealWatch`** (`src/services/watch/selfHeal.ts`) — opportunistic,
   invoked from `/me` and `/sync/run` via `c.executionCtx.waitUntil(...)`.
   Registers a fresh channel when `watchChannelId IS NULL`, `watchExpiration
   IS NULL`, or expiration is < 24h away. Gated on `WEBHOOK_BASE_URL` being
@@ -787,11 +787,37 @@ the cooldown gate and does NOT stamp `last_self_heal_at` — manual user
 action is not subject to background rate-limit, and the helper's stamp
 would silently lock out the next opportunistic heal for 10 min.
 
-**Adding a new entry point that registers a watch.** Route through
-`/sync/bootstrap` (onboarding only) or `maybeSelfHealWatch` (everything
-else). Do not call `registerWatchChannel` directly from a new code path —
-you'll bypass the cooldown / reauth / active gates and re-introduce the
-silent-failure mode this module exists to fix.
+**Watch module structure (architecture-deepening #06).** The full watch
+lifecycle lives in `src/services/watch/`. The shared (re)registration core is
+`reRegisterWatch` (`src/services/watch/core.ts`) — it owns the
+`WEBHOOK_BASE_URL` guard, the access-token fetch (+ `ReauthRequiredError` →
+`reauth_required` mapping), the `stop → register` ordering, and the
+CalendarApiError `classify`, returning a `ReRegisterResult` union. The bare
+`registerWatchChannel` / `stopWatchChannel` primitives are **module-private**:
+importable only by siblings inside the folder (e.g. `teardown.ts` needs
+`stopWatchChannel`), and barred everywhere else by the ESLint
+`no-restricted-imports` seam in `eslint.config.js` (behaviourally pinned by
+`watchSeam.test.ts`). The barrel `src/services/watch/index.ts` re-exports only
+the seven entry points:
+
+| Entry point | File | Policy layered on the core |
+|-------------|------|----------------------------|
+| `bootstrapUserSync` | `src/services/watch/bootstrap.ts` | row upsert + `full_resync` enqueue |
+| `maybeSelfHealWatch` | `src/services/watch/selfHeal.ts` | active/expiring + 10-min cooldown + `last_self_heal_at` stamp |
+| `renewExpiringWatches` | `src/services/watch/renewal.ts` | batch SELECT + per-row `claimWatchRenewal`/release |
+| `reconnectWatch` | `src/services/watch/reconnect.ts` | active gate, returns `{expiration}` (drives `/sync/heal-watch`) |
+| `teardownWatchesForUser` | `src/services/watch/teardown.ts` | active-watch SELECT + stop loop (account deletion) |
+| `lookupChannelOwner` | `src/services/watch/receipt.ts` | inbound webhook verification (public) |
+| `verifyChannelToken` | `src/services/watch/receipt.ts` | inbound webhook verification (public) |
+
+**Adding a new entry point that registers a watch.** Compose `reRegisterWatch`
+from a new `watch/` adapter — or route through an existing entry point above.
+Do **not** reach for the bare `registerWatchChannel` / `stopWatchChannel`
+primitives (the lint seam will reject the import): you'd bypass the guard /
+reauth / classify the core owns and re-introduce the silent-failure mode this
+module exists to fix. The `oauth_tokens.needs_reauth` *column* precheck stays
+in the caller (a round-trip optimisation + per-caller policy: self-heal
+returns silently, reconnect surfaces 503).
 
 **Race with the renewal cron.** Self-heal does NOT take
 `watch_renewal_in_progress_at`. Cron and self-heal can therefore both fire
@@ -825,20 +851,21 @@ path required by Marketplace privacy review. Contract:
   ("schema cascade contract") that greps the schema source for that exact
   pattern and asserts exactly 9 occurrences. Loosening that regex weakens
   the contract.
-- **Google revoke + `channels.stop` are best-effort.** Both wrap in
-  try/catch and log warn only. Google API outages MUST NOT block deletion.
-  Orphaned watch channels expire ≤ 7d; webhook deliveries against deleted
-  users no-op via `lookupChannelOwner` returning `null`
-  (`src/services/watchChannel.ts:225-253`).
+- **Google revoke + watch teardown are best-effort.** The channels.stop loop
+  is owned by `teardownWatchesForUser` (`src/services/watch/teardown.ts`),
+  which wraps every failure in a warn-only try/catch and never throws — Google
+  API outages MUST NOT block deletion. Orphaned watch channels expire ≤ 7d;
+  webhook deliveries against deleted users no-op via `lookupChannelOwner`
+  returning `null` (`src/services/watch/receipt.ts`).
 - **Idempotency is provided by the auth gate, not the route.** Second call
   from the same client returns 401 because the bearer no longer resolves a
   session (sessions row cascade-deleted). The route itself is not
   specifically idempotent — it is the auth middleware that makes retries
   safe.
-- **Order is required**: revoke → watch-stop → users delete → explicit
-  session revoke (defense-in-depth, no-op post-cascade). Reordering breaks
-  token decryption (oauth_tokens cascade) and watch-stop row lookups
-  (sync_state cascade).
+- **Order is required**: revoke → `teardownWatchesForUser` (watch-stop loop)
+  → users delete → explicit session revoke (defense-in-depth, no-op
+  post-cascade). Reordering breaks token decryption (oauth_tokens cascade)
+  and watch-stop row lookups (sync_state cascade).
 - **Concurrency with sync / watch-renewal claim columns is "observed, not
   prevented."** Deletion does NOT acquire `sync_state.in_progress_at` (sync
   claim, owned by `syncClaim.ts`) or `sync_state.watch_renewal_in_progress_at`
@@ -851,11 +878,11 @@ path required by Marketplace privacy review. Contract:
   concurrent-PATCH-race policy ("observed, not prevented"). Adding a Step 0
   claim of either column would pointlessly serialise deletion against an
   unrelated worker; do not add it without a concrete bug report.
-- **Warn-line redaction**: the `console.warn` lines in `src/routes/account.ts`
-  log only `op` / `status` / `calendarId` / `String(err)` shape — never event
-  content, never decrypted token material. The route never reads
-  `events.list`, so the calendar-event-payload logging ban above is upheld
-  by construction.
+- **Warn-line redaction**: the `console.warn` lines in
+  `src/services/watch/teardown.ts` (the watch-stop loop) log only `op` /
+  `calendarId` / `String(err)` shape — never event content, never decrypted
+  token material. Neither the route nor teardown reads `events.list`, so the
+  calendar-event-payload logging ban above is upheld by construction.
 
 ## Token rotation (§3 후속)
 
@@ -911,7 +938,7 @@ active rotation window. Outside the window:
 
 **PII stance:** `aesGcmDecrypt` plaintext (the refresh token) is NEVER
 logged. AAD is `user:${userId}` where `userId` is a UUID (not PII; same
-convention as `watchRenewal.ts`'s per-row warns). Counters in
+convention as `src/services/watch/renewal.ts`'s per-row warns). Counters in
 `RotationSummary` are aggregate-only.
 
 Cross-references:

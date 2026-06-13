@@ -8,35 +8,31 @@ outside the narrative block; mechanical sections are regenerated every run._
 
 두 갈래가 병존한다.
 
-1. **architecture-deepening** — prep PR 두 건 연속 land 후 #02 AC 박스
-   정리까지 완료.
-   - #95: Rule aggregate Module 도입 (#01 done, 9/9). `Category`→`Rule`
-     rename + `RuleService` 추출 + seeds synthesize + categories route
-     thin adapter화.
-   - #96: ClassificationOutcome union + Sink interface 도입 (#02 done,
-     11/11). `classifierOutcomes.ts` / `classifierSinks.ts` 신설,
-     callback 폐기 → sink 주입, Codex 리뷰 후속 fix (`runSinks` sync-
-     throw isolation) 반영. 460/460 tests pass, typecheck/lint/check-
-     context-paths 통과 확인 후 박스 체크.
-   - **#05 (Fakedb test helper extraction)**: 워크트리에서 작업했으나
-     커밋 전 worktree 삭제로 코드 유실 — `git fsck --lost-found` +
-     editor history 모두 흔적 없음. 복구 불가, 처음부터 다시.
+1. **architecture-deepening** — #01·#02·#03·#05·#06 done, #04 wontfix →
+   58/58 (100%). #06 Watch channel lifecycle Module 을 TDD 로 구현:
+   `src/services/watch/` 모듈(`reRegisterWatch` 코어 + 7 진입점 barrel) +
+   ESLint privacy seam(register/stop module-private). `/heal-watch`→
+   `reconnectWatch`, `account.delete`→`teardownWatchesForUser` 흡수, 동작
+   0줄. 남은 deepening 후보(CalendarApiError pair 등)는 un-grilled.
+   spec: `.scratch/architecture-deepening/issues/06-watch-channel-lifecycle-module.md`
 2. **embedding-classifier** (ADR-0004 구현) — Stage 1 substring → 임베딩
    kNN. #01 (모델 eval) HITL 대기 중, 후속 5개는 #01의 벡터 차원에
    묶여 blocked. 이번 세션에서는 진척 없음.
 
 ## Start here next session
 
-- **architecture-deepening #03 (branded pii types)** — #02 done 으로
-  unblock. 동작 변경 0줄.
-- **architecture-deepening #05 (Fakedb test helper extraction)** —
-  blocker 없음, #03 과 독립적으로 병렬 가능. 유실 작업 재구현.
-- **embedding-classifier #01 (임베딩 모델 eval)** — 운영자 로컬 3080
-  GPU 랩에서 여전히 HITL 대기.
-- **사소한 후속 (block 아님)**: PR #96 머지 후 남은 stale 참조 — `src/
-  CLAUDE.md:211, 530` 이 사라진 `onLlmCall` / `onLlmAttempted` 콜백을
-  여전히 언급, `src/services/llmClassifier.ts:105` 코멘트도 동일.
-  다음 PR에 묶어 정리.
+- **능동 — architecture-deepening #06 → commit/PR**: 12/12 AC, 전 gate
+  green (test 484 / typecheck / lint / check-context-paths). 변경은 working
+  tree 에만 있고 미커밋 — review 후 commit + PR 발행.
+- **병행 — CalendarApiError 쌍 (후보 factory + kind→HTTP mapper)**:
+  `watch/core.ts` 의 `classify`/`throwWatchError` 가 `googleCalendar.ts` 와
+  중복; `/heal-watch` 의 kind→HTTP switch 도 별도 후보. #06 이 코드를
+  옮겼을 뿐 dedup 은 범위 외. 별도 PR, grill 미진행.
+- **휴면 — embedding-classifier #01 (임베딩 모델 eval)**: 운영자 로컬
+  3080 GPU 랩에서 HITL 대기. 손대지 말 것.
+- 사소한 후속 (block 아님): `src/CLAUDE.md` / `llmClassifier.ts` 의
+  폐기된 `onLlmCall` / `onLlmAttempted` 콜백 잔존 참조 정리 — 다음 PR 에
+  묶기.
 
 ## Open decisions
 
@@ -49,16 +45,24 @@ outside the narrative block; mechanical sections are regenerated every run._
 - examples 씨앗(embedding-classifier #05/#06)은 캘린더 제목의 최초
   durable 저장 → 개인정보처리방침/동의 표면 변경 필요. OAuth 검수
   (2026-05-14 재제출) 통과 전 출시 불가.
-- 남은 architecture-deepening 후보 3개 (route handler / GAS Instant
-  Feedback UI / Claim primitive) walking 미진행 — route handler는 #01이
-  자연스럽게 흡수했고, GAS UI는 OAuth 통과 후 surface, Claim primitive
-  는 isolated small PR로 후순위. 필요 시 별도 grill 세션.
+- un-grilled architecture-deepening 후보 (#06 외 미착수, 필요 시 별도
+  grill): CalendarApiError factory + kind→HTTP mapper (`watch/core.ts`
+  classify 가 `googleCalendar.ts` 와 중복; #06 이 옮겼을 뿐 dedup 별도),
+  ColorOwnershipMarker (§5.4 read/probe 통합),
+  ResultHandler (sync/rollback outcome→Queue-action dispatch),
+  ObservabilityRecorder (+finalization-invariant harness — ADR-0004 새
+  outcome 대비), route-test-harness, GAS `fetchBackendEndpoint`. drop 판정:
+  gas-response-adapter (formatMatchLine 이 이미 중앙화), row-fixture-builder
+  (#05 잔여 hygiene). Claim primitive 는 이번 sweep 에서 keep 으로 안
+  올라옴 (`watchClaim.ts` 가 공유 추출을 명시적으로 반대) — 보류 확정.
+- GAS Instant Feedback UI surfacing 은 OAuth 검수 통과 후 (위 examples
+  씨앗 게이트와 동일 트리거).
 
 <!-- narrative:end -->
 
 ## architecture-deepening
 
-`██████████████████████` 46/46 acceptance criteria met (100%)
+`██████████████████████` 58/58 acceptance criteria met (100%)
 
 | # | Issue | Triage | Criteria | State | Blocked by |
 |---|-------|--------|----------|-------|-----------|
@@ -67,6 +71,7 @@ outside the narrative block; mechanical sections are regenerated every run._
 | 03 | Branded pii types | `ready-for-agent` | 15/15 | ✅ done | #02 |
 | 04 | Integration test harness | `wontfix` | 0/13 | 🚫 wontfix | #03 |
 | 05 | Fakedb test helper extraction | `ready-for-agent` | 11/11 | ✅ done | — |
+| 06 | Watch channel lifecycle module | `done` | 12/12 | ✅ done | — |
 
 ## embedding-classifier
 
@@ -83,4 +88,5 @@ outside the narrative block; mechanical sections are regenerated every run._
 
 State is derived: all criteria checked → `done`; some → `in-progress`; none
 with an unfinished blocker → `blocked`; otherwise → `todo`. Issues triaged
-`wontfix` show as `wontfix` and are excluded from the progress bar.
+`wontfix` (decided against) or `parked` (deferred until operator opt-in) show
+that triage state and are excluded from the progress bar.

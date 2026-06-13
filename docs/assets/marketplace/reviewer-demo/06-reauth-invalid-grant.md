@@ -150,11 +150,12 @@ Failure mode (e) for why.
 
 - **(a) `invalid_grant` during watch renewal cron.**
   `renewExpiringWatches` runs from cron, not from a user request.
-  The `getValidAccessToken` call at
-  `src/services/watchRenewal.ts:104-124` throws
-  `ReauthRequiredError`; the cron-side catch labels the outcome
-  `code: "reauth_required"` (`src/services/watchRenewal.ts:121`)
-  and warn-logs. The `oauth_tokens.needs_reauth` flip itself
+  The `getValidAccessToken` call inside `reRegisterWatch`
+  (`src/services/watch/core.ts`) surfaces `ReauthRequiredError` as
+  `failed: "reauth_required"`; the renewal loop
+  (`src/services/watch/renewal.ts`) labels the outcome
+  `code: "reauth_required"` and warn-logs. The
+  `oauth_tokens.needs_reauth` flip itself
   happens **inside** `getValidAccessToken` at
   `src/services/tokenRefresh.ts:75`, so the flag flips even when
   the failure surfaces from cron. **No card pops here** — there is

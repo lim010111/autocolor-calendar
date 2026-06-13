@@ -2,7 +2,6 @@ import { Hono } from "hono";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { HonoEnv } from "../env";
-import type * as TokenRefreshModule from "../services/tokenRefresh";
 
 // Mocks must be registered before the import tree of `../routes/sync` resolves.
 // We bypass authMiddleware entirely — auth gating is covered in syncRoute.test.ts.
@@ -48,24 +47,15 @@ vi.mock("../queues/syncProducer", () => ({
   SyncQueueUnavailableError: class SyncQueueUnavailableError extends Error {},
 }));
 
-const getTokenMock = vi.fn();
-vi.mock("../services/tokenRefresh", async () => {
-  const actual =
-    await vi.importActual<typeof TokenRefreshModule>("../services/tokenRefresh");
-  return {
-    ...actual,
-    getValidAccessToken: (...args: unknown[]) => getTokenMock(...args),
-  };
-});
-
-const stopMock = vi.fn();
-const registerMock = vi.fn();
-vi.mock("../services/watchChannel", () => ({
-  stopWatchChannel: (...args: unknown[]) => stopMock(...args),
-  registerWatchChannel: (...args: unknown[]) => registerMock(...args),
+// `bootstrapUserSync` now composes the shared watch core — the adapter test
+// mocks the single `reRegisterWatch` seam instead of register+stop. The
+// guard / reauth / stop→register / classify cases are owned once by
+// `watchCore.test.ts`.
+const reRegisterMock = vi.fn();
+vi.mock("../services/watch/core", () => ({
+  reRegisterWatch: (...args: unknown[]) => reRegisterMock(...args),
 }));
 
-import { ReauthRequiredError } from "../services/tokenRefresh";
 import { syncRoutes } from "../routes/sync";
 
 const app = new Hono<HonoEnv>();
@@ -101,15 +91,8 @@ async function postBootstrap(env: Record<string, unknown>): Promise<Response> {
 describe("POST /sync/bootstrap — watch channel lifecycle", () => {
   beforeEach(() => {
     enqueueMock.mockReset().mockResolvedValue(undefined);
-    getTokenMock.mockReset().mockResolvedValue({
-      accessToken: "at-1",
-      expiresAt: Date.now() + 3600_000,
-    });
-    stopMock.mockReset().mockResolvedValue(undefined);
-    registerMock.mockReset().mockResolvedValue({
-      channelId: "c-new",
-      resourceId: "r-new",
-      token: "tok-new",
+    reRegisterMock.mockReset().mockResolvedValue({
+      ok: true,
       expiration: new Date(Date.now() + 7 * 86400 * 1000),
     });
   });
@@ -117,20 +100,7 @@ describe("POST /sync/bootstrap — watch channel lifecycle", () => {
     vi.clearAllMocks();
   });
 
-  it("stops any existing channel before registering a fresh one (ordering)", async () => {
-    const callOrder: string[] = [];
-    stopMock.mockImplementation(async () => {
-      callOrder.push("stop");
-    });
-    registerMock.mockImplementation(async () => {
-      callOrder.push("register");
-      return {
-        channelId: "c",
-        resourceId: "r",
-        token: "t",
-        expiration: new Date(),
-      };
-    });
+  it("registers the watch channel via the core and reports watchRegistered:true", async () => {
     const res = await postBootstrap({
       ...BASE_ENV,
       WEBHOOK_BASE_URL: "https://example.test",
@@ -138,13 +108,14 @@ describe("POST /sync/bootstrap — watch channel lifecycle", () => {
     expect(res.status).toBe(202);
     const body = (await res.json()) as { watchRegistered?: boolean };
     expect(body.watchRegistered).toBe(true);
-    expect(callOrder).toEqual(["stop", "register"]);
-    expect(stopMock).toHaveBeenCalledTimes(1);
-    expect(registerMock).toHaveBeenCalledTimes(1);
+    expect(reRegisterMock).toHaveBeenCalledTimes(1);
+    // Adapter delegates (db, env, userId, calendarId) to the core.
+    expect(reRegisterMock.mock.calls[0]?.[2]).toBe("u-test");
+    expect(reRegisterMock.mock.calls[0]?.[3]).toBe("primary");
   });
 
-  it("short-circuits to 503 reauth_required when registration hits ReauthRequiredError", async () => {
-    registerMock.mockRejectedValue(new ReauthRequiredError("invalid_grant"));
+  it("short-circuits to 503 reauth_required when the core returns failed: reauth_required", async () => {
+    reRegisterMock.mockResolvedValue({ failed: "reauth_required" });
     const res = await postBootstrap({
       ...BASE_ENV,
       WEBHOOK_BASE_URL: "https://example.test",
@@ -154,22 +125,29 @@ describe("POST /sync/bootstrap — watch channel lifecycle", () => {
     expect(body.error).toBe("reauth_required");
   });
 
-  it("skips watch registration entirely when WEBHOOK_BASE_URL is unset", async () => {
+  it("reports watchRegistered:false when the core skips (WEBHOOK_BASE_URL unset)", async () => {
+    reRegisterMock.mockResolvedValue({ skipped: "webhook_unconfigured" });
     const res = await postBootstrap(BASE_ENV);
     expect(res.status).toBe(202);
     const body = (await res.json()) as { watchRegistered?: boolean };
     expect(body.watchRegistered).toBe(false);
-    expect(stopMock).not.toHaveBeenCalled();
-    expect(registerMock).not.toHaveBeenCalled();
   });
 
-  it("swallows non-reauth watch failures and keeps bootstrap at 202", async () => {
-    // stopWatchChannel succeeds, registerWatchChannel fails with a transient
-    // CalendarApiError shape — bootstrap should still succeed since the
-    // full_resync queue job was already enqueued.
-    registerMock.mockRejectedValue(
-      Object.assign(new Error("rate_limited"), { kind: "rate_limited" }),
-    );
+  it("swallows a non-reauth api_error and keeps bootstrap at 202", async () => {
+    // The full_resync queue job was already enqueued, so a transient watch
+    // failure must not fail the bootstrap — the user can still sync.
+    reRegisterMock.mockResolvedValue({ failed: "api_error", kind: "rate_limited" });
+    const res = await postBootstrap({
+      ...BASE_ENV,
+      WEBHOOK_BASE_URL: "https://example.test",
+    });
+    expect(res.status).toBe(202);
+    const body = (await res.json()) as { watchRegistered?: boolean };
+    expect(body.watchRegistered).toBe(false);
+  });
+
+  it("swallows an unexpected thrown failure and keeps bootstrap at 202", async () => {
+    reRegisterMock.mockRejectedValue(new Error("hyperdrive socket reset"));
     const res = await postBootstrap({
       ...BASE_ENV,
       WEBHOOK_BASE_URL: "https://example.test",

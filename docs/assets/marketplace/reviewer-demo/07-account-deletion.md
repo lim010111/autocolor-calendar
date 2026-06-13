@@ -200,11 +200,11 @@ surface.
   Per-row failure warn-logs at `src/routes/account.ts:79-87` (with
   `calendarId` and `String(err)` only — no event content) and the
   loop continues. If `getValidAccessToken` itself throws (e.g. the
-  refresh token has already been revoked), the outer catch at
-  `src/routes/account.ts:90-98` skips the entire loop. Orphaned
-  channels expire ≤ 7d. Inbound webhook deliveries during that window
-  land at `lookupChannelOwner` (`src/services/watchChannel.ts:225-253`)
-  which returns `null` at `src/services/watchChannel.ts:246` (no
+  refresh token has already been revoked), the outer catch inside
+  `teardownWatchesForUser` (`src/services/watch/teardown.ts`) skips the
+  entire loop. Orphaned channels expire ≤ 7d. Inbound webhook deliveries
+  during that window land at `lookupChannelOwner`
+  (`src/services/watch/receipt.ts`) which returns `null` (no
   `sync_state` row matches the `(channelId, resourceId)` pair after
   cascade) — the webhook handler short-circuits, no work happens, no
   error surfaces to Google.
@@ -218,7 +218,7 @@ surface.
   prevented." Adding a Step 0 claim of
   `sync_state.watch_renewal_in_progress_at` would pointlessly
   serialise deletion against an unrelated worker, and the column has
-  a single sole writer — `src/services/watchRenewal.ts`'s per-row
+  a single sole writer — `src/services/watch/renewal.ts`'s per-row
   loop, per `src/CLAUDE.md` "Watch renewal concurrency (§6.4)" — that
   deletion must not become a second writer to.
 - **(d) Idempotency / second call.** The route itself is **not**

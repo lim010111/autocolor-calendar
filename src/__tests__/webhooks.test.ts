@@ -1,7 +1,7 @@
 import { Hono } from "hono";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-// We stub ../services/watchChannel and ../queues/syncProducer so the route
+// We stub ../services/watch/receipt and ../queues/syncProducer so the route
 // logic can be exercised without a DB or Queue binding. The route imports
 // these modules eagerly, so the mocks must be registered before the import
 // tree of ../routes/webhooks resolves.
@@ -17,7 +17,7 @@ vi.mock("../db", () => ({
   }),
 }));
 
-vi.mock("../services/watchChannel", () => ({
+vi.mock("../services/watch/receipt", () => ({
   lookupChannelOwner: (...args: unknown[]) => lookupMock(...args),
   verifyChannelToken: (...args: unknown[]) => verifyMock(...args),
 }));

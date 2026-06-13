@@ -90,7 +90,7 @@ this scope:
 - `docs/architecture-guidelines.md` → "Sync Flow" — the five-step
   incremental sync token flow.
 - `src/services/calendarSync.ts` — `events.list` + `events.patch` driver.
-- `src/services/watchRenewal.ts`; `src/CLAUDE.md` → "Watch renewal
+- `src/services/watch/renewal.ts`; `src/CLAUDE.md` → "Watch renewal
   concurrency (§6.4)" — the watch-channel lifecycle invariant.
 
 ## §2 — `https://www.googleapis.com/auth/calendar.events` (Sensitive)

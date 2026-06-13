@@ -4,12 +4,16 @@
 // Why this exists:
 // - `/sync/bootstrap` registers the channel exactly once at onboarding. There
 //   is no other code path that *creates* a Watch channel for a sync_state row —
-//   the 6h renewal cron (`watchRenewal.ts`) only refreshes existing channels.
+//   the 6h renewal cron (`renewal.ts`) only refreshes existing channels.
 // - If bootstrap was incomplete (transient failure, `WEBHOOK_BASE_URL` unset
 //   at the time, …), the user has no Watch channel and webhooks never fire.
 //   They have to keep pressing "지금 즉시 동기화" indefinitely.
 // - Self-heal closes that gap: on `/me` and `/sync/run` we lazily register
 //   when the user's row is missing a channel or its expiration is < 24h away.
+//
+// The (re)registration itself is owned by `reRegisterWatch` (core); this
+// adapter layers the self-heal policy (needs_reauth gate, active/expiring
+// decision, 10-min cooldown stamp) on top.
 //
 // Caller is responsible for `executionCtx.waitUntil(...)` wrapping —
 // the helper itself is plain async so it stays trivially testable. See
@@ -18,11 +22,9 @@
 import { and, eq, sql } from "drizzle-orm";
 import type { PostgresJsDatabase } from "drizzle-orm/postgres-js";
 
-import { oauthTokens, syncState } from "../db/schema";
-import type { Bindings } from "../env";
-import { CalendarApiError } from "./googleCalendar";
-import { getValidAccessToken, ReauthRequiredError } from "./tokenRefresh";
-import { registerWatchChannel, stopWatchChannel } from "./watchChannel";
+import { oauthTokens, syncState } from "../../db/schema";
+import type { Bindings } from "../../env";
+import { reRegisterWatch } from "./core";
 
 const SELF_HEAL_THRESHOLD_HOURS = 24;
 const SELF_HEAL_COOLDOWN_MIN = 10;
@@ -34,7 +36,8 @@ export async function maybeSelfHealWatch(
 ): Promise<void> {
   // Dev shell w/o verified custom domain — Google rejects watch.create against
   // workers.dev, so the entire heal block is a no-op there. Mirrors the same
-  // guard in `watchRenewal.ts`.
+  // guard in `reRegisterWatch` / `renewal.ts`; held here too so we skip the
+  // DB reads + cooldown stamp entirely when there's nothing to register.
   if (!env.WEBHOOK_BASE_URL) return;
 
   // (1) needs_reauth gate. Token refresh is going to fail; firing a Calendar
@@ -80,8 +83,8 @@ export async function maybeSelfHealWatch(
 
   // (4) Stamp BEFORE attempting register — failure-or-success cooldown gate.
   // Two concurrent waitUntil-wrapped calls can both pass step (3) and both
-  // stamp here; that's fine — last writer wins, and stopWatchChannel absorbs
-  // the resulting double-register on the Google side.
+  // stamp here; that's fine — last writer wins, and the core's stop→register
+  // absorbs the resulting double-register on the Google side.
   await db
     .update(syncState)
     .set({ lastSelfHealAt: sql`now()` })
@@ -89,29 +92,33 @@ export async function maybeSelfHealWatch(
       and(eq(syncState.userId, userId), eq(syncState.calendarId, row.calendarId)),
     );
 
-  // (5) Register. Stop any pre-existing channel first so a re-bootstrap
-  // doesn't accumulate live channels on Google's side. Same ordering as
-  // bootstrap and renewal.
+  // (5) (Re)register via the shared core. Same stop→register ordering as
+  // bootstrap and renewal. The core never throws for the expected outcomes —
+  // it returns a result union — so an unexpected throw is the only catch path.
+  let result;
   try {
-    const { accessToken } = await getValidAccessToken(db, env, userId);
-    await stopWatchChannel(db, accessToken, userId, row.calendarId);
-    await registerWatchChannel(
-      db,
-      accessToken,
-      userId,
-      row.calendarId,
-      env.WEBHOOK_BASE_URL,
+    result = await reRegisterWatch(db, env, userId, row.calendarId);
+  } catch {
+    console.warn(
+      JSON.stringify({
+        level: "warn",
+        msg: "watch self-heal failed",
+        userId,
+        code: "unknown",
+      }),
     );
+    return;
+  }
+
+  if ("ok" in result) {
     console.log(
       JSON.stringify({ level: "info", msg: "watch self-heal ok", userId }),
     );
-  } catch (err) {
+    return;
+  }
+  if ("failed" in result) {
     const code =
-      err instanceof ReauthRequiredError
-        ? "reauth_required"
-        : err instanceof CalendarApiError
-          ? err.kind
-          : "unknown";
+      result.failed === "reauth_required" ? "reauth_required" : result.kind;
     console.warn(
       JSON.stringify({
         level: "warn",
@@ -121,4 +128,5 @@ export async function maybeSelfHealWatch(
       }),
     );
   }
+  // skipped (WEBHOOK_BASE_URL unset) — unreachable past the guard above.
 }

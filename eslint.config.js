@@ -69,6 +69,34 @@ export default [
         "error",
         { prefer: "type-imports", fixStyle: "inline-type-imports" },
       ],
+      // Watch module privacy seam (architecture-deepening #06). The bare
+      // registerWatchChannel / stopWatchChannel primitives are module-private
+      // to src/services/watch/: new code paths compose `reRegisterWatch` (or,
+      // for account teardown, `teardownWatchesForUser`) instead of stop/register
+      // directly. This promotes the prose rule in src/CLAUDE.md "Watch
+      // self-heal" to a structural seam. The override below re-enables the
+      // primitives for siblings inside the watch folder.
+      "no-restricted-imports": [
+        "error",
+        {
+          patterns: [
+            {
+              group: ["**/watch/core", "**/services/watch/core"],
+              importNames: ["registerWatchChannel", "stopWatchChannel"],
+              message:
+                "registerWatchChannel / stopWatchChannel are module-private to src/services/watch/. Compose reRegisterWatch — or, for account teardown, teardownWatchesForUser — instead of the bare register/stop primitives.",
+            },
+          ],
+        },
+      ],
+    },
+  },
+  {
+    // Watch-module siblings (e.g. teardown.ts needs stopWatchChannel) are the
+    // sanctioned holders of the private primitives — lift the restriction here.
+    files: ["src/services/watch/**/*.ts"],
+    rules: {
+      "no-restricted-imports": "off",
     },
   },
   prettier,

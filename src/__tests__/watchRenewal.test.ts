@@ -2,40 +2,22 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import type * as WatchChannelModule from "../services/watchChannel";
-import type * as TokenRefreshModule from "../services/tokenRefresh";
 import type * as WatchClaimModule from "../lib/watchClaim";
 
-// Stub the Google-facing services + token refresh so the renewal logic can be
-// exercised without network or DB. The renewExpiringWatches function orders
-// stop → register per user, so the mocks let us assert that order. `watchClaim`
-// is also mocked so concurrency test cases can drive claim success / failure
-// per-call without reaching the real `sync_state` UPDATE.
+// `renewExpiringWatches` composes the shared watch core per row. This adapter
+// test mocks the single `reRegisterWatch` seam (guard / reauth / stop→register
+// / classify owned once by `watchCore.test.ts`) and the `watchClaim` helpers so
+// concurrency cases drive claim success / failure per-call. The batch's own
+// policy — SELECT, per-row claim/release, summary counters, continue-on-fail —
+// is what this suite pins.
 
-const stopMock = vi.fn();
-const registerMock = vi.fn();
-const getTokenMock = vi.fn();
+const reRegisterMock = vi.fn();
 const claimMock = vi.fn();
 const releaseMock = vi.fn();
 
-vi.mock("../services/watchChannel", async () => {
-  const actual =
-    await vi.importActual<typeof WatchChannelModule>("../services/watchChannel");
-  return {
-    ...actual,
-    stopWatchChannel: (...args: unknown[]) => stopMock(...args),
-    registerWatchChannel: (...args: unknown[]) => registerMock(...args),
-  };
-});
-
-vi.mock("../services/tokenRefresh", async () => {
-  const actual =
-    await vi.importActual<typeof TokenRefreshModule>("../services/tokenRefresh");
-  return {
-    ...actual,
-    getValidAccessToken: (...args: unknown[]) => getTokenMock(...args),
-  };
-});
+vi.mock("../services/watch/core", () => ({
+  reRegisterWatch: (...args: unknown[]) => reRegisterMock(...args),
+}));
 
 vi.mock("../lib/watchClaim", async () => {
   const actual =
@@ -47,9 +29,7 @@ vi.mock("../lib/watchClaim", async () => {
   };
 });
 
-import { CalendarApiError } from "../services/googleCalendar";
-import { ReauthRequiredError } from "../services/tokenRefresh";
-import { renewExpiringWatches } from "../services/watchRenewal";
+import { renewExpiringWatches } from "../services/watch";
 
 type FakeRow = { userId: string; calendarId: string; expiration: Date };
 
@@ -85,6 +65,10 @@ const BASE_ENV = {
   SESSION_PEPPER: "x",
 } as const;
 
+function okResult() {
+  return { ok: true as const, expiration: new Date(Date.now() + 7 * 86400 * 1000) };
+}
+
 // Default claim factory used by all tests. Tests that need claim-failure behavior
 // override `claimMock.mockResolvedValueOnce` / `mockResolvedValue` explicitly.
 function makeClaim(claimedAt = new Date("2026-04-24T00:00:00.000Z")) {
@@ -93,19 +77,10 @@ function makeClaim(claimedAt = new Date("2026-04-24T00:00:00.000Z")) {
 
 describe("renewExpiringWatches", () => {
   beforeEach(() => {
-    stopMock.mockReset();
-    registerMock.mockReset();
-    getTokenMock.mockReset();
+    reRegisterMock.mockReset();
     claimMock.mockReset();
     releaseMock.mockReset();
-    getTokenMock.mockResolvedValue({ accessToken: "at-x", expiresAt: Date.now() });
-    stopMock.mockResolvedValue(undefined);
-    registerMock.mockResolvedValue({
-      channelId: "new-c",
-      resourceId: "new-r",
-      token: "new-tok",
-      expiration: new Date(Date.now() + 7 * 86400 * 1000),
-    });
+    reRegisterMock.mockResolvedValue(okResult());
     claimMock.mockResolvedValue(makeClaim());
     releaseMock.mockResolvedValue(undefined);
   });
@@ -116,11 +91,10 @@ describe("renewExpiringWatches", () => {
   it("no-ops and logs when WEBHOOK_BASE_URL is not configured", async () => {
     const out = await renewExpiringWatches(fakeDb([]), BASE_ENV);
     expect(out.scanned).toBe(0);
-    expect(stopMock).not.toHaveBeenCalled();
-    expect(registerMock).not.toHaveBeenCalled();
+    expect(reRegisterMock).not.toHaveBeenCalled();
   });
 
-  it("stops then registers a fresh channel per row (ordering matters)", async () => {
+  it("(re)registers a fresh channel per row in order", async () => {
     const rows: FakeRow[] = [
       {
         userId: "u1",
@@ -135,28 +109,15 @@ describe("renewExpiringWatches", () => {
     ];
     const env = { ...BASE_ENV, WEBHOOK_BASE_URL: "https://example.test" };
     const callOrder: string[] = [];
-    stopMock.mockImplementation(async (_db, _at, userId) => {
-      callOrder.push(`stop:${userId}`);
-    });
-    registerMock.mockImplementation(async (_db, _at, userId) => {
+    reRegisterMock.mockImplementation(async (_db, _env, userId) => {
       callOrder.push(`register:${userId}`);
-      return {
-        channelId: "c",
-        resourceId: "r",
-        token: "t",
-        expiration: new Date(),
-      };
+      return okResult();
     });
 
     const out = await renewExpiringWatches(fakeDb(rows), env);
 
     expect(out).toEqual({ scanned: 2, renewed: 2, skipped: 0, failed: 0 });
-    expect(callOrder).toEqual([
-      "stop:u1",
-      "register:u1",
-      "stop:u2",
-      "register:u2",
-    ]);
+    expect(callOrder).toEqual(["register:u1", "register:u2"]);
   });
 
   it("continues to the next user when one fails (no cascade)", async () => {
@@ -173,22 +134,20 @@ describe("renewExpiringWatches", () => {
       },
     ];
     const env = { ...BASE_ENV, WEBHOOK_BASE_URL: "https://example.test" };
-    // First user's token refresh fails; second proceeds normally.
-    getTokenMock.mockImplementation(async (_db, _env, userId: string) => {
-      if (userId === "u-bad") throw new ReauthRequiredError("invalid_grant");
-      return { accessToken: "at", expiresAt: 0 };
+    // First user's core reports reauth_required; second proceeds normally.
+    reRegisterMock.mockImplementation(async (_db, _env, userId: string) => {
+      if (userId === "u-bad") return { failed: "reauth_required" as const };
+      return okResult();
     });
 
     const out = await renewExpiringWatches(fakeDb(rows), env);
 
     expect(out).toEqual({ scanned: 2, renewed: 1, skipped: 0, failed: 1 });
-    // u-bad should never reach stop/register because token refresh failed.
-    expect(stopMock).toHaveBeenCalledTimes(1);
-    expect(registerMock).toHaveBeenCalledTimes(1);
+    expect(reRegisterMock).toHaveBeenCalledTimes(2);
   });
 });
 
-// §6.4 / §4B M4 — per-row claim guard around stop→register.
+// §6.4 / §4B M4 — per-row claim guard around the core (re)registration.
 describe("renewExpiringWatches — concurrency claim (§6.4)", () => {
   const FIXED_CLAIMED_AT = new Date("2026-04-24T00:00:00.000Z");
   const ENV_WITH_WEBHOOK = {
@@ -197,19 +156,10 @@ describe("renewExpiringWatches — concurrency claim (§6.4)", () => {
   } as const;
 
   beforeEach(() => {
-    stopMock.mockReset();
-    registerMock.mockReset();
-    getTokenMock.mockReset();
+    reRegisterMock.mockReset();
     claimMock.mockReset();
     releaseMock.mockReset();
-    getTokenMock.mockResolvedValue({ accessToken: "at-x", expiresAt: Date.now() });
-    stopMock.mockResolvedValue(undefined);
-    registerMock.mockResolvedValue({
-      channelId: "new-c",
-      resourceId: "new-r",
-      token: "new-tok",
-      expiration: new Date(Date.now() + 7 * 86400 * 1000),
-    });
+    reRegisterMock.mockResolvedValue(okResult());
     claimMock.mockResolvedValue({
       acquired: true,
       rowId: "row-id",
@@ -221,12 +171,9 @@ describe("renewExpiringWatches — concurrency claim (§6.4)", () => {
     vi.clearAllMocks();
   });
 
-  it("claim acquired → stop+register runs; release called with matching claimedAt", async () => {
+  it("claim acquired → core runs; release called with matching claimedAt", async () => {
     // Behavioral round-trip pin for the ms-precision invariant: whatever Date
     // the claim returns must flow through finally to release unchanged.
-    // Mutating `date_trunc('milliseconds', ...)` out of watchClaim would let a
-    // µs-drifted Date slip through and this exact-reference check would still
-    // pass under mocks (see the source-level regex below for the µs guard).
     const rows: FakeRow[] = [
       {
         userId: "u1",
@@ -238,15 +185,14 @@ describe("renewExpiringWatches — concurrency claim (§6.4)", () => {
     const out = await renewExpiringWatches(fakeDb(rows), ENV_WITH_WEBHOOK);
 
     expect(out).toEqual({ scanned: 1, renewed: 1, skipped: 0, failed: 0 });
-    expect(stopMock).toHaveBeenCalledTimes(1);
-    expect(registerMock).toHaveBeenCalledTimes(1);
+    expect(reRegisterMock).toHaveBeenCalledTimes(1);
     expect(releaseMock).toHaveBeenCalledTimes(1);
     // The 4th arg to releaseWatchRenewal is the claimedAt — pin that it's the
     // exact Date reference returned by claim, not a re-derived value.
     expect(releaseMock.mock.calls[0]?.[3]).toBe(FIXED_CLAIMED_AT);
   });
 
-  it("claim not acquired → row skipped, stop/register/release never called", async () => {
+  it("claim not acquired → row skipped, core/release never called", async () => {
     const rows: FakeRow[] = [
       {
         userId: "u1",
@@ -259,14 +205,13 @@ describe("renewExpiringWatches — concurrency claim (§6.4)", () => {
     const out = await renewExpiringWatches(fakeDb(rows), ENV_WITH_WEBHOOK);
 
     expect(out).toEqual({ scanned: 1, renewed: 0, skipped: 1, failed: 0 });
-    expect(stopMock).not.toHaveBeenCalled();
-    expect(registerMock).not.toHaveBeenCalled();
+    expect(reRegisterMock).not.toHaveBeenCalled();
     // Critically: release must not fire when we never held the claim, or
     // we'd null out whichever worker actually holds it right now.
     expect(releaseMock).not.toHaveBeenCalled();
   });
 
-  it("stop throws CalendarApiError → release still fires in finally", async () => {
+  it("core returns a failed result → release still fires in finally", async () => {
     const rows: FakeRow[] = [
       {
         userId: "u1",
@@ -274,22 +219,19 @@ describe("renewExpiringWatches — concurrency claim (§6.4)", () => {
         expiration: new Date(Date.now() + 1000),
       },
     ];
-    stopMock.mockRejectedValue(
-      new CalendarApiError("rate_limited", 429, "rateLimitExceeded", "channels.stop 429"),
-    );
+    reRegisterMock.mockResolvedValue({ failed: "api_error", kind: "rate_limited" });
 
     const out = await renewExpiringWatches(fakeDb(rows), ENV_WITH_WEBHOOK);
 
     expect(out).toEqual({ scanned: 1, renewed: 0, skipped: 0, failed: 1 });
-    expect(registerMock).not.toHaveBeenCalled();
     expect(releaseMock).toHaveBeenCalledTimes(1);
     expect(releaseMock.mock.calls[0]?.[3]).toBe(FIXED_CLAIMED_AT);
   });
 
-  it("register throws CalendarApiError → release still fires in finally", async () => {
-    // Most common real-world failure: stop succeeds, register fails on rate
-    // limit / backend error. The old channel is already gone; the claim must
-    // be released so the next cron tick re-tries cleanly.
+  it("core throws an unexpected error → release still fires in finally", async () => {
+    // Most common real-world failure surfaces as a result union, but an
+    // unexpected throw (e.g. a socket reset) must still release the claim so
+    // the next cron tick re-tries cleanly.
     const rows: FakeRow[] = [
       {
         userId: "u1",
@@ -297,22 +239,16 @@ describe("renewExpiringWatches — concurrency claim (§6.4)", () => {
         expiration: new Date(Date.now() + 1000),
       },
     ];
-    registerMock.mockRejectedValue(
-      new CalendarApiError("server", 503, "backendError", "channels.watch 503"),
-    );
+    reRegisterMock.mockRejectedValue(new Error("hyperdrive socket reset"));
 
     const out = await renewExpiringWatches(fakeDb(rows), ENV_WITH_WEBHOOK);
 
     expect(out).toEqual({ scanned: 1, renewed: 0, skipped: 0, failed: 1 });
-    expect(stopMock).toHaveBeenCalledTimes(1);
     expect(releaseMock).toHaveBeenCalledTimes(1);
     expect(releaseMock.mock.calls[0]?.[3]).toBe(FIXED_CLAIMED_AT);
   });
 
   it("release succeeded on row N → row N+1 re-claims independently", async () => {
-    // Pins that `releaseWatchRenewal` finishing doesn't block the next
-    // iteration's claim — important regression guard if a future refactor
-    // accidentally holds the lock across iterations.
     const rows: FakeRow[] = [
       {
         userId: "u1",
@@ -359,20 +295,17 @@ describe("renewExpiringWatches — concurrency claim (§6.4)", () => {
 
     const firstTick = await renewExpiringWatches(fakeDb(rows), ENV_WITH_WEBHOOK);
     expect(firstTick).toEqual({ scanned: 1, renewed: 0, skipped: 1, failed: 0 });
-    expect(stopMock).not.toHaveBeenCalled();
+    expect(reRegisterMock).not.toHaveBeenCalled();
 
     const secondTick = await renewExpiringWatches(fakeDb(rows), ENV_WITH_WEBHOOK);
     expect(secondTick).toEqual({ scanned: 1, renewed: 1, skipped: 0, failed: 0 });
-    expect(stopMock).toHaveBeenCalledTimes(1);
-    expect(registerMock).toHaveBeenCalledTimes(1);
+    expect(reRegisterMock).toHaveBeenCalledTimes(1);
   });
 
   it("source-level precision invariant: watchClaim.ts uses date_trunc('milliseconds', now())", () => {
     // Mirrors syncClaim's regex guard. Removing the ms truncation would let
     // Postgres µs drift through the Date round-trip and silently no-op every
     // ownership-aware release until the 10-min stale window fires.
-    // __dirname is unavailable under the test runner's ESM transform; resolve
-    // via import.meta.url instead (matches the `syncClaim` regex-guard style).
     const here = path.dirname(new URL(import.meta.url).pathname);
     const src = fs.readFileSync(
       path.resolve(here, "../lib/watchClaim.ts"),

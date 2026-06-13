@@ -1,16 +1,15 @@
-import { and, eq, isNotNull } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 import { Hono } from "hono";
 
 import { getDb } from "../db";
-import { syncState, users } from "../db/schema";
+import { users } from "../db/schema";
 import type { HonoEnv } from "../env";
 import { parseBearerToken } from "../lib/bearer";
 import { authMiddleware } from "../middleware/auth";
 import { revokeRefreshToken } from "../services/googleOAuth";
 import { getGoogleRefreshToken } from "../services/oauthTokenService";
 import { revokeSession } from "../services/sessionService";
-import { getValidAccessToken } from "../services/tokenRefresh";
-import { stopWatchChannel } from "../services/watchChannel";
+import { teardownWatchesForUser } from "../services/watch";
 
 export const accountRoutes = new Hono<HonoEnv>();
 
@@ -57,45 +56,12 @@ accountRoutes.post("/delete", async (c) => {
       );
     }
 
-    // Step 2 — best-effort channels.stop for every active watch row. If
-    // getValidAccessToken throws (no_refresh_token / flag_set / invalid_grant
-    // / TokenRefreshError), skip the loop. Orphan channels expire ≤ 7d and
-    // webhook deliveries no-op via lookupChannelOwner returning null after
-    // cascade.
-    try {
-      const { accessToken } = await getValidAccessToken(db, c.env, userId);
-      const watchRows = await db
-        .select({ calendarId: syncState.calendarId })
-        .from(syncState)
-        .where(
-          and(
-            eq(syncState.userId, userId),
-            isNotNull(syncState.watchChannelId),
-          ),
-        );
-      for (const row of watchRows) {
-        try {
-          await stopWatchChannel(db, accessToken, userId, row.calendarId);
-        } catch (err) {
-          console.warn(
-            JSON.stringify({
-              level: "warn",
-              msg: "account.delete channels.stop failed",
-              calendarId: row.calendarId,
-              err: String(err),
-            }),
-          );
-        }
-      }
-    } catch (err) {
-      console.warn(
-        JSON.stringify({
-          level: "warn",
-          msg: "account.delete watch cleanup skipped",
-          err: String(err),
-        }),
-      );
-    }
+    // Step 2 — best-effort channels.stop for every active watch row, owned by
+    // the watch module's teardown entry point. Self-contained best-effort (it
+    // never throws), so a Google API outage cannot block deletion. Orphan
+    // channels expire ≤ 7d and webhook deliveries no-op via lookupChannelOwner
+    // returning null after cascade.
+    await teardownWatchesForUser(db, c.env, userId);
 
     // Step 3 — authoritative delete. FK cascade fans out to 9 user-scoped
     // tables. This is the only path that propagates errors to the response.

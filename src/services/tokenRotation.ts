@@ -27,7 +27,7 @@
 //
 // PII: `aesGcmDecrypt` plaintext (the refresh token) is NEVER logged. AAD is
 // `user:${userId}` where `userId` is a UUID (not PII; same convention as
-// `watchRenewal.ts`).
+// `watch/renewal.ts`).
 import { and, eq, ne } from "drizzle-orm";
 import type { PostgresJsDatabase } from "drizzle-orm/postgres-js";
 

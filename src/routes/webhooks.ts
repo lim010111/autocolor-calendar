@@ -9,7 +9,7 @@
 //      an incremental sync as fire-and-forget via ctx.waitUntil.
 //
 // Security:
-// - Per-channel random tokens (see services/watchChannel.ts) mean a leaked
+// - Per-channel random tokens (minted in services/watch/core.ts) mean a leaked
 //   token only exposes one user's sync trigger — not a global forging key.
 // - We never log the received token or any header that could leak channel
 //   identifiers. The existing logger middleware only records method/path/
@@ -30,10 +30,7 @@ import { Hono } from "hono";
 import { getDb } from "../db";
 import type { HonoEnv } from "../env";
 import { enqueueSync, SyncQueueUnavailableError } from "../queues/syncProducer";
-import {
-  lookupChannelOwner,
-  verifyChannelToken,
-} from "../services/watchChannel";
+import { lookupChannelOwner, verifyChannelToken } from "../services/watch";
 
 export const webhookRoutes = new Hono<HonoEnv>();
 
