@@ -43,3 +43,6 @@ __pycache__/
 
 # Claude Code session-local state (per-worktree; not for sharing)
 .claude/handoffs/
+
+# /teach learning workspace (personal study notes; not project code)
+/.teach/
