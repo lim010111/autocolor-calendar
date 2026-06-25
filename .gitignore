@@ -43,3 +43,6 @@ __pycache__/
 
 # Claude Code session-local state (per-worktree; not for sharing)
 .claude/handoffs/
+
+# merge-gate-local artefact cache (not committed — #30 D3)
+.merge-gate/

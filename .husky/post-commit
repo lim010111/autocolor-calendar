@@ -1,0 +1,21 @@
+#!/bin/sh
+# merge-gate-local — git post-commit trigger (claude-harness-work #33, ADR-0014).
+#
+# Installed by `/setup-merge-gate` (local profile) into <repo>/.git/hooks/post-commit.
+# REPO-scoped: it fires in whatever repo the commit lands in, independent of the
+# Claude session's cwd (the venue root cause of #31's zero data). It launches a
+# backgrounded, COMMIT-PINNED `merge-gate-local produce --coalesce` against HEAD
+# when the commit touched in-scope files, so the next push verifies a FRESH
+# artefact for the committed tip instead of `missing`.
+#
+# Never blocks the commit (always exits 0). The auto-produce runs the gate
+# DIRECTLY (it deliberately bypasses MERGE_GATE_WRAPPER, exactly as the old Stop
+# scheduler did — design §2); its stdout is redirected to the producer state
+# dir's produce.log for the ⓑ auto-produce count. Revert: delete this hook or
+# re-run `/setup-merge-gate --uninstall`.
+#
+# MERGE_GATE_POST_COMMIT  <- marker the installer uses to recognise its own hook.
+HELPER="${MERGE_GATE_POST_COMMIT:-$HOME/.claude/hooks/merge_gate_post_commit.py}"
+[ -f "$HELPER" ] || exit 0
+python3 "$HELPER" || true
+exit 0
