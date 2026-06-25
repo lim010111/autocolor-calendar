@@ -6,36 +6,38 @@ outside the narrative block; mechanical sections are regenerated every run._
 <!-- narrative:start -->
 ## Current focus
 
-두 갈래가 병존한다.
+architecture-deepening 트랙의 committed 작업은 완료됐다 — 6개 이슈 전부
+done/wontfix (58/58), 마지막 #06 Watch channel lifecycle Module 이 이번
+세션에 main 머지됨. 남은 것은 un-grilled deepening 후보(CalendarApiError
+pair 등)뿐 — Open decisions 참조.
+spec: `.scratch/architecture-deepening/issues/06-watch-channel-lifecycle-module.md`
 
-1. **architecture-deepening** — #01·#02·#03·#05·#06 done, #04 wontfix →
-   58/58 (100%). #06 Watch channel lifecycle Module 을 TDD 로 구현:
-   `src/services/watch/` 모듈(`reRegisterWatch` 코어 + 7 진입점 barrel) +
-   ESLint privacy seam(register/stop module-private). `/heal-watch`→
-   `reconnectWatch`, `account.delete`→`teardownWatchesForUser` 흡수, 동작
-   0줄. 남은 deepening 후보(CalendarApiError pair 등)는 un-grilled.
-   spec: `.scratch/architecture-deepening/issues/06-watch-channel-lifecycle-module.md`
-2. **embedding-classifier** (ADR-0004 구현) — Stage 1 substring → 임베딩
-   kNN. #01 (모델 eval) HITL 대기 중, 후속 5개는 #01의 벡터 차원에
-   묶여 blocked. 이번 세션에서는 진척 없음.
+embedding-classifier (ADR-0004 구현) — Stage 1 substring → 임베딩 kNN.
+#01 (모델 eval) 운영자 로컬 GPU 랩 HITL 대기, 후속 5개는 #01 의 벡터
+차원에 묶여 blocked. 이번 세션 진척 없음.
+
+운영 posture: main 에 local merge-gate 가 **advisory** 로 활성 — main 기준
+브랜치에서 in-scope 커밋 시 백그라운드 Codex produce, push 시 advisory
+verify(보고만, 차단 안 함). AGENTS.md ↔ CLAUDE.md 도 canonicalize 됨
+(AGENTS.md 가 정본, CLAUDE.md 는 `@AGENTS.md` 래퍼; root + 4 모듈).
+harness-doctor 3/3.
 
 ## Start here next session
 
-- **능동 — architecture-deepening #06 → commit/PR**: 12/12 AC, 전 gate
-  green (test 484 / typecheck / lint / check-context-paths). 변경은 working
-  tree 에만 있고 미커밋 — review 후 commit + PR 발행.
-- **병행 — CalendarApiError 쌍 (후보 factory + kind→HTTP mapper)**:
+- **병행 — architecture-deepening deepening 후보 (CalendarApiError pair)**:
   `watch/core.ts` 의 `classify`/`throwWatchError` 가 `googleCalendar.ts` 와
-  중복; `/heal-watch` 의 kind→HTTP switch 도 별도 후보. #06 이 코드를
-  옮겼을 뿐 dedup 은 범위 외. 별도 PR, grill 미진행.
+  중복; `/heal-watch` 의 kind→HTTP switch 도 후보. grill 선행 필요
+  (un-grilled), 별도 PR. 전체 후보 목록은 Open decisions.
 - **휴면 — embedding-classifier #01 (임베딩 모델 eval)**: 운영자 로컬
   3080 GPU 랩에서 HITL 대기. 손대지 말 것.
-- 사소한 후속 (block 아님): `src/CLAUDE.md` / `llmClassifier.ts` 의
+- 사소한 후속 (block 아님): `src/AGENTS.md` / `llmClassifier.ts` 의
   폐기된 `onLlmCall` / `onLlmAttempted` 콜백 잔존 참조 정리 — 다음 PR 에
   묶기.
 
 ## Open decisions
 
+- merge-gate enforcement = advisory (보고만, 차단 안 함). client-side-blocking
+  전환은 팀 준비되면 `harness.toml` 에서.
 - 임베딩 모델 + 벡터 차원 (768 vs 1024) 미확정 — embedding-classifier
   #01 이 결정. 그전까지 스키마 작업 잠정 기본값은 `embeddinggemma-300m`
   (768d).
