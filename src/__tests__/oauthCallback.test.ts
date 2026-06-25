@@ -54,7 +54,7 @@ vi.mock("../services/sessionService", () => ({
 }));
 
 const bootstrapMock = vi.fn();
-vi.mock("../services/syncBootstrap", () => ({
+vi.mock("../services/watch", () => ({
   bootstrapUserSync: (...args: unknown[]) => bootstrapMock(...args),
 }));
 

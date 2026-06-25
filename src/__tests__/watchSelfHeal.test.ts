@@ -1,34 +1,17 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import type * as WatchChannelModule from "../services/watchChannel";
-import type * as TokenRefreshModule from "../services/tokenRefresh";
+// `maybeSelfHealWatch` composes the shared watch core. This adapter test mocks
+// the single `reRegisterWatch` seam (guard / reauth / stop→register / classify
+// are owned once by `watchCore.test.ts`) and focuses on the self-heal policy:
+// the needs_reauth gate, active/expiring decision, 10-min cooldown, and the
+// stamp-before-register ordering of `last_self_heal_at`.
 
-const stopMock = vi.fn();
-const registerMock = vi.fn();
-const getTokenMock = vi.fn();
+const reRegisterMock = vi.fn();
+vi.mock("../services/watch/core", () => ({
+  reRegisterWatch: (...args: unknown[]) => reRegisterMock(...args),
+}));
 
-vi.mock("../services/watchChannel", async () => {
-  const actual =
-    await vi.importActual<typeof WatchChannelModule>("../services/watchChannel");
-  return {
-    ...actual,
-    stopWatchChannel: (...args: unknown[]) => stopMock(...args),
-    registerWatchChannel: (...args: unknown[]) => registerMock(...args),
-  };
-});
-
-vi.mock("../services/tokenRefresh", async () => {
-  const actual =
-    await vi.importActual<typeof TokenRefreshModule>("../services/tokenRefresh");
-  return {
-    ...actual,
-    getValidAccessToken: (...args: unknown[]) => getTokenMock(...args),
-  };
-});
-
-import { CalendarApiError } from "../services/googleCalendar";
-import { ReauthRequiredError } from "../services/tokenRefresh";
-import { maybeSelfHealWatch } from "../services/watchSelfHeal";
+import { maybeSelfHealWatch } from "../services/watch";
 
 type SsRow = {
   calendarId: string;
@@ -121,15 +104,9 @@ function expiringSoonRow(): SsRow {
 
 describe("maybeSelfHealWatch", () => {
   beforeEach(() => {
-    stopMock.mockReset();
-    registerMock.mockReset();
-    getTokenMock.mockReset();
-    getTokenMock.mockResolvedValue({ accessToken: "at-x", expiresAt: 0 });
-    stopMock.mockResolvedValue(undefined);
-    registerMock.mockResolvedValue({
-      channelId: "c",
-      resourceId: "r",
-      token: "t",
+    reRegisterMock.mockReset();
+    reRegisterMock.mockResolvedValue({
+      ok: true,
       expiration: new Date(Date.now() + 7 * 86400 * 1000),
     });
   });
@@ -145,8 +122,7 @@ describe("maybeSelfHealWatch", () => {
       updateCalls,
     });
     await maybeSelfHealWatch(db, BASE_ENV, USER_ID);
-    expect(stopMock).not.toHaveBeenCalled();
-    expect(registerMock).not.toHaveBeenCalled();
+    expect(reRegisterMock).not.toHaveBeenCalled();
     expect(updateCalls).toEqual([]);
   });
 
@@ -158,8 +134,7 @@ describe("maybeSelfHealWatch", () => {
       updateCalls,
     });
     await maybeSelfHealWatch(db, ENV_WITH_WEBHOOK, USER_ID);
-    expect(stopMock).not.toHaveBeenCalled();
-    expect(registerMock).not.toHaveBeenCalled();
+    expect(reRegisterMock).not.toHaveBeenCalled();
     expect(updateCalls).toEqual([]);
   });
 
@@ -171,12 +146,11 @@ describe("maybeSelfHealWatch", () => {
       updateCalls,
     });
     await maybeSelfHealWatch(db, ENV_WITH_WEBHOOK, USER_ID);
-    expect(stopMock).not.toHaveBeenCalled();
-    expect(registerMock).not.toHaveBeenCalled();
+    expect(reRegisterMock).not.toHaveBeenCalled();
     expect(updateCalls).toEqual([]);
   });
 
-  it("watchChannelId is null → registers and stamps lastSelfHealAt", async () => {
+  it("watchChannelId is null → registers via core and stamps lastSelfHealAt", async () => {
     const updateCalls: UpdateCall[] = [];
     const db = fakeDb({
       tok: { needsReauth: false },
@@ -184,8 +158,10 @@ describe("maybeSelfHealWatch", () => {
       updateCalls,
     });
     await maybeSelfHealWatch(db, ENV_WITH_WEBHOOK, USER_ID);
-    expect(stopMock).toHaveBeenCalledTimes(1);
-    expect(registerMock).toHaveBeenCalledTimes(1);
+    expect(reRegisterMock).toHaveBeenCalledTimes(1);
+    // Adapter delegates (db, env, userId, calendarId) to the core.
+    expect(reRegisterMock.mock.calls[0]?.[2]).toBe(USER_ID);
+    expect(reRegisterMock.mock.calls[0]?.[3]).toBe("primary");
     // Exactly one stamp UPDATE for `last_self_heal_at`.
     expect(updateCalls).toEqual([
       { tableName: "sync_state", setColumns: ["lastSelfHealAt"] },
@@ -209,8 +185,7 @@ describe("maybeSelfHealWatch", () => {
       updateCalls,
     });
     await maybeSelfHealWatch(db, ENV_WITH_WEBHOOK, USER_ID);
-    expect(stopMock).not.toHaveBeenCalled();
-    expect(registerMock).not.toHaveBeenCalled();
+    expect(reRegisterMock).not.toHaveBeenCalled();
     expect(updateCalls).toEqual([]);
   });
 
@@ -227,53 +202,65 @@ describe("maybeSelfHealWatch", () => {
       updateCalls,
     });
     await maybeSelfHealWatch(db, ENV_WITH_WEBHOOK, USER_ID);
-    expect(stopMock).not.toHaveBeenCalled();
-    expect(registerMock).not.toHaveBeenCalled();
+    expect(reRegisterMock).not.toHaveBeenCalled();
     expect(updateCalls).toEqual([]);
   });
 
-  it("register throws → lastSelfHealAt stamped first; no rethrow", async () => {
-    // Pins the failure-burst protection: even when register fails, we still
-    // stamp the cooldown column so a follow-up /me call within 10min skips
-    // instead of re-trying. The error must NOT propagate (caller wraps in
-    // waitUntil and swallows, but the helper itself shouldn't throw).
+  it("core returns failed:api_error → lastSelfHealAt stamped first; no rethrow", async () => {
+    // Pins the failure-burst protection: even when the core reports a transient
+    // API failure, we still stamp the cooldown column so a follow-up /me call
+    // within 10min skips instead of re-trying. The helper must NOT throw.
     const updateCalls: UpdateCall[] = [];
     const db = fakeDb({
       tok: { needsReauth: false },
       syncRows: [expiringSoonRow()],
       updateCalls,
     });
-    registerMock.mockRejectedValue(
-      new CalendarApiError("server", 503, "backendError", "watch.create 503"),
-    );
+    reRegisterMock.mockResolvedValue({ failed: "api_error", kind: "server" });
 
     await expect(
       maybeSelfHealWatch(db, ENV_WITH_WEBHOOK, USER_ID),
     ).resolves.toBeUndefined();
 
-    expect(stopMock).toHaveBeenCalledTimes(1);
-    expect(registerMock).toHaveBeenCalledTimes(1);
+    expect(reRegisterMock).toHaveBeenCalledTimes(1);
     // Stamp happens BEFORE register — even on failure it's recorded.
     expect(updateCalls).toEqual([
       { tableName: "sync_state", setColumns: ["lastSelfHealAt"] },
     ]);
   });
 
-  it("ReauthRequiredError from token refresh → no rethrow, stamp recorded", async () => {
+  it("core throws an unexpected error → no rethrow, stamp recorded", async () => {
     const updateCalls: UpdateCall[] = [];
     const db = fakeDb({
       tok: { needsReauth: false },
       syncRows: [expiringSoonRow()],
       updateCalls,
     });
-    getTokenMock.mockRejectedValue(new ReauthRequiredError("invalid_grant"));
+    reRegisterMock.mockRejectedValue(new Error("hyperdrive socket reset"));
 
     await expect(
       maybeSelfHealWatch(db, ENV_WITH_WEBHOOK, USER_ID),
     ).resolves.toBeUndefined();
 
-    expect(stopMock).not.toHaveBeenCalled();
-    expect(registerMock).not.toHaveBeenCalled();
+    expect(reRegisterMock).toHaveBeenCalledTimes(1);
+    expect(updateCalls).toEqual([
+      { tableName: "sync_state", setColumns: ["lastSelfHealAt"] },
+    ]);
+  });
+
+  it("core returns failed:reauth_required → no rethrow, stamp recorded", async () => {
+    const updateCalls: UpdateCall[] = [];
+    const db = fakeDb({
+      tok: { needsReauth: false },
+      syncRows: [expiringSoonRow()],
+      updateCalls,
+    });
+    reRegisterMock.mockResolvedValue({ failed: "reauth_required" });
+
+    await expect(
+      maybeSelfHealWatch(db, ENV_WITH_WEBHOOK, USER_ID),
+    ).resolves.toBeUndefined();
+
     // Stamp still recorded (cooldown protects against rapid re-attempt of
     // the same dead token).
     expect(updateCalls).toEqual([

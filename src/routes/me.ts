@@ -5,7 +5,7 @@ import { getDb } from "../db";
 import { oauthTokens, syncState } from "../db/schema";
 import type { HonoEnv } from "../env";
 import { authMiddleware } from "../middleware/auth";
-import { maybeSelfHealWatch } from "../services/watchSelfHeal";
+import { maybeSelfHealWatch } from "../services/watch";
 
 export const meRoutes = new Hono<HonoEnv>();
 
@@ -81,7 +81,7 @@ meRoutes.get("/", async (c) => {
     // missing/expiring channel. We chain `close()` after the helper so the
     // shared `db` connection isn't yanked mid-query (waitUntil promises run
     // concurrently — without the chain, close() can race the helper's
-    // SELECT/UPDATE on the same socket). See `src/services/watchSelfHeal.ts`
+    // SELECT/UPDATE on the same socket). See `src/services/watch/selfHeal.ts`
     // for the 24h threshold + 10min cooldown contract.
     c.executionCtx.waitUntil(
       maybeSelfHealWatch(db, c.env, userId)

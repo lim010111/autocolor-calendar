@@ -179,7 +179,7 @@ pnpm wrangler queues create autocolor-sync-dlq-prod
 시작.
 
 `WEBHOOK_BASE_URL`이 prod에 미주입이면 Watch renewal cron은 watch 채널 등록
-없이 no-op (`src/services/watchChannel.ts`).
+없이 no-op (`src/services/watch/renewal.ts`).
 
 ## Step 10 — `pnpm sync-secrets prod`
 
@@ -384,6 +384,6 @@ env scoping으로 격리).
 - `src/CLAUDE.md` "Account deletion (§3 row 179)" — Step 12 E 검증
 - `src/CLAUDE.md` "GAS deployment URL must stay stable" — Step 11 / 롤백
 - [`wrangler.toml`](../../wrangler.toml) — `[env.prod.*]` 블록
-- `src/services/watchChannel.ts` — `WEBHOOK_BASE_URL` gating
+- `src/services/watch/core.ts` — `WEBHOOK_BASE_URL` gating
 - [`docs/runbooks/01-domain-and-search-console.md`](./01-domain-and-search-console.md) — Step 7 / 14 prerequisite
 - [`docs/marketplace-readiness.md`](../marketplace-readiness.md) — §3 / §5

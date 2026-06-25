@@ -11,7 +11,7 @@ import { signState, verifyState } from "../lib/state";
 import { exchangeCode, fetchUserInfo } from "../services/googleOAuth";
 import { saveGoogleRefreshToken } from "../services/oauthTokenService";
 import { issueSession } from "../services/sessionService";
-import { bootstrapUserSync } from "../services/syncBootstrap";
+import { bootstrapUserSync } from "../services/watch";
 import { upsertUserByGoogleSub } from "../services/userService";
 
 export const oauthRoutes = new Hono<HonoEnv>();

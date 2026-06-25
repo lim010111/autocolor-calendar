@@ -22,7 +22,7 @@ import { syncRoutes } from "./routes/sync";
 import { webhookRoutes } from "./routes/webhooks";
 import { runDailyCostReport } from "./services/dailyCostReport";
 import { rotateBatch } from "./services/tokenRotation";
-import { renewExpiringWatches } from "./services/watchRenewal";
+import { renewExpiringWatches } from "./services/watch";
 
 // §3 후속 — cron strings MUST stay in lockstep with `wrangler.toml`
 // `[env.dev.triggers].crons`. The dispatcher in `scheduled()` routes by

@@ -2,9 +2,9 @@
 //
 // Google caps Watch channel lifetime at 7 days. We renew ~24h before expiry
 // to tolerate a missed cron tick without losing real-time push delivery.
-// Each user's renewal is independent: we stop the old channel, register a
-// fresh one, and continue even if individual users fail (logged per-user;
-// the batch keeps going).
+// Each user's renewal is independent: the shared core stops the old channel,
+// registers a fresh one, and the batch continues even if individual users fail
+// (logged per-user; the batch keeps going).
 //
 // Called from `scheduled` handler (wrangler.toml [env.dev.triggers] crons).
 // Per-row concurrency is guarded by `claimWatchRenewal` / `releaseWatchRenewal`
@@ -18,12 +18,10 @@
 import { and, eq, lt, sql, isNotNull } from "drizzle-orm";
 import type { PostgresJsDatabase } from "drizzle-orm/postgres-js";
 
-import { syncState } from "../db/schema";
-import type { Bindings } from "../env";
-import { claimWatchRenewal, releaseWatchRenewal } from "../lib/watchClaim";
-import { CalendarApiError } from "./googleCalendar";
-import { getValidAccessToken, ReauthRequiredError } from "./tokenRefresh";
-import { registerWatchChannel, stopWatchChannel } from "./watchChannel";
+import { syncState } from "../../db/schema";
+import type { Bindings } from "../../env";
+import { claimWatchRenewal, releaseWatchRenewal } from "../../lib/watchClaim";
+import { reRegisterWatch } from "./core";
 
 // Cloudflare scheduled Workers are CPU-bound (default 30s). Hard cap the
 // per-invocation batch so one long tail doesn't starve the remaining work;
@@ -102,35 +100,36 @@ export async function renewExpiringWatches(
     }
 
     try {
-      const { accessToken } = await getValidAccessToken(db, env, row.userId);
-      // Stop the old channel first so we don't accumulate duplicates. 404 is
-      // absorbed inside stopWatchChannel — expired channels are indistinguishable
-      // from "already stopped".
-      await stopWatchChannel(db, accessToken, row.userId, row.calendarId);
-      await registerWatchChannel(
-        db,
-        accessToken,
-        row.userId,
-        row.calendarId,
-        env.WEBHOOK_BASE_URL,
-      );
-      summary.renewed += 1;
-    } catch (err) {
-      const code =
-        err instanceof ReauthRequiredError
-          ? "reauth_required"
-          : err instanceof CalendarApiError
-            ? err.kind
-            : "unknown";
-      // Reauth is a terminal state (user must re-connect); not a cron retry
-      // concern. Rate limit / server errors will be retried next tick.
+      // The core stops the old channel first (404 absorbed — expired channels
+      // are indistinguishable from "already stopped") then registers a fresh
+      // one. Reauth is a terminal state (user must re-connect); rate limit /
+      // server errors will be retried next tick.
+      const result = await reRegisterWatch(db, env, row.userId, row.calendarId);
+      if ("ok" in result) {
+        summary.renewed += 1;
+      } else if ("failed" in result) {
+        const code =
+          result.failed === "reauth_required" ? "reauth_required" : result.kind;
+        console.warn(
+          JSON.stringify({
+            level: "warn",
+            msg: "watch renewal failed",
+            userId: row.userId,
+            calendarId: row.calendarId,
+            code,
+          }),
+        );
+        summary.failed += 1;
+      }
+      // skipped (WEBHOOK_BASE_URL unset) — unreachable past the guard above.
+    } catch {
       console.warn(
         JSON.stringify({
           level: "warn",
           msg: "watch renewal failed",
           userId: row.userId,
           calendarId: row.calendarId,
-          code,
+          code: "unknown",
         }),
       );
       summary.failed += 1;

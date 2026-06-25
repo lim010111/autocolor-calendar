@@ -159,7 +159,7 @@ export const syncState = pgTable(
     // get their first manual trigger.
     lastManualTriggerAt: timestamp("last_manual_trigger_at", { withTimezone: true }),
     // Watch self-heal cooldown. Stamped only by `maybeSelfHealWatch`
-    // (`src/services/watchSelfHeal.ts`) immediately before each register
+    // (`src/services/watch/selfHeal.ts`) immediately before each register
     // attempt, success or failure. The 10-min cooldown gate inside the helper
     // reads this column to prevent retry storms when registration keeps
     // failing. NULL = no prior attempt observed → next call attempts

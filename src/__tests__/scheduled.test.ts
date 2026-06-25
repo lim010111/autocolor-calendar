@@ -23,7 +23,7 @@ vi.mock("../db", () => ({
   }),
 }));
 
-vi.mock("../services/watchRenewal", () => ({
+vi.mock("../services/watch/renewal", () => ({
   renewExpiringWatches: (...args: unknown[]) => renewMock(...args),
 }));
 

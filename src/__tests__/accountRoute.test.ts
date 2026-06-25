@@ -69,33 +69,14 @@ vi.mock("../services/googleOAuth", () => ({
   revokeRefreshToken: (...args: unknown[]) => revokeRefreshTokenMock(...args),
 }));
 
-const stopWatchChannelMock = vi.fn();
-vi.mock("../services/watchChannel", () => ({
-  stopWatchChannel: (...args: unknown[]) => stopWatchChannelMock(...args),
-}));
-
-const { ReauthRequiredErrorMock } = vi.hoisted(() => ({
-  ReauthRequiredErrorMock: class ReauthRequiredError extends Error {
-    public readonly reason: string;
-    constructor(reason: string) {
-      super(`reauth_required: ${reason}`);
-      this.name = "ReauthRequiredError";
-      this.reason = reason;
-    }
-  },
-}));
-const getValidAccessTokenMock = vi.fn();
-vi.mock("../services/tokenRefresh", () => ({
-  getValidAccessToken: (...args: unknown[]) => getValidAccessTokenMock(...args),
-  ReauthRequiredError: ReauthRequiredErrorMock,
-  TokenRefreshError: class TokenRefreshError extends Error {
-    public readonly status: number;
-    constructor(status: number, message: string) {
-      super(message);
-      this.name = "TokenRefreshError";
-      this.status = status;
-    }
-  },
+// The account-deletion channels.stop loop is absorbed by
+// `teardownWatchesForUser`; the route is a thin caller. The loop's own
+// best-effort discipline (per-row warn, no-token skip, never-throw) is pinned
+// in watchTeardown.test.ts — here we mock the seam and assert the deletion
+// order + that teardown sits at Step 2.
+const teardownMock = vi.fn();
+vi.mock("../services/watch/teardown", () => ({
+  teardownWatchesForUser: (...args: unknown[]) => teardownMock(...args),
 }));
 
 const getGoogleRefreshTokenMock = vi.fn();
@@ -149,10 +130,7 @@ describe("POST /api/account/delete", () => {
     revokeRefreshTokenMock
       .mockReset()
       .mockResolvedValue(undefined);
-    stopWatchChannelMock.mockReset().mockResolvedValue(undefined);
-    getValidAccessTokenMock
-      .mockReset()
-      .mockResolvedValue({ accessToken: "at", expiresAt: Date.now() + 60_000 });
+    teardownMock.mockReset().mockResolvedValue(undefined);
     getGoogleRefreshTokenMock.mockReset().mockResolvedValue({
       refreshToken: "rt",
       scope: "openid email https://www.googleapis.com/auth/calendar",
@@ -175,21 +153,18 @@ describe("POST /api/account/delete", () => {
     );
     expect(res.status).toBe(401);
     expect(revokeRefreshTokenMock).not.toHaveBeenCalled();
-    expect(stopWatchChannelMock).not.toHaveBeenCalled();
+    expect(teardownMock).not.toHaveBeenCalled();
     expect(deleteMock).not.toHaveBeenCalled();
     expect(revokeSessionMock).not.toHaveBeenCalled();
   });
 
-  it("happy path: revoke → channels.stop (per active watch row) → DELETE users → revokeSession, returns 200", async () => {
-    // Step 2 select returns 2 active watch rows.
-    selectBatches.push([{ calendarId: "cal-a" }, { calendarId: "cal-b" }]);
-
+  it("happy path: revoke → teardownWatchesForUser → DELETE users → revokeSession, returns 200", async () => {
     const callOrder: string[] = [];
     revokeRefreshTokenMock.mockImplementationOnce(async () => {
       callOrder.push("revoke");
     });
-    stopWatchChannelMock.mockImplementation(async (_db, _at, _uid, calId) => {
-      callOrder.push(`stop:${calId}`);
+    teardownMock.mockImplementationOnce(async () => {
+      callOrder.push("teardown");
     });
     deleteMock.mockReturnValueOnce({
       where: () => {
@@ -205,71 +180,41 @@ describe("POST /api/account/delete", () => {
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual({ ok: true });
 
+    // §3 order: revoke → watch-teardown (Step 2) → users delete → session revoke.
     expect(callOrder).toEqual([
       "revoke",
-      "stop:cal-a",
-      "stop:cal-b",
+      "teardown",
       "delete-users",
       "revoke-session",
     ]);
-    expect(stopWatchChannelMock).toHaveBeenCalledTimes(2);
+    expect(teardownMock).toHaveBeenCalledTimes(1);
     expect(deleteMock).toHaveBeenCalledTimes(1);
     expect(revokeSessionMock).toHaveBeenCalledTimes(1);
   });
 
-  it("Google revoke failure → still 200, watch-stop and delete still run", async () => {
-    selectBatches.push([{ calendarId: "cal-a" }]);
+  it("Google revoke failure → still 200, teardown and delete still run", async () => {
     // Simulate revoke throwing despite the helper's contract (defense-in-depth).
     revokeRefreshTokenMock.mockRejectedValueOnce(new Error("network down"));
 
     const res = await postDelete();
     expect(res.status).toBe(200);
-    expect(stopWatchChannelMock).toHaveBeenCalledTimes(1);
+    expect(teardownMock).toHaveBeenCalledTimes(1);
     expect(deleteMock).toHaveBeenCalledTimes(1);
     expect(revokeSessionMock).toHaveBeenCalledTimes(1);
   });
 
-  it("channels.stop failure on one row → other rows still attempted, still 200", async () => {
-    selectBatches.push([{ calendarId: "cal-a" }, { calendarId: "cal-b" }]);
-    stopWatchChannelMock
-      .mockRejectedValueOnce(new Error("calendar api 500"))
-      .mockResolvedValueOnce(undefined);
-
-    const res = await postDelete();
-    expect(res.status).toBe(200);
-    expect(stopWatchChannelMock).toHaveBeenCalledTimes(2);
-    expect(deleteMock).toHaveBeenCalledTimes(1);
-  });
-
-  it("no oauth_tokens row → skip Google revoke + skip watch-stop, still 200", async () => {
+  it("no oauth_tokens row → skip Google revoke, teardown + delete still run, still 200", async () => {
     getGoogleRefreshTokenMock.mockResolvedValueOnce(null);
-    getValidAccessTokenMock.mockRejectedValueOnce(
-      new ReauthRequiredErrorMock("no_refresh_token"),
-    );
 
     const res = await postDelete();
     expect(res.status).toBe(200);
     expect(revokeRefreshTokenMock).not.toHaveBeenCalled();
-    expect(stopWatchChannelMock).not.toHaveBeenCalled();
-    expect(deleteMock).toHaveBeenCalledTimes(1);
-    expect(revokeSessionMock).toHaveBeenCalledTimes(1);
-  });
-
-  it("reauth_required (invalid_grant) → skip watch-stop, revoke still attempted, still 200", async () => {
-    getValidAccessTokenMock.mockRejectedValueOnce(
-      new ReauthRequiredErrorMock("invalid_grant"),
-    );
-
-    const res = await postDelete();
-    expect(res.status).toBe(200);
-    expect(revokeRefreshTokenMock).toHaveBeenCalledTimes(1);
-    expect(stopWatchChannelMock).not.toHaveBeenCalled();
+    expect(teardownMock).toHaveBeenCalledTimes(1);
     expect(deleteMock).toHaveBeenCalledTimes(1);
     expect(revokeSessionMock).toHaveBeenCalledTimes(1);
   });
 
   it("users delete failure surfaces 500", async () => {
-    selectBatches.push([]);
     deleteMock.mockReturnValueOnce({
       where: () => Promise.reject(new Error("db down")),
     });

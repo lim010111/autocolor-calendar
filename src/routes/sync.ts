@@ -6,11 +6,11 @@ import { oauthTokens, syncState } from "../db/schema";
 import type { HonoEnv } from "../env";
 import { authMiddleware } from "../middleware/auth";
 import { enqueueSync, SyncQueueUnavailableError } from "../queues/syncProducer";
-import { CalendarApiError } from "../services/googleCalendar";
-import { bootstrapUserSync } from "../services/syncBootstrap";
-import { getValidAccessToken, ReauthRequiredError } from "../services/tokenRefresh";
-import { registerWatchChannel, stopWatchChannel } from "../services/watchChannel";
-import { maybeSelfHealWatch } from "../services/watchSelfHeal";
+import {
+  bootstrapUserSync,
+  maybeSelfHealWatch,
+  reconnectWatch,
+} from "../services/watch";
 
 export const syncRoutes = new Hono<HonoEnv>();
 
@@ -189,67 +189,29 @@ syncRoutes.post("/heal-watch", async (c) => {
   const userId = c.get("userId");
   const { db, close } = getDb(c.env);
   try {
-    if (!c.env.WEBHOOK_BASE_URL) {
-      // Dev shell — Google rejects workers.dev for push notifications, so
-      // there's nothing this endpoint can register. Surface as 503 with a
-      // distinct code so GAS can show "이 환경에서는 자동 동기화 불가".
-      return c.json({ error: "webhook_unconfigured" }, 503);
+    const result = await reconnectWatch(db, c.env, userId);
+    if ("ok" in result) {
+      return c.json({ ok: true, expiresAt: result.expiration.toISOString() }, 200);
     }
-
-    const tokRows = await db
-      .select({ needsReauth: oauthTokens.needsReauth })
-      .from(oauthTokens)
-      .where(and(eq(oauthTokens.userId, userId), eq(oauthTokens.provider, "google")))
-      .limit(1);
-    if (!tokRows[0] || tokRows[0].needsReauth) {
-      return c.json({ error: "reauth_required" }, 503);
-    }
-
-    const ssRows = await db
-      .select({
-        calendarId: syncState.calendarId,
-        active: syncState.active,
-      })
-      .from(syncState)
-      .where(and(eq(syncState.userId, userId), eq(syncState.calendarId, PRIMARY)))
-      .limit(1);
-    const ss = ssRows[0];
-    if (!ss) {
-      // Onboarding wasn't completed — bootstrap creates the row. Surface as
-      // 409 so GAS routes to the onboarding card.
-      return c.json({ error: "not_bootstrapped" }, 409);
-    }
-    if (!ss.active) {
-      return c.json({ error: "calendar_inactive" }, 409);
-    }
-
-    let accessToken: string;
-    try {
-      const res = await getValidAccessToken(db, c.env, userId);
-      accessToken = res.accessToken;
-    } catch (err) {
-      if (err instanceof ReauthRequiredError) {
+    switch (result.error) {
+      case "webhook_unconfigured":
+        // Dev shell — Google rejects workers.dev for push notifications, so
+        // there's nothing to register. Distinct code so GAS can show
+        // "이 환경에서는 자동 동기화 불가".
+        return c.json({ error: "webhook_unconfigured" }, 503);
+      case "reauth_required":
         return c.json({ error: "reauth_required" }, 503);
-      }
-      throw err;
-    }
-
-    try {
-      await stopWatchChannel(db, accessToken, userId, PRIMARY);
-      const reg = await registerWatchChannel(
-        db,
-        accessToken,
-        userId,
-        PRIMARY,
-        c.env.WEBHOOK_BASE_URL,
-      );
-      return c.json(
-        { ok: true, expiresAt: reg.expiration.toISOString() },
-        200,
-      );
-    } catch (err) {
-      if (err instanceof CalendarApiError) {
-        switch (err.kind) {
+      case "not_bootstrapped":
+        // Onboarding wasn't completed — bootstrap creates the row. 409 so GAS
+        // routes to the onboarding card.
+        return c.json({ error: "not_bootstrapped" }, 409);
+      case "calendar_inactive":
+        return c.json({ error: "calendar_inactive" }, 409);
+      case "api_error":
+        // Thin kind → HTTP mapping kept inline (mapper extraction is a separate
+        // deepening candidate). Watch's throwWatchError never sets Retry-After,
+        // so rate_limited is a fixed 1s — matching the prior `?? 1` fallback.
+        switch (result.kind) {
           case "auth":
             return c.json({ error: "reauth_required" }, 503);
           case "forbidden":
@@ -257,7 +219,7 @@ syncRoutes.post("/heal-watch", async (c) => {
           case "not_found":
             return c.json({ error: "calendar_not_found" }, 404);
           case "rate_limited": {
-            const retryAfter = err.retryAfterSec ?? 1;
+            const retryAfter = 1;
             return c.json(
               { error: "rate_limited", retry_after_sec: retryAfter },
               429,
@@ -269,13 +231,16 @@ syncRoutes.post("/heal-watch", async (c) => {
           case "unknown":
             return c.json({ error: "upstream_unavailable" }, 502);
           default: {
-            const _exhaustive: never = err.kind;
+            const _exhaustive: never = result.kind;
             void _exhaustive;
             return c.json({ error: "upstream_unavailable" }, 502);
           }
         }
+      default: {
+        const _exhaustive: never = result;
+        void _exhaustive;
+        return c.json({ error: "upstream_unavailable" }, 502);
       }
-      throw err;
     }
   } finally {
     c.executionCtx.waitUntil(close());

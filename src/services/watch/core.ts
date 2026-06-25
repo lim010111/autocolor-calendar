@@ -1,18 +1,29 @@
-// §4B Google Calendar Watch channel lifecycle.
+// §4B Google Calendar Watch channel lifecycle — shared (re)registration core.
 //
-// Register: mints a random channel ID + token, POSTs /events/watch with the
-// webhook URL, persists (channel_id, resource_id, token, expiration) on the
-// sync_state row. Stop: POSTs /channels/stop and clears the columns.
+// `reRegisterWatch` is the ONE shared core the four registration entry points
+// (bootstrap / selfHeal / renewal / reconnect) compose on top of. It owns the
+// WEBHOOK_BASE_URL guard, the access-token fetch (+ ReauthRequiredError
+// mapping), the stop → register ordering, and the CalendarApiError classify —
+// the ≈15 lines that were duplicated across all four callers.
+//
+// `registerWatchChannel` / `stopWatchChannel` are MODULE-PRIVATE: importable by
+// siblings inside `src/services/watch/` only (teardown needs stop), and barred
+// from every other path by the ESLint `no-restricted-imports` seam. The prose
+// rule in `src/CLAUDE.md` "Watch self-heal" — "never call registerWatchChannel
+// directly from a new code path" — is enforced structurally here, not by
+// convention. New registration entry points compose `reRegisterWatch`.
 //
 // Per-channel random tokens are the auth signal for webhook receipt — see
-// routes/webhooks.ts for the verification path and
+// `receipt.ts` for the verification path and
 // drizzle/0005_watch_channel_token.sql for the schema rationale.
 
 import { and, eq, sql } from "drizzle-orm";
 import type { PostgresJsDatabase } from "drizzle-orm/postgres-js";
 
-import { syncState } from "../db/schema";
-import { CalendarApiError } from "./googleCalendar";
+import { syncState } from "../../db/schema";
+import type { Bindings } from "../../env";
+import { CalendarApiError } from "../googleCalendar";
+import { getValidAccessToken, ReauthRequiredError } from "../tokenRefresh";
 
 const CALENDAR_BASE = "https://www.googleapis.com/calendar/v3";
 
@@ -76,25 +87,9 @@ export type WatchRegistration = {
   expiration: Date;
 };
 
-// Constant-time token comparison. Workers Runtime lacks
-// `crypto.subtle.timingSafeEqual`, so we XOR byte-by-byte. The length check is
-// a short-circuit — a length mismatch is inherently a negative and doesn't
-// leak useful timing since the legitimate token length is public anyway.
-export function verifyChannelToken(
-  stored: string | null | undefined,
-  received: string | null | undefined,
-): boolean {
-  if (!stored || !received) return false;
-  if (stored.length !== received.length) return false;
-  let mismatch = 0;
-  for (let i = 0; i < stored.length; i++) {
-    mismatch |= stored.charCodeAt(i) ^ received.charCodeAt(i);
-  }
-  return mismatch === 0;
-}
-
 /**
- * Registers a new Watch channel for `calendarId`.
+ * Registers a new Watch channel for `calendarId`. MODULE-PRIVATE — compose
+ * `reRegisterWatch` instead of calling this directly.
  *
  * Caller is responsible for ensuring any previous channel was stopped first —
  * Google accepts overlapping registrations but they double-deliver and share
@@ -162,7 +157,7 @@ export async function registerWatchChannel(
 /**
  * Stops the current Watch channel (if any) and clears the columns. 404 from
  * Google is treated as success — the channel has already expired or never
- * existed, and either way the local state should be cleared.
+ * existed, and either way the local state should be cleared. MODULE-PRIVATE.
  */
 export async function stopWatchChannel(
   db: PostgresJsDatabase,
@@ -209,48 +204,58 @@ export async function stopWatchChannel(
     );
 }
 
-export type ChannelLookup = {
-  userId: string;
-  calendarId: string;
-  storedToken: string;
-  active: boolean;
-};
+// Result of a (re)registration attempt. The four registration entry points
+// branch on this union and layer their own policy (enqueue / cooldown stamp /
+// claim / active gate) on top. Unexpected (non-reauth, non-CalendarApiError)
+// failures are NOT folded into this union — `reRegisterWatch` rethrows them so
+// each caller preserves its prior handling (reconnect → 500, the rest → a
+// best-effort "unknown" warn).
+export type ReRegisterResult =
+  | { ok: true; expiration: Date }
+  | { skipped: "webhook_unconfigured" }
+  | { failed: "reauth_required" }
+  | { failed: "api_error"; kind: CalendarApiError["kind"] };
 
 /**
- * Resolves a (channelId, resourceId) pair sent via X-Goog-* headers back to
- * the owning sync_state row. Returns null when no row matches — caller must
- * treat this as "unauthorized" (we don't own this channel) rather than 404,
- * to avoid an enumeration oracle.
+ * The shared (re)registration core. Guards on WEBHOOK_BASE_URL, fetches a valid
+ * access token (mapping ReauthRequiredError → `reauth_required`), stops any
+ * existing channel, registers a fresh one, and classifies a CalendarApiError
+ * into `api_error` + kind. The `oauth_tokens.needs_reauth` *column* precheck is
+ * deliberately left to callers (a round-trip optimisation + per-caller policy).
  */
-export async function lookupChannelOwner(
+export async function reRegisterWatch(
   db: PostgresJsDatabase,
-  channelId: string,
-  resourceId: string,
-): Promise<ChannelLookup | null> {
-  const rows = await db
-    .select({
-      userId: syncState.userId,
-      calendarId: syncState.calendarId,
-      storedToken: syncState.watchChannelToken,
-      active: syncState.active,
-    })
-    .from(syncState)
-    .where(
-      and(
-        eq(syncState.watchChannelId, channelId),
-        eq(syncState.watchResourceId, resourceId),
-      ),
-    )
-    .limit(1);
-  const row = rows[0];
-  if (!row || !row.storedToken) return null;
-  return {
-    userId: row.userId,
-    calendarId: row.calendarId,
-    storedToken: row.storedToken,
-    active: row.active,
-  };
-}
+  env: Bindings,
+  userId: string,
+  calendarId: string,
+): Promise<ReRegisterResult> {
+  // Dev shells leave WEBHOOK_BASE_URL unset (Google rejects workers.dev for
+  // watch.create), so the entire path no-ops there — before paying a token
+  // round-trip. Mirrors the guard the four callers used to hold individually.
+  if (!env.WEBHOOK_BASE_URL) return { skipped: "webhook_unconfigured" };
 
-// Re-export for call sites that need to narrow on watch-specific failures.
-export { CalendarApiError };
+  let accessToken: string;
+  try {
+    ({ accessToken } = await getValidAccessToken(db, env, userId));
+  } catch (err) {
+    if (err instanceof ReauthRequiredError) return { failed: "reauth_required" };
+    throw err;
+  }
+
+  try {
+    await stopWatchChannel(db, accessToken, userId, calendarId);
+    const reg = await registerWatchChannel(
+      db,
+      accessToken,
+      userId,
+      calendarId,
+      env.WEBHOOK_BASE_URL,
+    );
+    return { ok: true, expiration: reg.expiration };
+  } catch (err) {
+    if (err instanceof CalendarApiError) {
+      return { failed: "api_error", kind: err.kind };
+    }
+    throw err;
+  }
+}

@@ -43,7 +43,7 @@ vi.mock("../db", () => ({
 }));
 
 const selfHealMock = vi.fn();
-vi.mock("../services/watchSelfHeal", () => ({
+vi.mock("../services/watch/selfHeal", () => ({
   maybeSelfHealWatch: (...args: unknown[]) => selfHealMock(...args),
 }));
 
