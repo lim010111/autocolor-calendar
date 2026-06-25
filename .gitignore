@@ -46,3 +46,6 @@ __pycache__/
 
 # /teach learning workspace (personal study notes; not project code)
 /.teach/
+
+# merge-gate-local artefact cache (not committed — #30 D3)
+.merge-gate/
