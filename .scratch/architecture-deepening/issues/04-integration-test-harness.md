@@ -1,4 +1,5 @@
 Status: wontfix
+GitHub: #110
 
 ## Deferred (2026-05-26)
 

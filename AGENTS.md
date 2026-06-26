@@ -85,7 +85,7 @@ and lands as `evals/datasets/{lang}/classification.json`.
 
 ### Issue tracker
 
-Issues live as markdown files under `.scratch/<feature>/issues/NN-slug.md` with a `Status:` line at the top. STATUS.md is generated off these. See [docs/agents/issue-tracker.md](docs/agents/issue-tracker.md).
+Issues live as markdown files under `.scratch/<feature>/issues/NN-slug.md` with a `Status:` line at the top — these are **canonical**. STATUS.md is generated off them, and they are mirrored **one-way** to GitHub Issues via `scripts/sync-issues-to-github.py` (local → GitHub; GitHub edits are not pulled back). See [docs/agents/issue-tracker.md](docs/agents/issue-tracker.md).
 
 ### Triage labels
 
