@@ -95,6 +95,10 @@ Canonical role strings (`needs-triage` / `needs-info` / `ready-for-agent` / `rea
 
 Multi-context — [CONTEXT-MAP.md](CONTEXT-MAP.md) at the root points at the cross-cutting glossary and any per-module `CONTEXT.md` files. ADRs at [docs/adr/](docs/adr/). See [docs/agents/domain.md](docs/agents/domain.md).
 
+### Merge gate
+
+머지 게이트 in-scope 변경을 푸시한 뒤에는 **findings 한 패스를 돌릴 것** — `/handle-merge-findings` (consumer-side reproduce-or-refute 루프, ADR-0027): 어드바이저리 findings 를 재현해 증명되면 고치고 하나로 묶어 푸시한 뒤 핸드오프. pass 2 이후는 사람이 게이트한다.
+
 ## See also
 
 - [TODO.md](TODO.md) — active work tracker
