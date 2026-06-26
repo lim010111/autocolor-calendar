@@ -1,6 +1,29 @@
-# Issue tracker: Local Markdown
+# Issue tracker: Local Markdown (canonical) + GitHub mirror
 
-Issues and PRDs for this repo live as markdown files in `.scratch/`.
+Issues and PRDs for this repo live as markdown files in `.scratch/`. These
+files are the **source of truth**; GitHub Issues are a read-only mirror (below).
+
+## GitHub mirror (one-way — local is canonical)
+
+The local files are additionally mirrored to GitHub Issues for visibility
+(notifications, mobile, linking from PRs). The sync is **one-way
+(local → GitHub)** — edits made on GitHub are *not* pulled back. To change an
+issue, edit the markdown file and re-run the sync.
+
+- **Sync script:** `scripts/sync-issues-to-github.py` (needs the `gh` CLI
+  authenticated with `repo` scope). `--dry-run` prints the plan without writing.
+  Re-running is idempotent — it updates each mirrored issue in place.
+- **Link marker:** after the first sync each file gains a `GitHub: #N` line
+  directly under `Status:`. It records the mirror's issue number and is **inert
+  to the status harness** — `status.py` only reads `Status:`, the
+  `## Acceptance criteria` checkboxes, and `## Blocked by`, so the extra line
+  never affects STATUS.md.
+- **Mapping:** `Status:` value → GitHub label; feature directory →
+  `feature:<dir>` label; `Status: done`/`wontfix` *or* all acceptance criteria
+  checked → issue closed (completed / not planned); the file body, including the
+  AC checklist, → issue body under a "mirror — do not edit here" banner.
+- **New issue:** create the markdown file as usual, then run the sync to mint
+  its GitHub mirror.
 
 ## Conventions
 
