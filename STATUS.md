@@ -13,8 +13,12 @@ pair 등)뿐 — Open decisions 참조.
 spec: `.scratch/architecture-deepening/issues/06-watch-channel-lifecycle-module.md`
 
 embedding-classifier (ADR-0004 구현) — Stage 1 substring → 임베딩 kNN.
-#01 (모델 eval) 운영자 로컬 GPU 랩 HITL 대기, 후속 5개는 #01 의 벡터
-차원에 묶여 blocked. 이번 세션 진척 없음.
+#01 (모델 eval) **데이터셋 방향이 이번 grill 로 확정**: 합성 HF 셋 폐기 →
+운영자 **real ko gold set**(합성 0줄, en/zh 이연). 이제 운영자 로컬 3080
+GPU 랩에서 gold set 구축 + sweep (HITL 대기). 후속 5개는 #01 의 벡터
+차원에 묶여 blocked.
+spec: `.scratch/embedding-classifier/issues/01-embedding-model-selection-eval.md`
+(설계 정본: `.scratch/embedding-classifier/01-dataset-design.md`)
 
 운영 posture: main 에 local merge-gate 가 **advisory** 로 활성 — main 기준
 브랜치에서 in-scope 커밋 시 백그라운드 Codex produce, push 시 advisory
@@ -28,8 +32,10 @@ harness-doctor 3/3.
   `watch/core.ts` 의 `classify`/`throwWatchError` 가 `googleCalendar.ts` 와
   중복; `/heal-watch` 의 kind→HTTP switch 도 후보. grill 선행 필요
   (un-grilled), 별도 PR. 전체 후보 목록은 Open decisions.
-- **휴면 — embedding-classifier #01 (임베딩 모델 eval)**: 운영자 로컬
-  3080 GPU 랩에서 HITL 대기. 손대지 말 것.
+- **embedding-classifier #01 (임베딩 모델 eval)**: 데이터셋 결정 완료
+  (real ko gold set — 설계노트 §4). 다음은 운영자 로컬 3080 GPU 랩에서
+  gold set 구축 + 후보 3종 sweep + keyword-form arm — **HITL**(raw 캘린더는
+  로컬 전용·미커밋이라 에이전트가 못 빌드). 결과는 #01 출력 ADR/report 로.
 - 사소한 후속 (block 아님): `src/AGENTS.md` / `llmClassifier.ts` 의
   폐기된 `onLlmCall` / `onLlmAttempted` 콜백 잔존 참조 정리 — 다음 PR 에
   묶기.
@@ -42,11 +48,16 @@ harness-doctor 3/3.
   #01 이 결정. 그전까지 스키마 작업 잠정 기본값은 `embeddinggemma-300m`
   (768d).
 - 등급별 임계값 `T_verified` / `T_declared` / `margin` 의 실제 숫자
-  미확정 — embedding-classifier #01 의 4개 언어 sweep 으로 도출.
-  v1 은 2등급 *구조*만 확정됨.
+  미확정 — embedding-classifier #01 의 **real ko gold set** sweep 으로 도출
+  (합성 4개언어 셋은 폐기). v1 은 2등급 *구조*만 확정, en/zh 는 ko 잠정값
+  차용·미검증. 모델·차원 다국어 안전성은 MTEB/MIRACL ko+zh 크로스체크.
+- keyword 씨앗 존속/형태(단어 vs 구절) 미확정 — #01 의 keyword-form arm
+  (name-only/단어/구절 콜드스타트 비교)이 결정, ADR-0004 후속 finding.
 - examples 씨앗(embedding-classifier #05/#06)은 캘린더 제목의 최초
   durable 저장 → 개인정보처리방침/동의 표면 변경 필요. OAuth 검수
-  (2026-05-14 재제출) 통과 전 출시 불가.
+  (2026-05-14 재제출) 통과 전 출시 불가. **eval 의 persona/en-zh 확장**
+  (#01 gold set 의 단일 persona·ko-only 한계 해소를 위한 제품 내 opt-in
+  익명 기여)도 동일 게이트에 묶임 — 그전 단계는 동의자 오프라인 export.
 - un-grilled architecture-deepening 후보 (#06 외 미착수, 필요 시 별도
   grill): CalendarApiError factory + kind→HTTP mapper (`watch/core.ts`
   classify 가 `googleCalendar.ts` 와 중복; #06 이 옮겼을 뿐 dedup 별도),
@@ -77,11 +88,11 @@ harness-doctor 3/3.
 
 ## embedding-classifier
 
-`░░░░░░░░░░░░░░░░░░░░░░` 0/38 acceptance criteria met (0%)
+`░░░░░░░░░░░░░░░░░░░░░░` 0/41 acceptance criteria met (0%)
 
 | # | Issue | Triage | Criteria | State | Blocked by |
 |---|-------|--------|----------|-------|-----------|
-| 01 | Embedding model selection eval | `ready-for-human` | 0/4 | ⬜ todo | — |
+| 01 | Embedding model selection eval | `ready-for-human` | 0/7 | ⬜ todo | — |
 | 02 | Embedding knn classifier name seeds | `ready-for-agent` | 0/8 | ⛔ blocked | #01 |
 | 03 | Keyword seeds | `ready-for-agent` | 0/5 | ⛔ blocked | #02 |
 | 04 | Rule editor redesign | `ready-for-agent` | 0/5 | ⛔ blocked | #03 |
