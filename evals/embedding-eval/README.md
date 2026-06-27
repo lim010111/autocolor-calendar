@@ -7,6 +7,9 @@ model + vector dimension for the ADR-0004 Stage-1 kNN classifier and sweeps the
 Spec `01-embedding-model-selection-eval.md` + design `01-dataset-design.md`, both
 under `.scratch/embedding-classifier/` (`issues/` for the spec).
 
+**운영자 HITL 런북 (한국어):** [OPERATOR-GUIDE.md](OPERATOR-GUIDE.md) — 골드셋 구축 →
+매니페스트 → 3080 sweep/parity → 결정+ADR 까지, 당신이 해야 하는 단계만.
+
 ## HITL seam — who runs what
 
 | Agent-scaffolded (this package, committed) | Operator-only (local 3080, PII) |
