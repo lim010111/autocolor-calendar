@@ -79,6 +79,13 @@ query case 는 `{title, expected: <category>|none}`. **`example_seeds[]` 가 핵
    비교 — **arm1 name-only / arm2 name+단어 keyword / arm3 name+구절 declared**. keyword 가
    name 대비 값을 버는지·번다면 어떤 형태인지 데이터로 판정. name-only≈name+keyword 면
    keyword 폐기(Simplicity). → ADR-0004 후속 finding.
+7. **버전·집계 manifest (커밋 가능).** gold set 에 버전 문자열(`ko-v1`)을 부여하고 집계
+   manifest 를 커밋한다 — 카테고리명 · 카테고리별 seed/query 카운트 · 정규화 seed+query
+   텍스트의 `sha256`. **원시 제목은 manifest 에 0줄**(해시·카운트만): "원시는 로컬을 안
+   떠난다" 불변항을 지키면서 run 을 gold set 버전에 핀고정한다(ledger 의 `manifest_sha256`).
+   §4.5 모호 경계쌍은 **cooling-period 재라벨 self-consistency** 불일치율을 manifest 메모로
+   남긴다(단일 annotator 한계 가드 — gold set 라벨이 운영자 1인 판단이라 inter-annotator
+   κ 가 없으므로 self-consistency 가 차선책).
 
 ## 5. 측정/산출
 
@@ -102,6 +109,50 @@ query case 는 `{title, expected: <category>|none}`. **`example_seeds[]` 가 핵
 - 모델·차원(768/1024) 다국어 안전성 = MTEB/MIRACL ko+zh 크로스체크.
 - 선정 모델 1종 + 벡터 차원 결정·기록 → ADR(0002형식 후속 측정) 또는 eval report.
 
+### 5-견고화 (2026-06-27 harden-issue): 하네스 · 추적 · 목표함수 · 전이
+
+1. **HITL seam — data-blind 하네스는 에이전트가 선스캐폴드.** 운영자 전담은 *로컬 PII
+   단계만*(gold set 빌드·라벨·로컬 sweep 실행·집계 커밋). 원시데이터에 닿지 않는 하네스는
+   에이전트가 커밋한다 — `evals/embedding-eval/`: `sweep.py`(config grid→metrics) ·
+   `metrics.py`(precision/coverage/none-FP/margin/macro-F1) · `ledger.py`(`runs.jsonl`
+   스키마+write, wandb 송신 게이트) · `wai_parity.py`(비-PII 정합 프로브) ·
+   `REPORT.md.tmpl`. (실행은 별도 구현 세션 — 본 노트는 스펙만.)
+2. **run 레코드 스키마 (재현성).** config eval 1건 = 1줄:
+   `{run_id, git_sha, kind:"embedding_knn_sweep", tool:"embedding-model-eval",
+   model, dim, prompt_arm, prompt_prefix, prompt_prefix_sha256_16, keyword_form_arm,
+   gold_set_version, manifest_sha256, n_categories, n_held_out_none, n_seeds, n_queries,
+   split, seed, determinism:{dtype:"fp32", normalize:"l2"},
+   embedding_backend:"local-3080"|"workers-ai", model_revision, k:"all-seeds", agg:"max",
+   metric:"cosine", thresholds:{T_verified,T_declared,margin},
+   metrics:{coverage, verified_precision, none_false_apply, macro_f1, per_category{...}},
+   wai_parity:{checked, mean_cosine, provisional}, selected}`. 동일 (config, gold set) →
+   동일 결과(seed·dtype 고정). kNN 하이퍼파라미터는 ADR-0004 그대로 `k=씨앗 풀 전체`,
+   `agg=max`, `metric=cosine`, L2 정규화.
+3. **추적 = wandb(집계-only) + 로컬 `runs.jsonl`(정본).** 운영자 결정 = wandb. 단 gold set 은
+   원시 ko 제목(PII, 로컬-only)이므로 **PII-safe 계약**을 둔다:
+   - wandb 송신 = config·하이퍼파라미터·스칼라 metric·임계값·**카테고리명** confusion 만
+     (전부 집계).
+   - **절대 미송신** = `seed_text` / query `title` / 케이스별 예측 텍스트 등 원시 캘린더
+     문자열. 케이스별 forensics 는 로컬 `scratchpad/forensics/<run_id>.jsonl` 에만.
+   - 집계 **정본**은 로컬 append-only `runs.jsonl`(`evals/agent-results.json` 선례).
+     wandb 는 sweep/UI **augmentation** — ADR-0001 의 "tracker=augmentation, ledger=SoT"
+     자세 그대로.
+   - 이 결정은 **ADR 후보**다(ADR-0001 consequence (b) "PII dataset → SaaS 재평가"와 정면
+     으로 만남). #01 출력 ADR 에 wandb 채택 + aggregates-only 계약 + divergence rationale
+     를 기록한다(§7). `WANDB_*` 키는 `.dev.vars` 전용 — Worker/CI 주입 금지(ADR-0001 의
+     `LANGFUSE_*` 패턴 재사용).
+4. **임계값 선정 목표함수 = 정밀도 우선.** sweep 그리드에서 승자 (model, dim, thresholds)
+   를 고르는 규칙: **Verified auto-apply 정밀도 바닥선**과 **`expected=none` 오적용 상한**을
+   제약으로 두고 그 안에서 **커버리지(자동적용률) 최대화**. `T_declared` 는 Stage-2 핸드오프
+   recall 로 튜닝. ADR-0004 의 "약한 증거로 추측하느니 Stage-2 양보" 보수성과 정합. 바닥선·
+   상한 수치는 sweep 결과로 박는다. (대안 macro-F1 은 오적용/미적용 비용을 동일 취급해 기각.)
+5. **3080 ↔ Workers AI 전이 타당성.** eval 산출(모델+임계값)은 prod(WAI 스택)이 소비하는데
+   로컬 임베딩이 WAI 와 bit-identical 보장이 없다(양자화·런타임·풀링 차이 가능). `wai_parity.py`
+   로 **비-PII 문자열** 집합을 로컬과 Workers-AI 양쪽에 임베딩해 mean cosine 정합을 기록한다.
+   정합 확인 전 임계값은 **provisional**. Workers AI 는 PII 경계 *안*(제목이 Cloudflare 밖으로
+   안 나감 — ADR-0004)이므로, 승자 모델의 **최종 임계값은 WAI 에서 직접 재측정해 확정**할 수
+   있다(3080 은 빠른 탐색용).
+
 ## 6. known-limitations + 로드맵 (추적·점증 개선)
 
 두 external-validity 갭은 **blocker 가 아니라 추적 대상**:
@@ -118,3 +169,7 @@ query case 는 `{title, expected: <category>|none}`. **`example_seeds[]` 가 핵
 
 - ADR-0004 후속: keyword-form arm 결과 → keyword 존속/폐기/형태(단어 vs 구절) finding.
 - #01 출력 ADR(0002형식) 또는 eval report 가 후속 슬라이스(차원·모델)의 참조점.
+- **추적 인프라 → #01 출력 ADR 에 fold-in (결정 2026-06-27).** wandb 채택(eval-only) +
+  aggregates-only PII 계약 + 로컬 `runs.jsonl` 정본 — ADR-0001 의 "PII dataset → SaaS 송신
+  재평가" consequence 와 만나므로 divergence rationale 를 **#01 출력 ADR 의 방법론 섹션**에
+  기록한다(별도 ADR 안 만듦).
