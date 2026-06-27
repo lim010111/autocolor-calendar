@@ -56,8 +56,32 @@ def _backend_factory(kind: str):
     sys.exit(f"unknown --backend {kind} (use: fake | local)")
 
 
+def _verify_manifest(gold) -> str:
+    """Recompute the corpus digest and cross-check the committed manifest (finding-2).
+
+    Runs are pinned to ``manifest_sha256`` (AC #2/#10). If a committed
+    ``manifest.json`` exists, its digest MUST match the gold set being swept —
+    otherwise the run would be pinned to a digest that was never reviewed/committed
+    (the committed manifest is the only reviewable evidence; raw gold is local-only).
+    Drift → hard stop; no committed manifest yet → warn but allow exploratory sweeps.
+    """
+    digest = corpus_digest(gold)
+    if config.MANIFEST_PATH.exists():
+        committed = json.loads(config.MANIFEST_PATH.read_text(encoding="utf-8")).get("manifest_sha256")
+        if committed != digest:
+            sys.exit(
+                "gold-set drift: committed manifest.json digest != current gold set.\n"
+                f"  committed={committed}\n  current  ={digest}\n"
+                "  re-run `embedding-eval manifest` and commit, or check the gold-set version."
+            )
+    else:
+        print("  warning: no committed manifest.json pins this run — run `manifest` first.")
+    return digest
+
+
 def cmd_sweep(args) -> None:
     gold = _load(args.version)
+    digest = _verify_manifest(gold)
     models = args.models or list(CANDIDATES)
     configs = enumerate_configs(
         models,
@@ -72,7 +96,7 @@ def cmd_sweep(args) -> None:
         configs,
         grid,
         backend_factory=_backend_factory(args.backend),
-        manifest_sha256=corpus_digest(gold),
+        manifest_sha256=digest,
     )
     winner, feasible = select_winner(
         records,
@@ -134,7 +158,14 @@ def build_parser() -> argparse.ArgumentParser:
 
     s = sub.add_parser("sweep", help="run the model/prompt/keyword × threshold sweep")
     s.add_argument("--version", default="ko-v1")
-    s.add_argument("--backend", default="fake", choices=("fake", "local"))
+    s.add_argument(
+        "--backend",
+        required=True,
+        choices=("fake", "local"),
+        help="local = 3080 real measurement; fake = no-GPU smoke only (records are "
+        "backend-tagged but still append to the canonical ledger). Required — no "
+        "default, so a real sweep can never silently run on fake embeddings.",
+    )
     s.add_argument("--models", nargs="*", default=None, help="subset of CANDIDATES (default: all)")
     s.add_argument("--keyword-form-arms", nargs="*", default=list(config.KEYWORD_FORM_ARMS),
                    dest="keyword_form_arms")

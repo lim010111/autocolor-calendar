@@ -64,6 +64,23 @@ WANDB_ALLOWED_KEYS = frozenset(
 _FORBIDDEN_KEY = re.compile(r"(title|seed_text|seed|keyword|name|label|text|prefix)(?!_sha256_16)", re.I)
 # Confusion / per-category keys must be synthetic IDs, never category names.
 _SYNTHETIC_ID = re.compile(r"^(cat_\d+|none)$")
+# Closed allowlist of metric names permitted inside the `metrics` subtree (besides
+# synthetic cat_N/none IDs). Every metric is a numeric aggregate over synthetic IDs;
+# any other key (e.g. `confusion`, `hardest_case`) is a leak vector. Future metric
+# keys must be added here deliberately — that friction is the point of the firewall.
+_METRIC_KEYS = frozenset(
+    {
+        "coverage",
+        "verified_precision",
+        "none_false_apply",
+        "macro_f1",
+        "per_category",
+        "n_queries",
+        "tp",
+        "precision",
+        "recall",
+    }
+)
 
 
 class PiiGateError(RuntimeError):
@@ -81,6 +98,27 @@ def _assert_no_forbidden_keys(obj, path: str = "") -> None:
             _assert_no_forbidden_keys(v, path=f"{path}{i}.")
 
 
+def _assert_metrics_safe(obj, path: str = "metrics.") -> None:
+    """Deny-by-default scan of the ``metrics`` subtree (no free strings, no names).
+
+    Metrics are numeric aggregates over synthetic IDs only, so at every depth:
+    - a raw string VALUE is a leaked title/seed/keyword → reject; and
+    - every dict KEY must be a synthetic ID (cat_N/none) or a vetted metric name.
+    """
+    if isinstance(obj, str):
+        raise PiiGateError(f"raw string value at '{path[:-1]}' would leak PII to wandb")
+    if isinstance(obj, dict):
+        for k, v in obj.items():
+            if not (_SYNTHETIC_ID.match(str(k)) or str(k) in _METRIC_KEYS):
+                raise PiiGateError(
+                    f"metrics key '{path}{k}' is not a synthetic ID or vetted metric name"
+                )
+            _assert_metrics_safe(v, path=f"{path}{k}.")
+    elif isinstance(obj, list):
+        for i, v in enumerate(obj):
+            _assert_metrics_safe(v, path=f"{path}{i}.")
+
+
 def to_wandb_payload(record: dict) -> dict:
     """Project a run record onto the wandb allowlist and assert it is PII-safe."""
     payload = {k: record[k] for k in WANDB_ALLOWED_KEYS if k in record}
@@ -96,6 +134,10 @@ def assert_wandb_safe(payload: dict) -> None:
     2. no *nested* key matches the forbidden pattern (title/seed/keyword/name/text/…) —
        catches a stray raw-text key smuggled inside metrics/thresholds/etc.
     3. per_category / any confusion dict is keyed by synthetic IDs only
+    4. the whole `metrics` subtree is deny-by-default: no free string VALUES, and
+       every key is a synthetic ID or a vetted metric name (closed allowlist) —
+       so a category-name key under *any* dict, or a raw title carried as a value,
+       is rejected, not just the per_category special case.
     """
     extra = set(payload) - WANDB_ALLOWED_KEYS
     if extra:
@@ -106,6 +148,8 @@ def assert_wandb_safe(payload: dict) -> None:
     for key in per_cat:
         if not _SYNTHETIC_ID.match(str(key)):
             raise PiiGateError(f"per_category key '{key}' is not a synthetic ID (cat_N/none)")
+    if "metrics" in payload:
+        _assert_metrics_safe(payload["metrics"])
 
 
 # --- run record assembly --------------------------------------------------
