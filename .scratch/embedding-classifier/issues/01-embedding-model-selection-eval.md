@@ -36,10 +36,14 @@ writer·Workers-AI parity 프로브·리포트 골격)는 원시데이터 무관
       (작은 카테고리 random 폴백), Declared 씨앗은 **blind-authored**.
       (구성 스펙: 설계노트 §4)
 - [ ] **gold set 버전·집계 manifest 커밋** — 로컬-only 셋에 버전 문자열(`ko-v1`)을
-      부여하고 **집계 manifest** 를 커밋한다: 카테고리명 · 카테고리별 seed/query
-      카운트 · 정규화 seed+query 의 `sha256`. **원시 제목은 0줄**(해시·카운트만).
-      모든 run 은 `manifest_sha256` 로 어느 gold set 위에서 돌았는지 핀고정
-      (설계노트 §4 항목7).
+      부여하고 **집계 manifest** 를 커밋한다: 카테고리별 seed/query 카운트 +
+      정규화·정렬·연결한 **전체 코퍼스 단일 다이제스트** `sha256` 1개. **per-title
+      해시 금지** — 7자 평균 짧은 ko 제목의 무염 per-item 해시는 사전공격·brute-force
+      복원이 가능해 커밋 시 원시 제목이 사실상 git 에 누출된다(merge-gate finding-0).
+      per-item 식별이 필요하면 미커밋 로컬 secret 의 **keyed HMAC** 만(공개
+      title-fingerprint 아님 명시). 카테고리명은 **PII-free 일반명사 블라인드 라벨**만
+      (인명·기관·클라이언트 금지 — 설계노트 §3). **원시 제목은 0줄.** 모든 run 은 이
+      단일 `manifest_sha256` 로 어느 gold set 위에서 돌았는지 핀고정(설계노트 §4 항목7).
 - [ ] **단일 annotator 라벨 신뢰도 가드** — 라벨은 운영자 1인 판단(no
       inter-annotator κ). §4.5 모호 경계쌍(개발↔공부, 부트캠프수업↔개발)은
       **cooling-period 후 재라벨 self-consistency** 를 1회 돌려 불일치율을
@@ -72,9 +76,12 @@ writer·Workers-AI parity 프로브·리포트 골격)는 원시데이터 무관
       운영자 전담은 **로컬 PII 단계만**: gold set 빌드 · 로컬 sweep 실행 · 집계 커밋.
 - [ ] **run 추적 = wandb(집계-only) + 로컬 `runs.jsonl`(정본)** — wandb 를
       sweep/metric UI 로 쓰되 **PII-safe 계약**을 강제: config · 하이퍼파라미터 ·
-      스칼라 메트릭 · 임계값 · 카테고리명 confusion 만 송신하고, **씨앗·제목·
-      케이스별 예측 텍스트는 절대 송신 안 함**(케이스별 forensics 는 로컬
-      scratchpad JSONL-only). 집계 정본은 로컬 append-only `runs.jsonl`
+      스칼라 메트릭 · 임계값 · **합성 카테고리 ID**(cat_0…) confusion 만 송신하고,
+      **카테고리명·씨앗·제목·keyword·케이스별 예측 텍스트는 절대 송신 안 함** —
+      카테고리명도 work/학교/건강/관계 맥락을 누출할 수 있어 cloud 제외(merge-gate
+      finding-1), 이름↔ID 맵은 로컬-only. `ledger.py` 의 **wandb 송신 게이트가 raw
+      title·seed_text·keyword·카테고리명을 거부하는 allowlist 스키마**로 강제(케이스별
+      forensics 는 로컬 scratchpad JSONL-only). 집계 정본은 로컬 append-only `runs.jsonl`
       (=`agent-results.json` 선례; ADR-0001 의 "tracker=augmentation, ledger=SoT"
       자세 재현). 이 추적 규약은 **#01 출력 ADR 의 방법론 섹션에 fold-in**
       (별도 ADR 안 만듦) — ADR-0001 의 "PII dataset→SaaS 재평가" consequence 대비
