@@ -202,31 +202,49 @@ def _unescape_cell(s: str) -> str:
     return "".join(out)
 
 
-def write_titles_tsv(rows: list[TitleRow], path: Path) -> None:
-    lines = [
-        "# embedding-eval gold-set labelling worksheet — fill column 1 (replace ?).",
-        "#   <category name>  use a name from the *.categories.json you author",
-        "#   none             irrelevant / held-out title → negative query (expected=none)",
-        "#   x                noise → drop entirely (not in the gold set)",
-        "#   ?                still to do",
-        "# edit COLUMN 1 ONLY. blind-author categories.json from memory BEFORE peeking here.",
-        "category\ttitle\tearliest\tcount",
-    ]
-    for r in rows:
-        lines.append(f"{_PLACEHOLDER}\t{_escape_cell(r.title)}\t{r.earliest}\t{r.count}")
+_WORKSHEET_HEADER = (
+    "# embedding-eval gold-set labelling worksheet — fill column 1 (replace ?).",
+    "#   <category name>  use a name from the *.categories.json you author",
+    "#   none             irrelevant / held-out title → negative query (expected=none)",
+    "#   x                noise → drop entirely (not in the gold set)",
+    "#   ?                still to do",
+    "# edit COLUMN 1 ONLY. blind-author categories.json from memory BEFORE peeking here.",
+    "category\ttitle\tearliest\tcount",
+)
+
+
+def _write_worksheet(rows: list[tuple[str, str, str, int]], path: Path) -> None:
+    """Write (label, title, earliest, count) rows under the standard header/legend.
+
+    ``title`` is re-escaped on the way out so it round-trips through
+    :func:`read_titles_tsv` / :func:`read_titles_tsv_full` losslessly.
+    """
+    lines = list(_WORKSHEET_HEADER)
+    for label, title, earliest, count in rows:
+        lines.append(f"{label}\t{_escape_cell(title)}\t{earliest}\t{count}")
     path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+
+def write_titles_tsv(rows: list[TitleRow], path: Path) -> None:
+    _write_worksheet([(_PLACEHOLDER, r.title, r.earliest, r.count) for r in rows], path)
 
 
 def read_titles_tsv(path: Path) -> list[tuple[str, str, str]]:
     """→ list of (label, title, earliest). Comments / header / blank lines skipped."""
-    rows: list[tuple[str, str, str]] = []
+    return [(label, title, earliest) for label, title, earliest, _ in read_titles_tsv_full(path)]
+
+
+def read_titles_tsv_full(path: Path) -> list[tuple[str, str, str, int]]:
+    """→ list of (label, title, earliest, count), title un-escaped. Header/comments skipped."""
+    rows: list[tuple[str, str, str, int]] = []
     for line in path.read_text(encoding="utf-8").splitlines():
         if not line.strip() or line.startswith("#") or line.startswith("category\t"):
             continue
         parts = line.split("\t")
         if len(parts) < 4:
             raise GoldBuildError(f"malformed worksheet row (need 4 tab columns): {parts[:1]}")
-        rows.append((parts[0].strip(), _unescape_cell(parts[1]), parts[2].strip()))
+        count = int(parts[3].strip()) if parts[3].strip().isdigit() else 0
+        rows.append((parts[0].strip(), _unescape_cell(parts[1]), parts[2].strip(), count))
     return rows
 
 
@@ -353,8 +371,22 @@ def ingest_ics(ics_path: str | Path, version: str, *, window: tuple[str, str] = 
     config.GOLD_DIR.mkdir(parents=True, exist_ok=True)
     tpath = titles_tsv_path(version)
     wrote_worksheet = not tpath.exists()
+    n_existing = 0
+    n_appended = 0
     if wrote_worksheet:
-        write_titles_tsv(rows, tpath)  # never clobber an existing worksheet — guard like the template
+        write_titles_tsv(rows, tpath)
+    else:
+        # Idempotent MERGE (re-ingest of a re-export): carry every existing row forward
+        # verbatim — preserving its operator label — and append the new .ics's titles that
+        # aren't already present (matched by normalize_title) as fresh unlabeled (?) rows.
+        # Nothing is dropped: a narrower re-export never loses already-labelled work.
+        existing = read_titles_tsv_full(tpath)
+        seen = {normalize_title(title) for _, title, _, _ in existing}
+        appended = [r for r in rows if normalize_title(r.title) not in seen]
+        merged = existing + [(_PLACEHOLDER, r.title, r.earliest, r.count) for r in appended]
+        _write_worksheet(merged, tpath)
+        n_existing = len(existing)
+        n_appended = len(appended)
     cpath = categories_path(version)
     wrote_template = not cpath.exists()
     if wrote_template:
@@ -369,4 +401,7 @@ def ingest_ics(ics_path: str | Path, version: str, *, window: tuple[str, str] = 
         "categories_json": cpath,
         "wrote_template": wrote_template,
         "wrote_worksheet": wrote_worksheet,
+        "merged_worksheet": not wrote_worksheet,
+        "n_existing": n_existing,
+        "n_appended": n_appended,
     }

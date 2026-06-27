@@ -47,8 +47,11 @@ def cmd_gold_ingest(args) -> None:
     print(f"  VEVENT parsed       : {s['n_vevent']}")
     print(f"  after noise+window  : {s['n_kept']}  (window {args.window_start}..{args.window_end})")
     print(f"  unique titles       : {s['n_unique']}  → {tsv}")
-    if not s["wrote_worksheet"]:
-        print(f"  worksheet preserved : {tsv} already exists — operator labels kept (not overwritten)")
+    if s["merged_worksheet"]:
+        print(
+            f"  worksheet merged    : {tsv} already existed — {s['n_existing']} existing row(s) kept "
+            f"(operator labels preserved), {s['n_appended']} new title(s) appended as ?"
+        )
     if s["wrote_template"]:
         print(f"  categories template : {cats}")
     print("  next:")
