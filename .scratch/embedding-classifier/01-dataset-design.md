@@ -80,9 +80,13 @@ query case 는 `{title, expected: <category>|none}`. **`example_seeds[]` 가 핵
    name 대비 값을 버는지·번다면 어떤 형태인지 데이터로 판정. name-only≈name+keyword 면
    keyword 폐기(Simplicity). → ADR-0004 후속 finding.
 7. **버전·집계 manifest (커밋 가능).** gold set 에 버전 문자열(`ko-v1`)을 부여하고 집계
-   manifest 를 커밋한다 — 카테고리명 · 카테고리별 seed/query 카운트 · 정규화 seed+query
-   텍스트의 `sha256`. **원시 제목은 manifest 에 0줄**(해시·카운트만): "원시는 로컬을 안
-   떠난다" 불변항을 지키면서 run 을 gold set 버전에 핀고정한다(ledger 의 `manifest_sha256`).
+   manifest 를 커밋한다 — 카테고리별 seed/query 카운트 + 정규화·정렬·연결한 **전체 코퍼스
+   단일 다이제스트** `sha256` 1개. **per-title 해시 금지**: 7자 평균 짧은 ko 제목의 무염
+   per-item 해시는 사전공격·brute-force 복원이 가능해, 커밋하면 원시 제목이 사실상 git 에
+   누출된다(merge-gate finding-0). per-item 식별이 필요하면 미커밋 로컬 secret 의 keyed HMAC
+   만 쓰고 "공개 title-fingerprint 아님"을 명시한다. 카테고리명은 PII-free 일반명사 블라인드
+   라벨만(§3 — 인명·기관·클라이언트 금지). **원시 제목은 manifest 에 0줄**: "원시는 로컬을
+   안 떠난다" 불변항을 지키면서 run 을 gold set 버전에 핀고정한다(ledger 의 `manifest_sha256`).
    §4.5 모호 경계쌍은 **cooling-period 재라벨 self-consistency** 불일치율을 manifest 메모로
    남긴다(단일 annotator 한계 가드 — gold set 라벨이 운영자 1인 판단이라 inter-annotator
    κ 가 없으므로 self-consistency 가 차선책).
@@ -130,10 +134,13 @@ query case 는 `{title, expected: <category>|none}`. **`example_seeds[]` 가 핵
    `agg=max`, `metric=cosine`, L2 정규화.
 3. **추적 = wandb(집계-only) + 로컬 `runs.jsonl`(정본).** 운영자 결정 = wandb. 단 gold set 은
    원시 ko 제목(PII, 로컬-only)이므로 **PII-safe 계약**을 둔다:
-   - wandb 송신 = config·하이퍼파라미터·스칼라 metric·임계값·**카테고리명** confusion 만
-     (전부 집계).
-   - **절대 미송신** = `seed_text` / query `title` / 케이스별 예측 텍스트 등 원시 캘린더
-     문자열. 케이스별 forensics 는 로컬 `scratchpad/forensics/<run_id>.jsonl` 에만.
+   - wandb 송신 = config·하이퍼파라미터·스칼라 metric·임계값·**합성 카테고리 ID**(cat_0…)
+     confusion 만(전부 집계). 이름↔ID 맵은 로컬-only.
+   - **절대 미송신** = `seed_text` / query `title` / keyword / 케이스별 예측 텍스트 등 원시
+     캘린더 문자열 **+ 카테고리명**(work/학교/건강/관계 맥락 누출 가능 — merge-gate
+     finding-1). `ledger.py` 의 wandb 송신 게이트는 raw title·seed_text·keyword·카테고리명을
+     거부하는 **allowlist 스키마**로 강제. 케이스별 forensics 는 로컬
+     `scratchpad/forensics/<run_id>.jsonl` 에만.
    - 집계 **정본**은 로컬 append-only `runs.jsonl`(`evals/agent-results.json` 선례).
      wandb 는 sweep/UI **augmentation** — ADR-0001 의 "tracker=augmentation, ledger=SoT"
      자세 그대로.
