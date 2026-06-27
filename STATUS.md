@@ -32,10 +32,12 @@ harness-doctor 3/3.
   `watch/core.ts` 의 `classify`/`throwWatchError` 가 `googleCalendar.ts` 와
   중복; `/heal-watch` 의 kind→HTTP switch 도 후보. grill 선행 필요
   (un-grilled), 별도 PR. 전체 후보 목록은 Open decisions.
-- **embedding-classifier #01 (임베딩 모델 eval)**: 데이터셋 결정 완료
-  (real ko gold set — 설계노트 §4). 다음은 운영자 로컬 3080 GPU 랩에서
-  gold set 구축 + 후보 3종 sweep + keyword-form arm — **HITL**(raw 캘린더는
-  로컬 전용·미커밋이라 에이전트가 못 빌드). 결과는 #01 출력 ADR/report 로.
+- **embedding-classifier #01 (임베딩 모델 eval)**: 데이터셋·후보군 결정 완료
+  (real ko gold set — 설계노트 §4; 후보 = Workers AI 다국어 3종, en/jp 전용·
+  reranker 제외). 다음은 운영자 로컬 3080 GPU 랩에서 gold set 구축 + 후보 3종
+  sweep + keyword-form arm + 프롬프트/프리픽스 arm(대칭 STS, 승자=prod 불변항)
+  — **HITL**(raw 캘린더는 로컬 전용·미커밋이라 에이전트가 못 빌드). 결과는
+  #01 출력 ADR/report 로.
 - 사소한 후속 (block 아님): `src/AGENTS.md` / `llmClassifier.ts` 의
   폐기된 `onLlmCall` / `onLlmAttempted` 콜백 잔존 참조 정리 — 다음 PR 에
   묶기.
@@ -88,11 +90,11 @@ harness-doctor 3/3.
 
 ## embedding-classifier
 
-`░░░░░░░░░░░░░░░░░░░░░░` 0/41 acceptance criteria met (0%)
+`░░░░░░░░░░░░░░░░░░░░░░` 0/44 acceptance criteria met (0%)
 
 | # | Issue | Triage | Criteria | State | Blocked by |
 |---|-------|--------|----------|-------|-----------|
-| 01 | Embedding model selection eval | `ready-for-human` | 0/7 | ⬜ todo | — |
+| 01 | Embedding model selection eval | `ready-for-human` | 0/10 | ⬜ todo | — |
 | 02 | Embedding knn classifier name seeds | `ready-for-agent` | 0/8 | ⛔ blocked | #01 |
 | 03 | Keyword seeds | `ready-for-agent` | 0/5 | ⛔ blocked | #02 |
 | 04 | Rule editor redesign | `ready-for-agent` | 0/5 | ⛔ blocked | #03 |

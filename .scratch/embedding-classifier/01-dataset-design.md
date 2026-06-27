@@ -82,6 +82,19 @@ query case 는 `{title, expected: <category>|none}`. **`example_seeds[]` 가 핵
 
 ## 5. 측정/산출
 
+- **후보군 = Workers AI 다국어 범용 임베딩 전체.** 모델은 ADR-0004 의 PII 경계
+  계약상 Workers AI 에서 도는 것만 가능하다(이벤트 제목이 Cloudflare 밖으로 안 나감;
+  3080 은 측정 전용이라 prod 서빙 불가). 2026-06 카탈로그 확인 결과 다국어 범용
+  임베딩은 정확히 후보 3종뿐이다. **제외:** `bge-*-en-v1.5`(영어 전용),
+  `@cf/pfnet/plamo-embedding-1b`(일본어 전용, 2026-04 신규), reranker/cross-encoder
+  계열(ADR-0004 bi-encoder dense 계약 — kNN 인덱스 불가). ko 특화 모델이 카탈로그에
+  새로 뜨면 harness 재실행으로 재평가.
+- **프롬프트/프리픽스 arm.** qwen3-embedding·embeddinggemma 는 instruction-tuned
+  (task-prompt 프리픽스 민감), bge-m3 는 instruction-free. 과제는 title↔seed *대칭*
+  (STS)이므로 retrieval(query/doc 비대칭) 프롬프트가 아니라 **대칭/STS 프롬프트**로
+  (a)없음 vs (b)모델별 STS 프롬프트를 비교한다. 승자 프리픽스 규약은 **prod 불변항** —
+  `rule_seeds` backfill 과 title hot-path 가 동일 프리픽스를 써야 함(불일치 시 저장
+  씨앗 벡터 전수 오염). keyword-form arm 과 직교.
 - 후보 3종(`@cf/baai/bge-m3` 1024d / `@cf/qwen/qwen3-embedding-0.6b` 1024d /
   `@cf/google/embeddinggemma-300m` 768d)을 real ko gold set 으로 임베딩 kNN(이벤트 제목 vs
   씨앗 max 코사인) 측정 → ledger/report.
