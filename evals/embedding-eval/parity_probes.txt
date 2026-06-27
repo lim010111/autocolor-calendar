@@ -1,0 +1,34 @@
+# Non-PII probe strings for wai_parity.py (3080 ↔ Workers AI cosine parity).
+# Generic, public, multilingual — NEVER calendar titles or personal data.
+# One probe per line; '#' comments and blank lines ignored. ko / en / zh mix so
+# the parity check exercises the same multilingual surface the classifier serves.
+점심 식사
+회의 준비
+운동하기
+공부 시간
+영화 보기
+장보기
+산책
+독서
+커피 마시기
+청소
+team meeting
+lunch break
+morning workout
+study session
+grocery shopping
+reading time
+project review
+daily standup
+coffee break
+weekly planning
+午餐
+会议
+锻炼
+学习时间
+看电影
+购物
+散步
+阅读
+喝咖啡
+打扫

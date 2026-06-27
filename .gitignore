@@ -40,6 +40,13 @@ evals/dataset-builder/.venv/
 __pycache__/
 *.pyc
 .ruff_cache/
+.pytest_cache/
+
+# embedding-eval — local-only PII (raw ko gold set, run ledger, name↔ID map,
+# forensics). Only code + manifest.json + REPORT + parity_probes + tests are
+# committed. See evals/embedding-eval/README.md "PII contract".
+evals/embedding-eval/_local/
+evals/embedding-eval/.venv/
 
 # Claude Code session-local state (per-worktree; not for sharing)
 .claude/handoffs/
