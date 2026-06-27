@@ -44,75 +44,125 @@ CF_ACCOUNT_ID="..."          # parity 전용 (Workers AI REST)
 CF_API_TOKEN="..."
 ```
 
+**키 발급처 / 언제 필요한가:**
+
+| 키 | 어디서 | 언제 필요 |
+|----|--------|-----------|
+| `WANDB_API_KEY` | [wandb.ai/authorize](https://wandb.ai/authorize) (로그인 후 표시) | `sweep --wandb` 쓸 때만. 비우면 sweep 은 `runs.jsonl`(정본)만 남기고 wandb 송신을 조용히 생략 |
+| `WANDB_PROJECT` | 임의 프로젝트명 (없으면 자동 생성) | 위와 동일 |
+| `CF_ACCOUNT_ID` | Cloudflare 대시보드 우측 사이드바, 또는 레포 `wrangler.toml` 에 이미 있음 | `parity` 서브커맨드 **전용**. sweep·manifest·validate-gold 는 안 씀 |
+| `CF_API_TOKEN` | 대시보드 → **My Profile → API Tokens → Create Token** → **Workers AI** 권한(Read) 부여 → 발급. Worker 운영 토큰에 Workers AI 권한이 이미 있으면 재사용 가능 | 위와 동일 |
+
+> `CF_*` 둘은 **parity 전용**이다. `embedding-eval parity` 가 Workers AI REST
+> (`POST …/accounts/{CF_ACCOUNT_ID}/ai/run/{model}`, `Authorization: Bearer {CF_API_TOKEN}`)
+> 로 prod 추론 경로의 임베딩을 받아 3080 로컬 임베딩과 코사인 정합을 잰다(전이 타당성).
+> 안 넣으면 sweep 은 정상 동작하지만 parity 게이트(`provisional` 해제)를 못 닫는다.
+> 여기 Workers AI 로 보내는 건 커밋된 비-PII `parity_probes.txt` 프로브뿐 — raw 제목 아님.
+
 > **불변항:** raw 캘린더 제목은 로컬을 떠나지 않는다. 골드셋·`runs.jsonl`·name↔ID 맵·
 > forensics 는 전부 `_local/`(gitignore). 커밋되는 건 코드·`manifest.json`·REPORT 뿐.
+
+! 여기까지 완료
 
 ---
 
 ## A. 골드셋 구축 → `_local/gold/ko-v1.json`
 
-가장 손이 많이 가는 단계. raw 데이터 + 블라인드 라벨링 판단이라 자동화 불가.
+가장 손이 많이 가는 단계. 하지만 **빌더 스크립트가 기계적인 부분을 다 처리**하므로
+당신 input 은 **두 가지 "판단"뿐**이다 — (A.3) 블라인드 카테고리 작성, (A.4) 제목
+라벨링. 나머지(.ics 파싱·노이즈필터·신호창·dedup·temporal split·JSON 조립·검증)는
+`gold-ingest`/`gold-assemble` 가 한다.
 
-### A.1 — `.ics` export
+```
+A.1 .ics export → A.2 gold-ingest → A.3 카테고리(블라인드) → A.4 라벨링 → A.5 gold-assemble
+   (당신, 1클릭)    (스크립트)         (당신 input)            (당신 input)    (스크립트: split+조립+검증)
+```
+
+### A.1 — `.ics` export  *(당신)*
 본인 주 Google Calendar 를 `.ics` 로 export 해 로컬에 둔다. `Birthdays.ics`(자동 생일)
-는 제외.
+는 export 대상에서 제외.
 
-### A.2 — 신호창 + 노이즈 정리 + dedup
-- 신호창 **2025-09 ~ 2026-06** 으로 한정(실사용 집중 구간).
-- 노이즈 규칙 적용(설계노트 §3/§4): ①≥2027 종일=미래 투영 생일반복 제외 ②`생일
-  축하합니다!`류 자동 생일 제외 ③빈 SUMMARY 제외 ④종일은 분리(공휴일/생일=노이즈,
-  중간고사·휴강·약속 등 실제=유지) ⑤정확중복 습관제목은 진짜 반복이니 노이즈 아님.
-- **dedup-before-split**: 표면형 정규화 후 고유 제목(~520개)으로 접고 시작.
-  안 접으면 씨앗=query 정확일치 → cosine 1.0 → 암기로 풀려 `T_verified` 가 가짜로
-  낮아진다.
+### A.2 — `gold-ingest`  *(스크립트)*
+```bash
+uv run embedding-eval gold-ingest --ics /path/to/calendar.ics --version ko-v1
+```
+스크립트가 자동으로: ①신호창 **2025-09~2026-06** 클립 ②노이즈 자동드롭(빈 SUMMARY /
+≥2027 종일 미래투영생일 / `…님의 생일`·`생일 축하합니다`류 자동생일) ③**dedup-before-split**
+(표면형 NFC 정규화 후 고유 제목으로 접음 — 안 접으면 씨앗=query 정확일치로 cosine 1.0,
+`T_verified` 가짜로 낮아짐). 산출:
+- `_local/gold/ko-v1.titles.tsv` — 고유 제목 1행씩, **1번 컬럼이 비어(`?`) 있음**.
+- `_local/gold/ko-v1.categories.json` — 빈 템플릿(없을 때만 생성).
 
-### A.3 — 카테고리 작성 (form-split 스키마)
-자연발생 카테고리 ~8개. 각 카테고리는 아래 형태:
+> 자동드롭은 **보수적**이다(확실한 것만). 애매한 종일(공휴일 vs 중간고사·휴강)은 안
+> 버리고 워크시트로 흘려보내니, A.4 에서 `x` 로 직접 버리면 된다.
+
+### A.3 — 카테고리 작성 (블라인드)  *(당신 input)*
+`_local/gold/ko-v1.categories.json` 을 채운다. **워크시트(.tsv)를 열기 전에, 기억으로**
+쓴다(실유저가 Rule 만들 때처럼 — 제목에서 역추출하면 매칭 점수가 인위적으로 부풀어
+결과가 낙관 편향됨, 정본 §4.3). 자연발생 카테고리 ~8개. **`example_seeds`·`queries`
+는 여기 없다 — A.5 가 라벨에서 자동 생성**한다. 각 카테고리는 이 세 필드뿐:
 
 ```json
 {
-  "name": "<블라인드 라벨>",
-  "declared_seeds": { "word": ["짧은 키워드"], "phrase": ["구절형 선언"] },
-  "example_seeds": ["과거 확정 제목"],
-  "held_out": false
+  "version": "ko-v1",
+  "categories": [
+    { "name": "식사", "declared_seeds": { "word": ["점심","저녁"], "phrase": ["밥 먹기"] }, "held_out": false },
+    { "name": "알바", "declared_seeds": { "word": [], "phrase": [] }, "held_out": true }
+  ]
 }
 ```
 
-규율 (이게 데이터 품질의 핵심):
+규율 (데이터 품질의 핵심):
 - **`name` = PII-free 일반명사 블라인드 라벨**. 식사/운동/개발/공부 같은 일반명사만.
   **인명·기관·클라이언트명 금지.** (로컬에선 실라벨, 클라우드엔 `cat_0…` 로 매핑됨)
-- **`declared_seeds` 는 블라인드 작성**: 제목 리스트를 *보지 말고* 기억으로 쓴다
-  (실유저가 Rule 만들 때처럼). 제목에서 역추출하면 매칭 점수가 인위적으로 부풀어
-  결과가 낙관 편향된다.
-  - `word` = 단어형 짧은 키워드, `phrase` = 구절형 선언. **이 두 형태가 keyword-form
-    arm(name-only / name+단어 / name+구절) 비교의 입력**이다.
-- **`example_seeds` = Verified(과거 확정 제목)**. **temporal split**: 카테고리별
-  *이른* 제목 = example_seeds, *늦은* 제목 = query. (작은 카테고리는 random 폴백.)
-  prod 인과(과거 확정 → 미래 분류) + 스타일 드리프트 직격 테스트.
-- **`held_out: true` 를 1~2개 카테고리에** 준다(예: 알바/근무). 그 카테고리는 Rule 로
-  안 만들고, 그 제목들의 query 는 `expected: "none"` 이 된다 → 오적용(false-apply)
-  가드 측정.
+- **`declared_seeds.word` = 단어형 짧은 키워드, `.phrase` = 구절형 선언.** 이 두 형태가
+  keyword-form arm(name-only / name+단어 / name+구절) 비교의 입력이다. 비워도 됨
+  (그 카테고리는 name-only 로 동작).
+- **`held_out: true` 를 1~2개 카테고리에** 준다(예: 알바/근무). Rule 로 안 만들고, 그
+  카테고리로 라벨된 제목은 A.5 가 자동으로 `expected: "none"` 음성으로 돌린다 →
+  오적용(false-apply) 가드 측정.
 
-### A.4 — queries
-늦은 제목들을 query 로:
+### A.4 — 라벨링: 워크시트 1번 컬럼 채우기  *(당신 input)*
+`_local/gold/ko-v1.titles.tsv` 의 각 행 맨 앞 `?` 를 다음 중 하나로 바꾼다(에디터에서
+컬럼 1만 편집; ~520행이라 정렬·찾아바꾸기 활용):
 
-```json
-"queries": [
-  { "title": "<raw 제목>", "expected": "<카테고리 name>" },
-  { "title": "<held-out/무관 제목>", "expected": "none" }
-]
+| 값 | 의미 |
+|----|------|
+| `<카테고리 name>` | 그 카테고리 소속 (categories.json 의 name 과 정확히 일치) |
+| `none` | 무관 제목 → 음성 query(`expected=none`) |
+| `x` | 노이즈 → 골드셋에서 완전 제외 |
+| `?` | 아직 미라벨 (남아 있으면 A.5 가 에러) |
+
+held-out 카테고리(알바 등) 제목도 그냥 그 카테고리 name 으로 라벨하면 된다 — A.5 가
+none 으로 변환한다.
+
+### A.5 — `gold-assemble`  *(스크립트)*
+```bash
+uv run embedding-eval gold-assemble --version ko-v1
+#   --example-frac 0.5  : 카테고리별 이른 제목 절반 → example_seeds (기본 0.5)
+#   --min-temporal 6    : 이 미만 크기 카테고리는 날짜 대신 seed 셔플로 split (기본 6)
 ```
+스크립트가 **temporal split** 을 적용: 카테고리별 *이른* 제목 = `example_seeds`(="확정된
+과거", Verified) / *늦은* 제목 = query — prod 인과(과거→미래 분류) + 스타일 드리프트
+직격 테스트. (작은 카테고리는 날짜 순서가 노이즈라 seeded random 폴백; 제목 1개면 query.)
+그 뒤 `_local/gold/ko-v1.json` 조립 + **스키마 검증**까지 한 번에. 검증 실패 시 에러
+메시지대로 categories/워크시트를 고치고 다시 돌린다.
 
-### A.5 — 단일 annotator 가드
+> 골드셋을 고치고 싶으면 워크시트/카테고리를 수정하고 `gold-assemble` 만 다시 돌리면
+> 된다(멱등). 단 **B 의 manifest 를 다시 만들어 커밋**해야 한다(안 그러면 sweep 의
+> drift 가드가 hard-stop).
+
+### A.6 — 단일 annotator 가드  *(당신 input)*
 라벨은 당신 1인 판단이라 inter-annotator κ 가 없다. **cooling-period(며칠) 후**
-§4.5 모호 경계쌍(개발↔공부, 부트캠프수업↔개발)을 **1회 재라벨**해 self-consistency
+정본 §4.5 모호 경계쌍(개발↔공부, 부트캠프수업↔개발)을 **1회 재라벨**해 self-consistency
 불일치율을 기록한다(B 의 manifest 메모에 넣음). known-limitation 으로 외부화.
 
 ### A — verify
 ```bash
 uv run embedding-eval validate-gold --version ko-v1
 ```
-스키마/카운트만 출력(제목·카테고리명은 안 찍힘). 에러 메시지대로 고친다.
+`gold-assemble` 이 이미 검증하지만, 따로도 카운트만 출력해 재확인할 수 있다(제목·카테고리명은
+안 찍힘).
 
 ---
 

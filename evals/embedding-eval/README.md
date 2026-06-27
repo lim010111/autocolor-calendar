@@ -31,7 +31,8 @@ src/embedding_eval/
   sweep.py       per-model config grid → embed once → threshold sweep → run records
   manifest.py    committable manifest.json: counts + single corpus digest (0 titles)
   wai_parity.py  3080 ↔ Workers AI cosine parity on non-PII probes
-  cli.py         validate-gold · manifest · sweep · parity
+  build_gold.py  .ics → noise-filter + dedup → labelling worksheet → temporal-split assembly
+  cli.py         gold-ingest · gold-assemble · validate-gold · manifest · sweep · parity
 parity_probes.txt  committed non-PII probe strings
 REPORT.md.tmpl     output report skeleton (→ #01 follow-up measurement ADR)
 tests/             metrics · gate · sweep-smoke (FakeBackend + synthetic fixture)
@@ -52,8 +53,11 @@ uv sync --extra wandb        # + wandb (aggregates-only sink)
 
 ## Gold-set contract
 
-Operator drops `_local/gold/<version>.json` (e.g. `ko-v1.json`). Schema — form-split
-declared seeds so all three keyword-form arms run from one file / one manifest digest:
+`_local/gold/<version>.json` (e.g. `ko-v1.json`) is **produced by `gold-assemble`** from
+the labelling worksheet + the operator's blind `categories.json` — the operator authors
+only `declared_seeds` (blind) and the per-title labels; `example_seeds` + `queries` are
+filled by temporal split. Final schema — form-split declared seeds so all three
+keyword-form arms run from one file / one manifest digest:
 
 ```json
 {
@@ -76,6 +80,9 @@ declared seeds so all three keyword-form arms run from one file / one manifest d
 ## Run order (operator)
 
 ```bash
+uv run embedding-eval gold-ingest --ics cal.ics --version ko-v1   # → titles.tsv + categories template
+#   author the blind <version>.categories.json + label column 1 of the .titles.tsv, then:
+uv run embedding-eval gold-assemble --version ko-v1     # temporal-split + assemble → ko-v1.json (validated)
 uv run embedding-eval validate-gold --version ko-v1      # schema-check (counts only)
 uv run embedding-eval manifest      --version ko-v1      # → manifest.json (review + commit)
 uv run embedding-eval sweep --version ko-v1 --backend local --cold-start --wandb
