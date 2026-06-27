@@ -73,6 +73,8 @@ _METRIC_KEYS = frozenset(
         "coverage",
         "verified_precision",
         "none_false_apply",
+        "verified_precision_exact",
+        "none_false_apply_exact",
         "macro_f1",
         "per_category",
         "n_queries",

@@ -158,6 +158,12 @@ def compute_metrics(outcomes: list[Outcome], id_map: dict[str, str]) -> dict:
         "verified_precision": round(verified_precision, 4),
         "none_false_apply": round(none_false_apply, 4),
         "macro_f1": round(macro_f1, 4),
+        # Full-precision companions for the two gate-binding metrics. The rounded
+        # keys above are DISPLAY values (wandb / other tests depend on them); the
+        # selector must gate on these unrounded floats so a <5e-5 boundary breach
+        # cannot be rounded across the floor/ceiling (precision-first objective).
+        "verified_precision_exact": verified_precision,
+        "none_false_apply_exact": none_false_apply,
         "per_category": per_category,
     }
 
@@ -174,12 +180,22 @@ def select_winner(
     (none_false_apply ≤ ceiling), pick max coverage. Returns (winner, feasible_set).
     Ties on coverage break toward higher verified_precision then lower
     none_false_apply for determinism. macro_f1 is deliberately NOT used.
+
+    The binding constraints gate on the FULL-PRECISION ``*_exact`` companions, not
+    the 4dp DISPLAY values — otherwise a config whose true none_false_apply exceeds
+    the ceiling (or true verified_precision falls below the floor) by < 5e-5 would
+    be wrongly admitted once 4dp rounding nudged it across the boundary.
     """
+    def _exact(metrics: dict, key: str) -> float:
+        # Prefer the full-precision companion; fall back to the rounded display
+        # value only when no exact field exists (e.g. a legacy/hand-built record).
+        return metrics.get(f"{key}_exact", metrics[key])
+
     feasible = [
         r
         for r in records
-        if r["metrics"]["verified_precision"] >= precision_floor
-        and r["metrics"]["none_false_apply"] <= none_ceiling
+        if _exact(r["metrics"], "verified_precision") >= precision_floor
+        and _exact(r["metrics"], "none_false_apply") <= none_ceiling
     ]
     if not feasible:
         return None, []

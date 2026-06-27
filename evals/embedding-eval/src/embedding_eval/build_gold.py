@@ -174,6 +174,34 @@ def categories_path(version: str) -> Path:
     return config.GOLD_DIR / f"{version}.categories.json"
 
 
+def _escape_cell(s: str) -> str:
+    """Backslash-escape so a title round-trips losslessly on one physical TSV line.
+
+    Order matters: escape ``\\`` first, then the structural chars (tab + the line
+    breaks ``splitlines`` would split on). The operator only ever edits column 1
+    (the label), so an escaped title column stays untouched by hand-editing.
+    """
+    return (
+        s.replace("\\", "\\\\").replace("\t", "\\t").replace("\r", "\\r").replace("\n", "\\n")
+    )
+
+
+def _unescape_cell(s: str) -> str:
+    """Inverse of :func:`_escape_cell` (single pass so ``\\\\n`` ≠ escaped newline)."""
+    out: list[str] = []
+    i = 0
+    while i < len(s):
+        c = s[i]
+        if c == "\\" and i + 1 < len(s):
+            nxt = s[i + 1]
+            out.append({"n": "\n", "r": "\r", "t": "\t", "\\": "\\"}.get(nxt, nxt))
+            i += 2
+        else:
+            out.append(c)
+            i += 1
+    return "".join(out)
+
+
 def write_titles_tsv(rows: list[TitleRow], path: Path) -> None:
     lines = [
         "# embedding-eval gold-set labelling worksheet — fill column 1 (replace ?).",
@@ -185,7 +213,7 @@ def write_titles_tsv(rows: list[TitleRow], path: Path) -> None:
         "category\ttitle\tearliest\tcount",
     ]
     for r in rows:
-        lines.append(f"{_PLACEHOLDER}\t{r.title}\t{r.earliest}\t{r.count}")
+        lines.append(f"{_PLACEHOLDER}\t{_escape_cell(r.title)}\t{r.earliest}\t{r.count}")
     path.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
@@ -198,7 +226,7 @@ def read_titles_tsv(path: Path) -> list[tuple[str, str, str]]:
         parts = line.split("\t")
         if len(parts) < 4:
             raise GoldBuildError(f"malformed worksheet row (need 4 tab columns): {parts[:1]}")
-        rows.append((parts[0].strip(), parts[1], parts[2].strip()))
+        rows.append((parts[0].strip(), _unescape_cell(parts[1]), parts[2].strip()))
     return rows
 
 
@@ -323,7 +351,10 @@ def ingest_ics(ics_path: str | Path, version: str, *, window: tuple[str, str] = 
     kept = [e for e in events if not is_noise(e) and in_window(e, *window)]
     rows = dedup(kept)
     config.GOLD_DIR.mkdir(parents=True, exist_ok=True)
-    write_titles_tsv(rows, titles_tsv_path(version))
+    tpath = titles_tsv_path(version)
+    wrote_worksheet = not tpath.exists()
+    if wrote_worksheet:
+        write_titles_tsv(rows, tpath)  # never clobber an existing worksheet — guard like the template
     cpath = categories_path(version)
     wrote_template = not cpath.exists()
     if wrote_template:
@@ -334,7 +365,8 @@ def ingest_ics(ics_path: str | Path, version: str, *, window: tuple[str, str] = 
         "n_vevent": len(events),
         "n_kept": len(kept),
         "n_unique": len(rows),
-        "titles_tsv": titles_tsv_path(version),
+        "titles_tsv": tpath,
         "categories_json": cpath,
         "wrote_template": wrote_template,
+        "wrote_worksheet": wrote_worksheet,
     }
