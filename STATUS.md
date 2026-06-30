@@ -13,13 +13,14 @@ pair 등)뿐 — Open decisions 참조.
 spec: `.scratch/architecture-deepening/issues/06-watch-channel-lifecycle-module.md`
 
 embedding-classifier (ADR-0004 구현) — Stage 1 substring → 임베딩 kNN.
-**#01 (모델 eval) D 완료 — 측정 외부화·로컬 커밋, push 승인 대기.** 운영자
-real ko gold set(`ko-v1`, 합성 0줄) 으로 3080 sweep(13,320 레코드) → 결정:
+**#01 (모델 eval) D 완료·push 완료** (17/17, branch `embedding-eval-scaffold`).
+운영자 real ko gold set(`ko-v1`, 합성 0줄) 3080 sweep(13,320 레코드) → 결정:
 임베딩 모델 = `embeddinggemma-300m`(768d) **provisional**, 임계값
 `T=(0.30,0.55,0.10)` **provisional**(floor 0.90, 정밀도-우선), 벡터 차원
 **동결은 연기**(단일 persona·ko-only 검정력 약함). 측정 정본 = REPORT.md +
-ADR-0005. #02~#06 은 잠정 gemma(768)로 unblock 예정(push 후 AC tick).
-spec: `.scratch/embedding-classifier/issues/01-embedding-model-selection-eval.md`
+ADR-0005. **#02 (name seeds) unblock** — 잠정 gemma(768) 위 스키마 작업 가능.
+fix-push 가 advisory finding 1건 발생 → 머지게이트 **pass 2 는 사람 게이트**.
+spec: `.scratch/embedding-classifier/issues/02-embedding-knn-classifier-name-seeds.md`
 (설계 정본: `.scratch/embedding-classifier/01-dataset-design.md`)
 
 운영 posture: main 에 local merge-gate 가 **advisory** 로 활성 — main 기준
@@ -30,10 +31,12 @@ harness-doctor 3/3.
 
 ## Start here next session
 
-- **능동 — embedding-classifier #01 마무리**: push 승인 후 `git push`(로컬
-  10 ahead, D 커밋 2건) → `/handle-merge-findings` 패스1(advisory
-  reproduce-or-refute) → #01 AC 체크 + #02~#06 unblock(잠정 gemma 768) +
-  메모리 갱신. push 전이면 그 승인부터.
+- **능동 — embedding-classifier #02 (name seeds)**: #01 unblock 완료, 잠정
+  gemma(768) 위 `rule_seeds` pgvector 스키마 + name 씨앗 임베딩 슬라이스 착수.
+  spec: `.scratch/embedding-classifier/issues/02-embedding-knn-classifier-name-seeds.md`.
+- **사람 게이트 — 머지게이트 pass 2**: fix-push(`a7f0f8f`)가 새 advisory
+  review 1건 발생 — `/handle-merge-findings` 재실행 여부는 사람 판단(자동
+  루프 안 함).
 - **병행 — architecture-deepening deepening 후보 (CalendarApiError pair)**:
   `watch/core.ts` 의 `classify`/`throwWatchError` 가 `googleCalendar.ts` 와
   중복; `/heal-watch` 의 kind→HTTP switch 도 후보. grill 선행 필요
@@ -88,12 +91,12 @@ harness-doctor 3/3.
 
 ## embedding-classifier
 
-`░░░░░░░░░░░░░░░░░░░░░░` 0/51 acceptance criteria met (0%)
+`███████░░░░░░░░░░░░░░░` 17/51 acceptance criteria met (33%)
 
 | # | Issue | Triage | Criteria | State | Blocked by |
 |---|-------|--------|----------|-------|-----------|
-| 01 | Embedding model selection eval | `ready-for-human` | 0/17 | ⬜ todo | — |
-| 02 | Embedding knn classifier name seeds | `ready-for-agent` | 0/8 | ⛔ blocked | #01 |
+| 01 | Embedding model selection eval | `done` | 17/17 | ✅ done | — |
+| 02 | Embedding knn classifier name seeds | `ready-for-agent` | 0/8 | ⬜ todo | — |
 | 03 | Keyword seeds | `ready-for-agent` | 0/5 | ⛔ blocked | #02 |
 | 04 | Rule editor redesign | `ready-for-agent` | 0/5 | ⛔ blocked | #03 |
 | 05 | Examples seeds instant feedback | `ready-for-agent` | 0/8 | ⛔ blocked | #03 |
