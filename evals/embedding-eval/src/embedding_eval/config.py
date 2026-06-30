@@ -114,9 +114,12 @@ DEFAULT_T_DECLARED_GRID: tuple[float, ...] = (
 DEFAULT_MARGIN_GRID: tuple[float, ...] = (0.0, 0.02, 0.05, 0.08, 0.10, 0.12)
 
 # --- Selection objective (AC "임계값 선정 목표함수 = 정밀도 우선") ---------
-# PLACEHOLDERS — the real floor/ceiling get pinned from the sweep (AC: "바닥선·
-# 상한의 실제 수치는 sweep 결과로 박는다"). Winner = max coverage s.t. these hold.
-DEFAULT_VERIFIED_PRECISION_FLOOR = 0.95
+# Pinned from the ko-v1 sweep (ADR-0005 / REPORT.md §3, operator 2026-06-30):
+# precision floor 0.90 (cost-first over the 0.95 alternative), none-false-apply
+# ceiling 0.05. Winner = max coverage s.t. verified_precision >= floor AND
+# none_false_apply <= ceil. Provisional (dimension freeze deferred; re-derive on a
+# richer gold set).
+DEFAULT_VERIFIED_PRECISION_FLOOR = 0.90
 DEFAULT_NONE_FALSE_APPLY_CEILING = 0.05
 
 # --- Fixed kNN hyperparameters (ADR-0004) ---------------------------------

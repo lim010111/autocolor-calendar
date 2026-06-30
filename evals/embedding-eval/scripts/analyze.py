@@ -2,12 +2,15 @@ import json, collections
 
 RUNS = "_local/runs.jsonl"
 _raw = [json.loads(l) for l in open(RUNS) if l.strip()]
-# Keep only sweep records, dedup by run_id. Re-running an expanded grid appends
+# Keep only real sweep records, dedup by run_id. Re-running an expanded grid appends
 # (handoff: never mv/archive the ledger); the coarse grid is a strict subset of
 # the expanded one, so shared points collapse by their deterministic run_id and
-# only new points add. (Also drops kind=="wai_parity" records, which carry a
-# model but no metrics.)
-_by_id = {r["run_id"]: r for r in _raw if r.get("kind") == "embedding_knn_sweep"}
+# only new points add. (Also drops kind=="wai_parity" records, which carry a model
+# but no metrics, and fake-backend smoke records: run_id excludes the backend, so a
+# fake run could otherwise shadow a real one. Cross-manifest pollution is guarded
+# upstream — the sweep refuses to run on a drifted gold set.)
+_by_id = {r["run_id"]: r for r in _raw
+          if r.get("kind") == "embedding_knn_sweep" and r.get("embedding_backend") != "fake"}
 recs = list(_by_id.values())
 print(f"records: {len(recs)} (deduped by run_id from {len(_raw)} raw ledger lines)")
 

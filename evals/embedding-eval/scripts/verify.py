@@ -1,4 +1,4 @@
-import json, unicodedata, re
+import json, unicodedata, re, sys
 from collections import Counter
 from embedding_eval import config
 from embedding_eval.dataset import load_gold_set, build_seed_pool
@@ -34,7 +34,8 @@ dups = [t for t,n in Counter(q_titles).items() if n>1]
 print(f"[2] duplicate query titles (post-dedup): {len(dups)}  -> {'OK' if not dups else 'DUP!'}")
 
 # 3) example_seed dedup + cross-membership: any title both example and query in ANY cat
-print(f"[3] example titles unique: {len(all_examples)==len(set(all_examples))}  (n={len(all_examples)}, uniq={len(set(all_examples))})")
+ex_unique = len(all_examples) == len(set(all_examples))
+print(f"[3] example titles unique: {ex_unique}  (n={len(all_examples)}, uniq={len(set(all_examples))})")
 
 # 4) declared ∩ query exact overlap (the 4.2% confound claim — 13/311 queries)
 dq = q_norm_set & set(all_declared)
@@ -54,8 +55,11 @@ for arm in ("name_word","name_phrase"):
 
 print("\n"+"="*70); print("(B) GRID-BOUNDARY CLIPPING"); print("="*70)
 _raw = [json.loads(l) for l in open(config.RUNS_JSONL) if l.strip()]
-# dedup by run_id (expanded re-run appends; coarse ⊂ expanded → identical points collapse)
-recs = list({r["run_id"]: r for r in _raw if r.get("kind")=="embedding_knn_sweep"}.values())
+# dedup by run_id (expanded re-run appends; coarse ⊂ expanded → identical points collapse;
+# fake-backend smoke records excluded — run_id excludes the backend, so a fake run could
+# otherwise shadow a real one)
+recs = list({r["run_id"]: r for r in _raw
+             if r.get("kind")=="embedding_knn_sweep" and r.get("embedding_backend")!="fake"}.values())
 print(f"sweep records: {len(recs)} (deduped by run_id from {len(_raw)} raw ledger lines)")
 TV = config.DEFAULT_T_VERIFIED_GRID; TD = config.DEFAULT_T_DECLARED_GRID; MG = config.DEFAULT_MARGIN_GRID
 print(f"grid: T_verified {TV}  T_declared {TD}  margin {MG}")
@@ -96,3 +100,8 @@ for floor in (0.95,0.90):
         cat0_recall = pc.get('cat_0',{}).get('recall')
         print(f"   {mdl.split('/')[-1]:22s}: micro-cov={b['metrics']['coverage']:.3f} "
               f"macro-recall={macro_recall(b):.3f} cat_0-recall={cat0_recall}")
+
+# Exit non-zero if any (A) gold-split integrity invariant failed, so a caller/CI can
+# gate on it (the script printed LEAK!/DUP! but the process used to exit 0). (A.b)/(B)/(C)
+# are diagnostics, not pass/fail gates.
+sys.exit(1 if (leak or dups or not ex_unique) else 0)

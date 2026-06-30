@@ -23,6 +23,12 @@
 - **Provisional thresholds** (provisional — dimension freeze deferred + `sts`-prefix
   WAI re-measure pending, §6): `T_verified=0.30`, `T_declared=0.55`
   (T_verified < T_declared), `margin=0.10`.
+  - **`T_verified` is NOT exercised by this measurement.** The winner is cold-start
+    (ex=0 — no Verified example seeds exist yet), so the verified-seed score is `nan`
+    for every category and the `T_verified` gate never fires (`metrics.py` `decide()`).
+    `T_verified=0.30` is therefore a **structural** value, not a measured one — it only
+    activates once Instant-Feedback examples exist (post-OAuth, §8). Only `T_declared`
+    and `margin` are exercised at cold-start.
 
 ## 2. Candidates + exclusions (AC #4)
 
