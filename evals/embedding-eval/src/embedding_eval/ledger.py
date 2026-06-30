@@ -75,6 +75,13 @@ _METRIC_KEYS = frozenset(
         "none_false_apply",
         "verified_precision_exact",
         "none_false_apply_exact",
+        # grade-split precision (via_grade passthrough) — numeric aggregates, no names
+        "verified_via_precision",
+        "verified_via_n",
+        "declared_via_precision",
+        "declared_via_n",
+        "verified_via_precision_exact",
+        "declared_via_precision_exact",
         "macro_f1",
         "per_category",
         "n_queries",

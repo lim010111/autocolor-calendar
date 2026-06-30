@@ -105,13 +105,16 @@ def run_sweep(
         sims_per_query = [sims_by_category(qvecs[i], seeds, svecs) for i in range(len(queries))]
 
         for th in thresholds:
-            outcomes = [
-                Outcome(
-                    expected=queries[i].expected,
-                    decision=(decide(sims_per_query[i], th)[0] or STAGE2),
+            outcomes = []
+            for i in range(len(queries)):
+                cat, via = decide(sims_per_query[i], th)
+                outcomes.append(
+                    Outcome(
+                        expected=queries[i].expected,
+                        decision=cat or STAGE2,
+                        via=via if cat is not None else "",
+                    )
                 )
-                for i in range(len(queries))
-            ]
             metrics = compute_metrics(outcomes, id_map)
             run_id = f"{gold.version}-{cfg.signature()}-{sha256_16(repr(th))[:8]}"
             records.append(

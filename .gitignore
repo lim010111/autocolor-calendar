@@ -47,6 +47,7 @@ __pycache__/
 # committed. See evals/embedding-eval/README.md "PII contract".
 evals/embedding-eval/_local/
 evals/embedding-eval/.venv/
+evals/embedding-eval/wandb/
 
 # Claude Code session-local state (per-worktree; not for sharing)
 .claude/handoffs/

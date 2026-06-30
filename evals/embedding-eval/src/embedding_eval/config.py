@@ -98,9 +98,20 @@ KEYWORD_FORM_ARMS: tuple[str, ...] = ("name_only", "name_word", "name_phrase")
 # --- Threshold sweep grid -------------------------------------------------
 # Coarse default; the operator narrows around the feasible region from a first
 # pass. T_verified < T_declared is enforced when the grid is expanded (metrics).
-DEFAULT_T_VERIFIED_GRID: tuple[float, ...] = (0.40, 0.45, 0.50, 0.55, 0.60, 0.65)
-DEFAULT_T_DECLARED_GRID: tuple[float, ...] = (0.55, 0.60, 0.65, 0.70, 0.75, 0.80)
-DEFAULT_MARGIN_GRID: tuple[float, ...] = (0.0, 0.02, 0.05, 0.08)
+#
+# EXPANDED (2026-06-29, handoff-01-C2 Step①) to close coarse-pass boundary
+# clipping: coarse winners pinned at Tv=0.40 (MIN), margin=0.08 (MAX), and
+# cold-start Td=0.80 (MAX). The coarse grid is a strict subset of this one, so
+# re-running appends and shared points collapse by run_id. Directions:
+#   T_verified: + 0.30, 0.35  (qwen3 winner pinned at the old MIN 0.40)
+#   margin    : + 0.10, 0.12  (qwen3 winner pinned at the old MAX 0.08)
+#   T_declared: + 0.85 and 0.025-step subdivision of the feasible band 0.70–0.85
+#               (gemma/bge cold-start winner pinned at the old MAX 0.80)
+DEFAULT_T_VERIFIED_GRID: tuple[float, ...] = (0.30, 0.35, 0.40, 0.45, 0.50, 0.55, 0.60, 0.65)
+DEFAULT_T_DECLARED_GRID: tuple[float, ...] = (
+    0.55, 0.60, 0.65, 0.70, 0.725, 0.75, 0.775, 0.80, 0.825, 0.85,
+)
+DEFAULT_MARGIN_GRID: tuple[float, ...] = (0.0, 0.02, 0.05, 0.08, 0.10, 0.12)
 
 # --- Selection objective (AC "임계값 선정 목표함수 = 정밀도 우선") ---------
 # PLACEHOLDERS — the real floor/ceiling get pinned from the sweep (AC: "바닥선·

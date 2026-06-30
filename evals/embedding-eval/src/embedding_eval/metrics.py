@@ -95,6 +95,7 @@ def decide(sims_by_cat: dict, th: Thresholds) -> tuple[str | None, str]:
 class Outcome:
     expected: str  # category name or NONE
     decision: str  # assigned category name or STAGE2
+    via: str = ""  # VERIFIED | DECLARED when auto-applied, else "" (stage2 / legacy record)
 
 
 def outcomes_for(
@@ -107,8 +108,14 @@ def outcomes_for(
     out: list[Outcome] = []
     for i, q in enumerate(queries):
         sims = sims_by_category(query_vecs[i], seeds, seed_vecs)
-        cat, _ = decide(sims, th)
-        out.append(Outcome(expected=q.expected, decision=cat if cat is not None else STAGE2))
+        cat, via = decide(sims, th)
+        out.append(
+            Outcome(
+                expected=q.expected,
+                decision=cat if cat is not None else STAGE2,
+                via=via if cat is not None else "",
+            )
+        )
     return out
 
 
@@ -129,6 +136,24 @@ def compute_metrics(outcomes: list[Outcome], id_map: dict[str, str]) -> dict:
 
     correct = sum(1 for o in assigned if o.decision == o.expected)
     verified_precision = correct / len(assigned) if assigned else 0.0
+
+    # Grade-split precision (via_grade passthrough). `verified_precision` above is
+    # the MIXED auto-apply precision (the gate metric) — it lumps queries assigned
+    # because a VERIFIED (example) seed cleared T_verified together with those
+    # assigned because a DECLARED (name/keyword) seed cleared T_declared. These two
+    # split it by the grade that actually cleared (ADR-0004 "두 등급·다른 바"): the
+    # declared-via precision is the direct evidence for T_declared / the cold-start
+    # bar. Counts are reported alongside — a precision over a handful of cases is noise.
+    verified_via = [o for o in assigned if o.via == VERIFIED]
+    declared_via = [o for o in assigned if o.via == DECLARED]
+    verified_via_precision = (
+        sum(1 for o in verified_via if o.decision == o.expected) / len(verified_via)
+        if verified_via else 0.0
+    )
+    declared_via_precision = (
+        sum(1 for o in declared_via if o.decision == o.expected) / len(declared_via)
+        if declared_via else 0.0
+    )
 
     none_q = [o for o in outcomes if o.expected == NONE]
     none_applied = [o for o in none_q if o.decision != STAGE2]
@@ -164,6 +189,14 @@ def compute_metrics(outcomes: list[Outcome], id_map: dict[str, str]) -> dict:
         # cannot be rounded across the floor/ceiling (precision-first objective).
         "verified_precision_exact": verified_precision,
         "none_false_apply_exact": none_false_apply,
+        # Grade-split (reporting-only, NOT gated): precision conditioned on the grade
+        # that cleared the bar, with the n it was computed over.
+        "verified_via_precision": round(verified_via_precision, 4),
+        "verified_via_n": len(verified_via),
+        "declared_via_precision": round(declared_via_precision, 4),
+        "declared_via_n": len(declared_via),
+        "verified_via_precision_exact": verified_via_precision,
+        "declared_via_precision_exact": declared_via_precision,
         "per_category": per_category,
     }
 
