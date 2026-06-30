@@ -1,0 +1,32 @@
+{
+  "version": "synth-v0",
+  "_comment": "Obviously-fake, non-PII fixture for harness mechanics tests. Toy ascii tokens; NOT real calendar data.",
+  "categories": [
+    {
+      "name": "alpha",
+      "declared_seeds": { "word": ["aaa", "aab"], "phrase": ["aaa aaa", "aab aab"] },
+      "example_seeds": ["aaaa", "aaab"],
+      "held_out": false
+    },
+    {
+      "name": "beta",
+      "declared_seeds": { "word": ["bbb", "bbc"], "phrase": ["bbb bbb"] },
+      "example_seeds": ["bbbb"],
+      "held_out": false
+    },
+    {
+      "name": "gamma",
+      "declared_seeds": { "word": ["ggg"], "phrase": ["ggg ggg"] },
+      "example_seeds": ["gggg"],
+      "held_out": true
+    }
+  ],
+  "queries": [
+    { "title": "aaab", "expected": "alpha" },
+    { "title": "aaaa", "expected": "alpha" },
+    { "title": "bbbb", "expected": "beta" },
+    { "title": "bbbc", "expected": "beta" },
+    { "title": "gggg", "expected": "none" },
+    { "title": "zzz", "expected": "none" }
+  ]
+}

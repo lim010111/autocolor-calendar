@@ -1,0 +1,108 @@
+{
+  "gold_set_version": "ko-v1",
+  "manifest_sha256": "d9bf2ddd53a0dbe2dbef5edab3b8a252cb45d249a9edfc46c078341ee49fcae2",
+  "n_rule_categories": 11,
+  "n_held_out": 1,
+  "n_queries_total": 311,
+  "n_queries_none": 13,
+  "categories": [
+    {
+      "name": "공부",
+      "held_out": false,
+      "n_declared_word": 7,
+      "n_declared_phrase": 7,
+      "n_examples": 146,
+      "n_queries": 147
+    },
+    {
+      "name": "독서",
+      "held_out": false,
+      "n_declared_word": 2,
+      "n_declared_phrase": 2,
+      "n_examples": 4,
+      "n_queries": 3
+    },
+    {
+      "name": "기록",
+      "held_out": false,
+      "n_declared_word": 6,
+      "n_declared_phrase": 7,
+      "n_examples": 8,
+      "n_queries": 7
+    },
+    {
+      "name": "운동",
+      "held_out": false,
+      "n_declared_word": 13,
+      "n_declared_phrase": 10,
+      "n_examples": 2,
+      "n_queries": 2
+    },
+    {
+      "name": "식사",
+      "held_out": false,
+      "n_declared_word": 4,
+      "n_declared_phrase": 4,
+      "n_examples": 16,
+      "n_queries": 16
+    },
+    {
+      "name": "만남",
+      "held_out": false,
+      "n_declared_word": 10,
+      "n_declared_phrase": 9,
+      "n_examples": 22,
+      "n_queries": 22
+    },
+    {
+      "name": "이동",
+      "held_out": false,
+      "n_declared_word": 2,
+      "n_declared_phrase": 4,
+      "n_examples": 16,
+      "n_queries": 17
+    },
+    {
+      "name": "정돈",
+      "held_out": false,
+      "n_declared_word": 6,
+      "n_declared_phrase": 11,
+      "n_examples": 8,
+      "n_queries": 9
+    },
+    {
+      "name": "수면",
+      "held_out": false,
+      "n_declared_word": 5,
+      "n_declared_phrase": 5,
+      "n_examples": 4,
+      "n_queries": 4
+    },
+    {
+      "name": "여가",
+      "held_out": false,
+      "n_declared_word": 10,
+      "n_declared_phrase": 9,
+      "n_examples": 6,
+      "n_queries": 7
+    },
+    {
+      "name": "중요",
+      "held_out": false,
+      "n_declared_word": 11,
+      "n_declared_phrase": 12,
+      "n_examples": 64,
+      "n_queries": 64
+    },
+    {
+      "name": "알바",
+      "held_out": true,
+      "n_declared_word": 0,
+      "n_declared_phrase": 0,
+      "n_examples": 0,
+      "n_queries": 0
+    }
+  ],
+  "note": "Aggregates only — zero raw titles. Single whole-corpus digest; per-title hashing is forbidden (merge-gate finding-0). self_consistency_mismatch (cooling-period re-label rate, single-annotator guard, AC '단일 annotator 라벨 신뢰도 가드') was DESCOPED by the operator 2026-06-30 — labels judged reliable, genuine cooling period not elapsed; single-annotator is externalized as a known-limitation instead (REPORT.md §8 / ADR-0005). Not 'pending', deliberately not measured.",
+  "self_consistency_mismatch": null
+}

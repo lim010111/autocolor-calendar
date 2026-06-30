@@ -13,12 +13,14 @@ pair 등)뿐 — Open decisions 참조.
 spec: `.scratch/architecture-deepening/issues/06-watch-channel-lifecycle-module.md`
 
 embedding-classifier (ADR-0004 구현) — Stage 1 substring → 임베딩 kNN.
-#01 (모델 eval) **착수 가능 상태로 견고화됨**(AC 17): 데이터셋 = 운영자
-real ko gold set(합성 0줄, en/zh 이연), 추적 = wandb(aggregates-only PII
-계약) + 로컬 runs.jsonl 정본, 임계값 목표함수 = 정밀도 우선, HITL seam =
-data-blind 하네스는 에이전트 선스캐폴드·로컬 PII 단계만 운영자. 후속 5개는
-#01 의 벡터 차원에 묶여 blocked.
-spec: `.scratch/embedding-classifier/issues/01-embedding-model-selection-eval.md`
+**#01 (모델 eval) D 완료·push 완료** (17/17, branch `embedding-eval-scaffold`).
+운영자 real ko gold set(`ko-v1`, 합성 0줄) 3080 sweep(13,320 레코드) → 결정:
+임베딩 모델 = `embeddinggemma-300m`(768d) **provisional**, 임계값
+`T=(0.30,0.55,0.10)` **provisional**(floor 0.90, 정밀도-우선), 벡터 차원
+**동결은 연기**(단일 persona·ko-only 검정력 약함). 측정 정본 = REPORT.md +
+ADR-0005. **#02 (name seeds) unblock** — 잠정 gemma(768) 위 스키마 작업 가능.
+fix-push 가 advisory finding 1건 발생 → 머지게이트 **pass 2 는 사람 게이트**.
+spec: `.scratch/embedding-classifier/issues/02-embedding-knn-classifier-name-seeds.md`
 (설계 정본: `.scratch/embedding-classifier/01-dataset-design.md`)
 
 운영 posture: main 에 local merge-gate 가 **advisory** 로 활성 — main 기준
@@ -29,15 +31,16 @@ harness-doctor 3/3.
 
 ## Start here next session
 
+- **능동 — embedding-classifier #02 (name seeds)**: #01 unblock 완료, 잠정
+  gemma(768) 위 `rule_seeds` pgvector 스키마 + name 씨앗 임베딩 슬라이스 착수.
+  spec: `.scratch/embedding-classifier/issues/02-embedding-knn-classifier-name-seeds.md`.
+- **사람 게이트 — 머지게이트 pass 2**: fix-push(`a7f0f8f`)가 새 advisory
+  review 1건 발생 — `/handle-merge-findings` 재실행 여부는 사람 판단(자동
+  루프 안 함).
 - **병행 — architecture-deepening deepening 후보 (CalendarApiError pair)**:
   `watch/core.ts` 의 `classify`/`throwWatchError` 가 `googleCalendar.ts` 와
   중복; `/heal-watch` 의 kind→HTTP switch 도 후보. grill 선행 필요
   (un-grilled), 별도 PR. 전체 후보 목록은 Open decisions.
-- **embedding-classifier #01 (임베딩 모델 eval)**: 견고화 완료(AC 17). 다음
-  능동 = 에이전트가 **data-blind 하네스 스캐폴드** (`evals/embedding-eval/`:
-  sweep/metrics/ledger(wandb 송신 게이트)/wai_parity/REPORT.tmpl) → 커밋.
-  병행 HITL = 운영자 로컬 3080 에서 gold set 빌드 + sweep 실행 + 집계 커밋
-  (raw 캘린더는 로컬·미커밋). 결과는 #01 출력 ADR/report 로.
 - 사소한 후속 (block 아님): `src/AGENTS.md` / `llmClassifier.ts` 의
   폐기된 `onLlmCall` / `onLlmAttempted` 콜백 잔존 참조 정리 — 다음 PR 에
   묶기.
@@ -46,16 +49,13 @@ harness-doctor 3/3.
 
 - merge-gate enforcement = advisory (보고만, 차단 안 함). client-side-blocking
   전환은 팀 준비되면 `harness.toml` 에서.
-- 임베딩 모델 + 벡터 차원 (768 vs 1024) 미확정 — embedding-classifier
-  #01 이 결정. 그전까지 스키마 작업 잠정 기본값은 `embeddinggemma-300m`
-  (768d).
-- 등급별 임계값 `T_verified` / `T_declared` / `margin` 의 실제 숫자
-  미확정 — 도출 *방식*은 확정(정밀도-우선 목표함수: Verified 정밀도 바닥선 +
-  none 오적용 상한 하 커버리지 최대화), 값은 #01 real ko gold set sweep 산출
-  (합성 4개언어 셋은 폐기). v1 은 2등급 *구조*만 확정, en/zh 는 ko 잠정값
-  차용·미검증. 모델·차원 다국어 안전성은 MTEB/MIRACL ko+zh 크로스체크.
-- keyword 씨앗 존속/형태(단어 vs 구절) 미확정 — #01 의 keyword-form arm
-  (name-only/단어/구절 콜드스타트 비교)이 결정, ADR-0004 후속 finding.
+- 벡터 차원 **동결** 미확정 — #01 이 잠정 `embeddinggemma-300m`(768d) 선정,
+  단 *동결*은 멀티 persona/다국어 골드셋까지 **연기**(단일 persona·ko-only·
+  cat_0 47% 검정력 약함, ADR-0005 §8). #02~#06 은 잠정 gemma(768)로 진행,
+  1024 로 뒤집히면 스키마 마이그레이션.
+- 임계값 `T=(0.30,0.55,0.10)` = **provisional** — `sts` 프리픽스의 Workers-AI
+  parity 가 빈 prefix 로만 측정됨(mean 1.0). 승자 `sts` 프리픽스로 WAI 재측정
+  후 provisional 해제(ADR-0005 §6). en/zh 는 ko 잠정값 차용·미검증.
 - examples 씨앗(embedding-classifier #05/#06)은 캘린더 제목의 최초
   durable 저장 → 개인정보처리방침/동의 표면 변경 필요. OAuth 검수
   (2026-05-14 재제출) 통과 전 출시 불가. **eval 의 persona/en-zh 확장**
@@ -91,12 +91,12 @@ harness-doctor 3/3.
 
 ## embedding-classifier
 
-`░░░░░░░░░░░░░░░░░░░░░░` 0/51 acceptance criteria met (0%)
+`███████░░░░░░░░░░░░░░░` 17/51 acceptance criteria met (33%)
 
 | # | Issue | Triage | Criteria | State | Blocked by |
 |---|-------|--------|----------|-------|-----------|
-| 01 | Embedding model selection eval | `ready-for-human` | 0/17 | ⬜ todo | — |
-| 02 | Embedding knn classifier name seeds | `ready-for-agent` | 0/8 | ⛔ blocked | #01 |
+| 01 | Embedding model selection eval | `done` | 17/17 | ✅ done | — |
+| 02 | Embedding knn classifier name seeds | `ready-for-agent` | 0/8 | ⬜ todo | — |
 | 03 | Keyword seeds | `ready-for-agent` | 0/5 | ⛔ blocked | #02 |
 | 04 | Rule editor redesign | `ready-for-agent` | 0/5 | ⛔ blocked | #03 |
 | 05 | Examples seeds instant feedback | `ready-for-agent` | 0/8 | ⛔ blocked | #03 |

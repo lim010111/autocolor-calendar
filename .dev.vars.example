@@ -40,4 +40,18 @@ LANGFUSE_SECRET_KEY="sk-lf-..."
 LANGFUSE_PUBLIC_KEY="pk-lf-..."
 LANGFUSE_BASE_URL=""
 
+# embedding-eval (eval-side only — see embedding-classifier #01).
+# Read locally by evals/embedding-eval (dotenv); deliberately NOT in
+# scripts/sync-secrets.ts, so these never reach the Worker runtime or CI (same
+# pattern as LANGFUSE_* / DIRECT_DATABASE_URL).
+#   WANDB_* — aggregates-only sink for the model/threshold sweep. Leave blank to
+#     disable (the sweep falls through to local runs.jsonl only). The send-gate
+#     forbids raw titles/seeds/keywords/category-names regardless.
+#   CF_*    — Cloudflare Workers AI REST, used only by `embedding-eval parity` to
+#     measure 3080 ↔ Workers AI embedding cosine parity on non-PII probes.
+WANDB_API_KEY=""
+WANDB_PROJECT="autocolor-embedding-eval"
+CF_ACCOUNT_ID=""
+CF_API_TOKEN=""
+
 

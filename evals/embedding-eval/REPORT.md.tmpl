@@ -1,0 +1,95 @@
+# Embedding model selection eval — REPORT ({{gold_set_version}})
+
+> Output of embedding-classifier #01. Fill the `{{...}}` slots from the sweep, then
+> externalize the decision as a follow-up measurement ADR (0002 form) — NOT an
+> ADR-0004 supersede. Aggregates only; no raw titles. Source ledger:
+> `_local/runs.jsonl` (local SoT). wandb mirrors aggregates only.
+
+## 1. Decision
+
+- **Selected model**: `{{model}}` — **dim `{{dim}}`** (pins `rule_seeds.embedding vector(N)`).
+- **Frozen prompt-prefix invariant** (AC #7): arm `{{prompt_arm}}`, exact string
+  `{{prompt_prefix}}` (`sha256_16={{prompt_prefix_sha256_16}}`). **prod invariant** —
+  the `rule_seeds` backfill job AND the title hot-path MUST embed with this exact
+  prefix; a mismatch corrupts every stored seed vector (costly re-backfill).
+- **Provisional thresholds** ({{provisional_flag}}): `T_verified={{T_verified}}`,
+  `T_declared={{T_declared}}` (T_verified < T_declared), `margin={{margin}}`.
+
+## 2. Candidates + exclusions (AC #4)
+
+| Model | dim | Result |
+|-------|-----|--------|
+| `@cf/baai/bge-m3` | 1024 | {{...}} |
+| `@cf/qwen/qwen3-embedding-0.6b` | 1024 | {{...}} |
+| `@cf/google/embeddinggemma-300m` | 768 | {{...}} |
+
+Excluded: `bge-*-en-v1.5` (English-only) · `@cf/pfnet/plamo-embedding-1b`
+(Japanese-only) · reranker/cross-encoder (ADR-0004 bi-encoder dense — no kNN index).
+Catalogue drift (new ko-specialized model) → re-run the harness.
+
+## 3. Threshold objective (AC #12 — precision-first)
+
+Winner rule = **max coverage** s.t. **verified_precision ≥ {{precision_floor}}**
+(auto-apply precision floor) AND **none_false_apply ≤ {{none_ceiling}}** (false-apply
+ceiling). `T_declared` tuned for Stage-2 handoff recall. macro-F1 **not** used (equal
+cost to false-apply/miss → rejected). Floor/ceiling pinned here from the sweep.
+
+- Achieved at winner: coverage `{{coverage}}` · verified_precision
+  `{{verified_precision}}` · none_false_apply `{{none_false_apply}}` · macro_f1
+  `{{macro_f1}}` (reported).
+
+## 4. Keyword-form arm (AC #5 — ADR-0004 follow-up finding)
+
+Cold-start (Declared only, no examples), name_only vs name_word vs name_phrase:
+
+| arm | coverage | verified_precision | none_false_apply |
+|-----|----------|--------------------|------------------|
+| name_only | {{...}} | {{...}} | {{...}} |
+| name_word | {{...}} | {{...}} | {{...}} |
+| name_phrase | {{...}} | {{...}} | {{...}} |
+
+→ Finding: keyword {{kept|dropped}}; form = {{word|phrase|n.a.}}. (name_only ≈
+name_word ⇒ drop keyword, Simplicity.)
+
+## 5. Multilingual safety cross-check + flip rule (AC #14)
+
+ko-gold winner vs public MTEB-multilingual / MIRACL ko+zh ranking. **Flip rule**:
+if the ko-gold winner sits ≥ `{{N}}` ranks below the runner-up on MIRACL-ko →
+red-flag → re-examine (ko-overfit guard). No en/zh synthetic data generated.
+
+- MTEB-mult: {{...}} · MIRACL-ko: {{...}} · MIRACL-zh: {{...}} · flip triggered: {{yes/no}}
+
+## 6. 3080 ↔ Workers AI transfer (AC #15)
+
+`wai_parity.py` on non-PII probes: mean cosine `{{wai_mean_cosine}}` (min
+`{{wai_min_cosine}}`, n `{{n_probes}}`). Provisional below
+{{WAI_PARITY_PROVISIONAL_BELOW}}. Winner's **final** thresholds re-measured on
+Workers AI (inside PII boundary) → {{confirmed|pending}}.
+
+## 7. Tracking methodology (fold-in — replaces a standalone ADR)
+
+- wandb adopted **eval-only**, **aggregates-only** PII contract: config · scalar
+  metrics · thresholds · synthetic `cat_N` confusion. Category names, seeds, titles,
+  keywords, raw prefix → **never** sent (enforced by `ledger.assert_wandb_safe`).
+- Canonical ledger = local append-only `runs.jsonl`; wandb is augmentation
+  (ADR-0001 "tracker=augmentation, ledger=SoT").
+- **Divergence rationale** vs ADR-0001 consequence (b) "PII dataset → SaaS re-eval":
+  the gold set is PII, but only aggregates over synthetic IDs cross the boundary, so
+  the SaaS-send concern is structurally avoided. `WANDB_*` keys: `.dev.vars` only,
+  never injected into the Worker/CI (ADR-0001 LANGFUSE_* pattern).
+
+## 8. Known limitations + roadmap (AC #17, design §6)
+
+- **Single annotator** (no inter-annotator κ): cooling-period re-label
+  self-consistency mismatch = `{{self_consistency_mismatch}}` (manifest memo).
+- **Persona skew** (operator-1, dev/bootcamp-heavy) + **ko-only**: en/zh thresholds
+  ship as ko-borrowed **provisional·unverified**.
+- Roadmap (gated on OAuth pass for in-product opt-in): consenting-peer offline
+  export → post-OAuth anonymous contribution; en/zh receive *real* data via the same
+  mechanism (no synthetic generation).
+
+## Provenance
+
+gold_set_version `{{gold_set_version}}` · manifest_sha256 `{{manifest_sha256}}` ·
+git_sha `{{git_sha}}` · seed `42` · determinism `fp32 / l2` · k `all-seeds` · agg
+`max` · metric `cosine`.

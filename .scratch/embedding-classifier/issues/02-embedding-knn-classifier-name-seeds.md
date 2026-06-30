@@ -49,4 +49,5 @@ Stage 2 LLM fallback 은 그대로 존속한다 (ADR-0002 모델 결정 유효).
 
 ## Blocked by
 
-- #01
+None — #01 (모델·차원 eval) resolved 2026-06-30: 벡터 차원 잠정 `gemma 768`
+(ADR-0005, 동결은 연기). 잠정 768 위에서 `rule_seeds` 스키마 작업 즉시 착수 가능.

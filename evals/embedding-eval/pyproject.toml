@@ -1,0 +1,42 @@
+[project]
+name = "embedding-eval"
+version = "0.1.0"
+description = "Data-blind harness for embedding-classifier #01 — model/dim selection + 2-grade threshold sweep on the operator's local real ko gold set."
+requires-python = ">=3.12"
+# Core deps are GPU-free so the harness mechanics (metrics, ledger gate, sweep
+# orchestration) run + test anywhere. The heavy/operator-only pieces (local
+# 3080 embedding, Workers AI REST, wandb sink) are optional extras, lazy-imported.
+dependencies = [
+  "numpy>=2.0,<3",
+  "python-dotenv>=1.0,<2",
+]
+
+[project.optional-dependencies]
+local = ["torch>=2.2", "sentence-transformers>=3.0"]   # 3080 embedding backend
+remote = ["requests>=2.32,<3"]                          # Workers AI REST (wai_parity)
+wandb = ["wandb>=0.17"]                                 # aggregates-only sink (eval-side)
+
+[project.scripts]
+embedding-eval = "embedding_eval.cli:main"
+
+[dependency-groups]
+dev = ["ruff>=0.6,<1", "pytest>=8.0,<9"]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/embedding_eval"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP", "W"]
+ignore = ["E501"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]
