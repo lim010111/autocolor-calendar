@@ -65,6 +65,12 @@
       (`T_verified` / `T_declared` / `margin`) 는 4개 언어 데이터셋
       (`evals/datasets/{en,ko,zh-CN,zh-TW}/classification.json`) 으로 sweep 해
       정한다.
+      > **[개정 2026-06-30 · ADR-0005]** 이 4개 언어 합성 데이터셋은 **폐기됐다**
+      > (example 부재로 T_verified 측정 불가 + keyword 누출 + 기계번역 다국어 +
+      > 합성/편향). 실제 sweep 은 운영자 본인 캘린더의 **real ko 골드셋
+      > `_local/gold/ko-v1.json`**(합성 0줄, en/zh 이연)으로 수행됐다. 잠정 결과:
+      > `embeddinggemma-300m`(768d), `T=(0.30, 0.55, 0.10)` provisional, 차원 동결
+      > 연기. 측정 정본 = `evals/embedding-eval/REPORT.md`, 결정 = ADR-0005.
 
   - **임베딩 모델 = eval 과제, 잠정 기본값 = `@cf/google/embeddinggemma-300m`.**
     모델은 **Cloudflare Workers AI 에서 도는 것 중에서만** 선택한다 — 이벤트
@@ -79,6 +85,9 @@
       `classification.json` 으로 세 후보를 비교하고 등급별 임계값을 sweep
       한다. **prod 추론은 Workers AI** — 서버리스 Worker 는 가정용 GPU 에
       닿을 수 없으므로 3080 은 측정 전용이다.
+      > **[개정 2026-06-30 · ADR-0005]** "4개 언어 classification.json" →
+      > **ko-only real 골드셋 `ko-v1`**(`evals/embedding-eval/`). 측정 완료,
+      > 결과는 ADR-0005.
     - 이 eval 은 `rule_seeds` 마이그레이션의 **선행조건**이다: pgvector
       컬럼의 벡터 차원이 선정 모델에 묶이기 때문 (768 vs 1024).
     - 설계/스키마 작업의 잠정 기본값은 `embeddinggemma-300m` (use case
@@ -154,7 +163,10 @@
   - `src/services/classifierChain.ts:52-53` — short-circuit 결함 지점.
   - `src/services/llmClassifier.ts` — 존속하는 Stage 2 LLM fallback.
   - `evals/datasets/{en,ko,zh-CN,zh-TW}/classification.json` — 임베딩 모델
-    선정 + 임계값 sweep 데이터셋.
+    선정 + 임계값 sweep 데이터셋. **[개정 2026-06-30 · ADR-0005]** 폐기 — 실제
+    데이터셋은 `evals/embedding-eval/_local/gold/ko-v1.json`(ko real, 미커밋 PII) +
+    집계 `evals/embedding-eval/manifest.json`. 측정 정본
+    `evals/embedding-eval/REPORT.md`, 결정 `docs/adr/0005-embedding-model-eval-ko-v1.md`.
   - `prompts/dataset-builder/label-clusters.system.v1.md` — 아이디어 3
     (과거 일정 기반 자동 Rule 생성) 재사용 인프라.
   - `docs/adr/0002-llm-classifier-model.md` — Stage 2 모델 결정

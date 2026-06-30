@@ -103,6 +103,6 @@
       "n_queries": 0
     }
   ],
-  "note": "Aggregates only — zero raw titles. Single whole-corpus digest; per-title hashing is forbidden (merge-gate finding-0). self_consistency_mismatch is the operator's cooling-period re-label rate (single-annotator guard, AC '단일 annotator 라벨 신뢰도 가드').",
+  "note": "Aggregates only — zero raw titles. Single whole-corpus digest; per-title hashing is forbidden (merge-gate finding-0). self_consistency_mismatch (cooling-period re-label rate, single-annotator guard, AC '단일 annotator 라벨 신뢰도 가드') was DESCOPED by the operator 2026-06-30 — labels judged reliable, genuine cooling period not elapsed; single-annotator is externalized as a known-limitation instead (REPORT.md §8 / ADR-0005). Not 'pending', deliberately not measured.",
   "self_consistency_mismatch": null
 }
