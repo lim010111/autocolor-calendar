@@ -23,7 +23,7 @@ import {
   updateRule,
 } from "../services/ruleService";
 import type { RuleSeedRow } from "./_helpers/fakeDb";
-import { categories } from "../db/schema";
+import { categories, ruleSeeds } from "../db/schema";
 
 import { type Row, makeFakeDb } from "./_helpers/fakeDb";
 
@@ -506,6 +506,94 @@ describe("keyword seed reconciliation (ADR-0004 #03)", () => {
     });
     await result?.sideEffects;
     expect(keywordSeeds(state).map((s) => s["seedText"])).toEqual(["a"]);
+  });
+});
+
+// ─── Finding-1 oracle (merge-gate codex:finding-1) ──────────────────────────
+// "Keyword reconciliation is not atomic after delete." reconcileKeywordSeeds
+// embeds `toAdd` first (embed-before-mutate), then runs a DELETE of `toRemove`
+// followed by a SEPARATE, non-transactional INSERT of `toAdd`, with a warn-only
+// catch. embed-before-mutate only guards against an EMBED failure — it does
+// nothing for a DB failure that lands BETWEEN the committed delete and the
+// insert. For an edit ['a'] -> ['b'] where embed SUCCEEDS but the INSERT
+// throws, the catch swallows it and the rule is left with NEITHER 'a' (already
+// deleted) NOR 'b' (insert failed): a partial-failure data loss.
+describe("finding-1 oracle: keyword reconcile atomicity after delete", () => {
+  const embedOk = () =>
+    vi.fn(async (texts: string[]) => texts.map(() => [0.1, 0.2, 0.3]));
+
+  const kwSeed = (seedText: string): RuleSeedRow => ({
+    ruleId: RULE_A,
+    userId: USER_A,
+    seedType: "keyword",
+    seedText,
+    embedding: [9, 9, 9],
+  });
+
+  // Wraps makeFakeDb and overrides insert(ruleSeeds) so the ARRAY-insert path
+  // (the #03 keyword adds) throws — a transient DB failure AFTER the removal
+  // delete has already committed. The name-seed onConflictDoUpdate path is
+  // left intact (unused here — this is a keywords-only patch).
+  function makeInsertFailDb() {
+    const base = makeFakeDb({
+      categories: [row({ id: RULE_A, userId: USER_A, keywords: ["a"] })],
+      syncStates: [],
+      ruleSeeds: [kwSeed("a")],
+    });
+    const realInsert = (base.db as { insert: (t: unknown) => unknown }).insert;
+    const db = {
+      ...(base.db as object),
+      insert(table: unknown) {
+        if (table === ruleSeeds) {
+          return {
+            values(v: RuleSeedRow | RuleSeedRow[]) {
+              if (Array.isArray(v)) {
+                return Promise.resolve().then(() => {
+                  throw new Error(
+                    "rule_seeds INSERT failed (transient DB error)",
+                  );
+                });
+              }
+              return (
+                realInsert(table) as { values: (x: unknown) => unknown }
+              ).values(v);
+            },
+          };
+        }
+        return realInsert(table);
+      },
+    };
+    return { db, state: base.state };
+  }
+
+  it("preserves the old keyword seed 'a' when the INSERT of 'b' fails after the DELETE", async () => {
+    const errSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    const { db, state } = makeInsertFailDb();
+    // embed SUCCEEDS — this is a DB failure, NOT an embed failure, so the
+    // embed-before-mutate guard does not fire.
+    const embed = embedOk();
+
+    const result = await updateRule(
+      db as never,
+      env,
+      USER_A,
+      RULE_A,
+      { keywords: ["b"] },
+      embed,
+    );
+    // The warn-only catch swallows the insert failure; sideEffects still
+    // resolves (no error surfaces to the caller).
+    await expect(result?.sideEffects).resolves.toBeUndefined();
+    // Confirm the embed leg actually ran (rules out an embed-count-mismatch or
+    // no-embedder path — the delete DID reach the DB and the insert DID throw).
+    expect(embed).toHaveBeenCalledWith(["b"]);
+
+    const kw = state.ruleSeeds.filter((s) => s["seedType"] === "keyword");
+    // Data-preservation oracle: a mid-mutation DB failure must not lose the
+    // pre-existing seed. On HEAD 'a' was deleted before the insert threw, so
+    // this FAILS — proving the non-atomic partial-failure data loss.
+    expect(kw.map((s) => s["seedText"])).toContain("a");
+    errSpy.mockRestore();
   });
 });
 

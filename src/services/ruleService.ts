@@ -328,18 +328,23 @@ export function computeKeywordDiff(
 // seam + frozen-prefix `embedTexts` path as `writeNameSeed`.
 //
 // embed-before-mutate: the `toAdd` batch is embedded FIRST (one call, frozen
-// prefix). Only after embedding succeeds are rows mutated — a removal delete
-// then an additions insert. An embedding failure is warn-only and leaves every
-// existing keyword seed untouched (same fan-out failure model as
-// `writeNameSeed`: the request already succeeded, recovery is the next edit or
-// the backfill job). A missing embedder (no `env.AI` binding) is a silent skip.
+// prefix). Only after embedding succeeds are rows mutated — additions insert
+// then removals delete (see the insert-before-delete rationale at the call
+// site). An embedding failure is warn-only and leaves every existing keyword
+// seed untouched (same fan-out failure model as `writeNameSeed`: the request
+// already succeeded, recovery is the next edit or the backfill job). A missing
+// embedder (no `env.AI` binding) is a silent skip.
 //
 // The delete is tenant-scoped (`user_id` predicate — RLS is bypassed on the
 // Worker path, src/AGENTS.md "Tenant isolation") and restricted to this rule's
 // keyword seeds and the exact `toRemove` texts. `keywords=[]` removes them all.
-// There is no uniqueness constraint on keyword rows, so a concurrent edit could
-// duplicate a keyword row — a low-risk known-limitation left unconstrained
-// (ADR-0004 #03 AC).
+//
+// Concurrency is eventually-consistent — the same posture as the #02 name-seed
+// write: keyword rows have no uniqueness constraint, and two racing PATCHes'
+// fire-and-forget reconciles can land out of order, so the seed set may
+// transiently duplicate a keyword row or reflect an older edit than
+// `categories.keywords` (recovery = next edit / backfill). Left unconstrained
+// per ADR-0004 #03 AC #1 — no version-checking or locks.
 async function reconcileKeywordSeeds(
   db: PostgresJsDatabase,
   embed: EmbedTexts | undefined,
@@ -374,6 +379,24 @@ async function reconcileKeywordSeeds(
       }
     }
 
+    // insert-before-delete: the insert and delete are separate, non-transactional
+    // statements. Doing the additions FIRST means a mid-mutation DB failure (the
+    // insert throws) degrades to a benign stale-EXTRA keyword — over-inclusive,
+    // self-heals on the next edit/backfill — instead of losing the pre-existing
+    // seed (under-inclusive data loss). `toAdd` and `toRemove` are disjoint
+    // (toAdd = next − existing, toRemove = existing − next), so the order never
+    // changes the success-case result.
+    if (toAdd.length > 0) {
+      await db.insert(ruleSeeds).values(
+        toAdd.map((seedText, i) => ({
+          ruleId: args.ruleId,
+          userId: args.userId,
+          seedType: "keyword",
+          seedText,
+          embedding: vectors[i]!,
+        })),
+      );
+    }
     if (toRemove.length > 0) {
       await db
         .delete(ruleSeeds)
@@ -385,17 +408,6 @@ async function reconcileKeywordSeeds(
             inArray(ruleSeeds.seedText, toRemove),
           ),
         );
-    }
-    if (toAdd.length > 0) {
-      await db.insert(ruleSeeds).values(
-        toAdd.map((seedText, i) => ({
-          ruleId: args.ruleId,
-          userId: args.userId,
-          seedType: "keyword",
-          seedText,
-          embedding: vectors[i]!,
-        })),
-      );
     }
   } catch (err) {
     console.error(

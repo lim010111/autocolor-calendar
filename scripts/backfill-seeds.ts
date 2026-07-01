@@ -14,9 +14,19 @@
  * IDEMPOTENT:
  *   - name seeds upsert on the partial-unique `(rule_id) WHERE seed_type='name'`,
  *     so re-running replaces each row's text + vector rather than duplicating.
- *   - keyword seeds have no uniqueness (0..N per rule), so the job first clears
- *     every `seed_type='keyword'` row, then re-inserts the current distinct set
- *     — a re-run converges to the same rows without duplicating.
+ *   - keyword seeds have no uniqueness (0..N per rule), so the job clears the
+ *     keyword rows OF THE SNAPSHOT RULES, then re-inserts their current distinct
+ *     set — a re-run converges to the same rows without duplicating.
+ *
+ * QUIESCE REQUIREMENT: this is a one-shot operator job that snapshots
+ * `categories` at startup, embeds that snapshot (slow), then mutates seeds. It
+ * assumes NO concurrent rule keyword writes during the run — run it at rollout
+ * or inside the 768→1024 flip maintenance window (which TRUNCATEs first anyway),
+ * not against a live write stream. The keyword clear is SCOPED to the snapshot's
+ * `rule_id`s so a rule *created* mid-run keeps its runtime-written keyword seeds;
+ * a concurrent *edit* to a snapshot rule can still be overwritten by the stale
+ * snapshot value, and the count verification (against the stale snapshot) will
+ * NOT detect it — hence the quiesce requirement rather than a runtime guard.
  *
  * EMBED-BEFORE-MUTATE (keyword phase): all keyword vectors are computed BEFORE
  * the clear + insert, so an embedding failure aborts the run with the existing
@@ -138,9 +148,15 @@ async function main(): Promise<void> {
       }
     }
     const kwVectors = await embedAll(kwItems.map((k) => k.text));
-    // Idempotent replace: every keyword seed row is re-derived from the current
-    // categories, so clearing then re-inserting converges without duplicating.
-    await sql`DELETE FROM rule_seeds WHERE seed_type = 'keyword'`;
+    // Idempotent replace, SCOPED to the snapshot's rules: every keyword seed row
+    // is re-derived from the snapshot, so clearing then re-inserting converges
+    // without duplicating. Scoping to `rule_id = ANY(snapshot)` avoids wiping the
+    // keyword seeds of a rule created after the snapshot (see QUIESCE header).
+    const snapshotRuleIds = rules.map((r) => r.id);
+    await sql`
+      DELETE FROM rule_seeds
+      WHERE seed_type = 'keyword' AND rule_id = ANY(${snapshotRuleIds})
+    `;
     for (let i = 0; i < kwItems.length; i += 1) {
       const it = kwItems[i]!;
       const lit = `[${kwVectors[i]!.join(",")}]`;
