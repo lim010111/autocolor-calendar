@@ -52,6 +52,15 @@ Workers·Supabase·GCP·GAS Editor)이 단계 단위로 정리되어 있다. 코
   Distribution (Unlisted → Public 전환) 결정·publish + 검수 1-3주 대기·
   출시 직후 모니터링·분기/연 1회 정기 운영 트리거.
 
+## 기능 배포 런북 (게이트 외)
+
+`09`+ 는 launch 게이트 G1–G8 시퀀스와 **무관한 기능 배포 절차**다 (게이트 번호
+1:1 매핑은 `01`–`08` 에만 적용). 백엔드 기능을 prod 에 올릴 때의 migrate /
+backfill / deploy 순서를 담는다.
+
+- [09 — 임베딩 분류기 배포하기 (#02)](./09-embedding-classifier-rollout.md)
+  — PR #124 머지 후 prod 에 켜는 3단계: `db:migrate` → backfill → `deploy:prod`.
+
 ## 글로벌 컨벤션
 
 - **반드시** 외부 vendor URL은 인라인하지 않는다 (`docs/assets/marketplace/sub-processors.md` §4).
