@@ -13,6 +13,15 @@ export type Bindings = {
   // prod bind it. Producer code still null-checks before enqueue.
   SYNC_QUEUE?: Queue<SyncJob>;
 
+  // ADR-0004 #02 — Workers AI binding for embedding-kNN Stage 1. Optional so
+  // unit tests (plain node, no `env.AI`) can build minimal `Bindings`; both
+  // dev and prod bind it via `wrangler.toml`. The embedding helper
+  // (`src/services/embeddings.ts`) is the single caller of `env.AI.run`, and
+  // it forces the frozen prefix (`src/config/embedding.ts`). When absent,
+  // Stage-1 embedding degrades to Stage-2 LLM fallback (read path) or a
+  // warn-only skip (write path) — see ADR-0004 #02 AC #9.
+  AI?: Ai;
+
   GOOGLE_CLIENT_ID: string;
   GOOGLE_CLIENT_SECRET: string;
   GAS_REDIRECT_URL: string;

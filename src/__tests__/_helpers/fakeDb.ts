@@ -13,7 +13,7 @@
 // cheapest extension path. No placeholder `extraTables` option until a
 // real third caller arrives.
 
-import { syncState } from "../../db/schema";
+import { ruleSeeds, syncState } from "../../db/schema";
 
 export type Row = {
   id: string;
@@ -168,9 +168,15 @@ export type FakeDbInitial = {
   failUpdateWith?: Error;
 };
 
+// ADR-0004 #02 — captured `rule_seeds` upserts (name-seed write path). Keyed
+// loosely because the row shape (ruleId / userId / seedType / seedText /
+// embedding) is not the `categories` Row.
+export type RuleSeedRow = Record<string, unknown>;
+
 export type FakeDbState = {
   categories: Row[];
   syncStates: SyncStateRow[];
+  ruleSeeds: RuleSeedRow[];
 };
 
 export type FakeDbHandle = {
@@ -183,6 +189,7 @@ export function makeFakeDb(initial: FakeDbInitial = {}): FakeDbHandle {
   const state: FakeDbState = {
     categories: [...(initial.categories ?? [])],
     syncStates: [...(initial.syncStates ?? [])],
+    ruleSeeds: [],
   };
 
   const db = {
@@ -219,7 +226,22 @@ export function makeFakeDb(initial: FakeDbInitial = {}): FakeDbHandle {
         },
       };
     },
-    insert(_table: unknown) {
+    insert(table: unknown) {
+      // ADR-0004 #02 — name-seed create-or-replace. `writeNameSeed` issues
+      // `insert(ruleSeeds).values(...).onConflictDoUpdate(...)`; capture the
+      // row so tests can assert the seed write without a real pgvector upsert.
+      if (table === ruleSeeds) {
+        return {
+          values(v: RuleSeedRow) {
+            return {
+              onConflictDoUpdate: async (_cfg?: unknown) => {
+                state.ruleSeeds.push(v);
+                return undefined;
+              },
+            };
+          },
+        };
+      }
       return {
         values(v: Partial<Row>) {
           return {

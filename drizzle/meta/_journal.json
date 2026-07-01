@@ -120,6 +120,13 @@
       "when": 1778160868908,
       "tag": "0016_oval_master_chief",
       "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1782880652726,
+      "tag": "0017_volatile_maelstrom",
+      "breakpoints": true
     }
   ]
 }

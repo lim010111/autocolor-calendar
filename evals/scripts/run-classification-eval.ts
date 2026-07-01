@@ -31,7 +31,6 @@ import { fileURLToPath } from "node:url";
 import { config as loadEnv } from "dotenv";
 import { LangfuseClient } from "@langfuse/client";
 
-import { classifyEvent } from "../../src/services/classifier";
 import type { CalendarEvent } from "../../src/services/googleCalendar";
 import {
   buildPrompt,
@@ -719,6 +718,32 @@ async function callOpenAi(
   }
 }
 
+// Legacy substring rule-leg baseline for `--include-rule-leg` (LLM eval only).
+// Production Stage 1 became embedding kNN (ADR-0004 #02) and the production
+// `classifier.ts` was deleted; this measurement baseline keeps a self-contained
+// copy of the old case-insensitive substring matcher so the LLM eval's optional
+// rule-leg comparison still runs. The embedding classifier is measured by the
+// separate harness in `evals/embedding-eval/`.
+function classifyEventSubstring(
+  event: CalendarEvent,
+  categories: Array<{ id: string; name: string; colorId: string; keywords: string[] }>,
+): { id: string; name: string; colorId: string } | null {
+  const summary = event.summary ?? "";
+  const description = event.description ?? "";
+  if (summary.length === 0 && description.length === 0) return null;
+  const haystack = `${summary}\n${description}`.toLowerCase();
+  for (const cat of categories) {
+    for (const kw of cat.keywords) {
+      const needle = kw.toLowerCase();
+      if (needle.length === 0) continue;
+      if (haystack.includes(needle)) {
+        return { id: cat.id, name: cat.name, colorId: cat.colorId };
+      }
+    }
+  }
+  return null;
+}
+
 async function runCase(
   apiKey: string,
   c: EvalCase,
@@ -743,11 +768,11 @@ async function runCase(
 
   let rule: CaseResult["rule"];
   if (opts.includeRuleLeg) {
-    const ruleResult = await classifyEvent(event, { userId: "eval", categories: cats });
+    const ruleResult = classifyEventSubstring(event, cats);
     if (ruleResult === null) {
       rule = { hit: false, categoryName: null, pass: c.expected.category_name === "none" };
     } else {
-      const matched = cats.find((cat) => cat.id === ruleResult.rule.id);
+      const matched = cats.find((cat) => cat.id === ruleResult.id);
       const name = matched?.name ?? null;
       rule = { hit: true, categoryName: name, pass: name === c.expected.category_name };
     }

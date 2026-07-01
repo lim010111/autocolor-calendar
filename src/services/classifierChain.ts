@@ -1,7 +1,6 @@
 import type { PostgresJsDatabase } from "drizzle-orm/postgres-js";
 
 import type { Bindings } from "../env";
-import { classifyEvent as ruleClassify } from "./classifier";
 import type {
   ClassificationOutcome,
   ClassifyEventFn,
@@ -14,36 +13,44 @@ import {
   type ReserveLlmCallFn,
 } from "./llmClassifier";
 import { redactEventForLlm } from "./piiRedactor";
+import { classifyStage1, type Stage1Deps } from "./stage1";
 
-// §5.3 chain composition: rule → LLM fallback → ClassificationOutcome.
+// §5.3 chain composition (ADR-0004): embedding kNN → LLM fallback →
+// ClassificationOutcome.
 //
 // Contract:
-// - Runs `ruleClassify` first. A hit short-circuits (LLM never called) and
-//   emits a `ruleHit` outcome.
-// - On rule-miss, if `env.OPENAI_API_KEY` is present AND the user has at
+// - Runs `classifyStage1` first (Stage 1 = embedding kNN). An `embeddingHit`
+//   short-circuits (LLM never called) and is emitted directly. `embeddingMiss`
+//   / `ambiguous` fall through to the LLM leg (Stage 1 does not guess).
+// - On Stage-1 non-hit, if `env.OPENAI_API_KEY` is present AND the user has at
 //   least one category, delegates to `classifyWithLlm` and maps the LLM
 //   outcome to the matching `ClassificationOutcome` case
-//   (`llmHit` / `llmTimeout` / `llmQuotaExceeded` / `llmBadResponse`).
-// - All other paths emit `noMatch`. There is no fall-through to rule-based
-//   logic on the LLM leg (Halt on Failure).
-// - Sink emission: every emitted outcome is passed to all configured sinks
-//   in parallel via `runSinks`. Sink failures are warn-only — they do NOT
-//   fail classify (§6 observability discipline).
+//   (`llmHit` / `llmTimeout` / `llmQuotaExceeded` / `llmBadResponse`). When the
+//   LLM leg is unavailable, the Stage-1 `embeddingMiss` / `ambiguous` outcome
+//   is emitted directly (both fold to `no_match` in the sinks).
+// - When `deps.stage1` is absent (no Workers-AI embedder resolvable), Stage 1
+//   is skipped and every event degrades straight to the LLM gate — the
+//   systemic-embedding-failure blast radius (#02 AC #9), bounded by the
+//   two-tier daily caps.
+// - Sink emission: every emitted outcome is passed to all configured sinks in
+//   parallel via `runSinks`. Sink failures are warn-only (§6 observability).
 // - Per-run quota latch: once `quota_exceeded` fires for any event in the
-//   current `buildDefaultClassifier` closure, every subsequent rule-miss
-//   event skips the LLM leg (including `reserveLlmCall`) for the rest of
-//   this sync run. This prevents an N-event rule-miss burst after quota
-//   exhaustion from producing N wasted `llm_usage_daily` UPSERTs. A new
-//   sync run mints a fresh closure, so the next run re-probes quota once.
+//   current closure, every subsequent Stage-1-miss event skips the LLM leg
+//   (including `reserveLlmCall`) for the rest of this sync run. A new sync run
+//   mints a fresh closure, so the next run re-probes quota once.
 
 export type ChainDeps = {
   db: PostgresJsDatabase;
   env: Bindings;
   userId: string;
   // Sinks receive every emitted outcome in parallel. Composition is the
-  // caller's responsibility (see calendarSync wiring for the sync path
-  // and routes/classify.ts for the preview path).
+  // caller's responsibility (see calendarSync wiring for the sync path and
+  // routes/classify.ts for the preview path).
   sinks: ReadonlyArray<Sink>;
+  // ADR-0004 #02 — Stage 1 embedding kNN dependencies. Optional so a chain can
+  // be built without an embedder (degrades to LLM-only). Production callers
+  // (sync / preview) always provide it when `env.AI` is bound.
+  stage1?: Stage1Deps;
   // Test-only: inject a custom reserve fn to bypass the real drizzle writer.
   reserve?: ReserveLlmCallFn;
 };
@@ -52,29 +59,29 @@ export function buildDefaultClassifier(deps: ChainDeps): ClassifyEventFn {
   let quotaLatched = false;
 
   return async (event, ctx) => {
-    // Stage 1: substring matcher.
-    const hit = await ruleClassify(event, ctx);
-    if (hit) {
-      const outcome: ClassificationOutcome = {
-        kind: "ruleHit",
-        rule: hit.rule,
-        matchedKeyword: hit.matchedKeyword,
-      };
-      await runSinks(outcome, deps.sinks);
-      return outcome;
+    // Stage 1: embedding kNN. An `embeddingHit` short-circuits. When no
+    // embedder is wired (`deps.stage1` absent), Stage 1 never ran, so the
+    // fall-through outcome is `noMatch` (nothing was classified), not
+    // `embeddingMiss` (Stage 1 ran and found nothing above threshold).
+    let stage1: ClassificationOutcome = { kind: "noMatch" };
+    if (deps.stage1) {
+      stage1 = await classifyStage1(event, ctx, deps.stage1);
+      if (stage1.kind === "embeddingHit") {
+        await runSinks(stage1, deps.sinks);
+        return stage1;
+      }
     }
 
-    // Skips that never engage the LLM leg.
+    // Stage-2 gate. No LLM available → emit the Stage-1 outcome
+    // (`embeddingMiss` / `ambiguous` / `noMatch` all fold to `no_match` in the
+    // sinks).
     if (!deps.env.OPENAI_API_KEY || ctx.categories.length === 0) {
-      const outcome: ClassificationOutcome = { kind: "noMatch" };
-      await runSinks(outcome, deps.sinks);
-      return outcome;
+      await runSinks(stage1, deps.sinks);
+      return stage1;
     }
 
     // Quota-latched short-circuit — synthesize an LlmCallRecord so the §6.3
     // debugging row shape stays consistent with the non-latched path.
-    // `promptSummary` and `rawResponse` stay undefined because no prompt
-    // was built and no response was received.
     if (quotaLatched) {
       const record: LlmCallRecord = {
         outcome: "quota_exceeded",
@@ -94,10 +101,9 @@ export function buildDefaultClassifier(deps: ChainDeps): ClassifyEventFn {
       return outcome;
     }
 
-    // LLM leg. §5.2 branded contract — redact before crossing into the
-    // LLM module. `classifyWithLlm` accepts only `RedactedEvent`; the
-    // redactor is idempotent so output bytes are unchanged from the prior
-    // arrangement (redact inside `classifyWithLlm`).
+    // LLM leg. §5.2 branded contract — redact before crossing into the LLM
+    // module. `classifyWithLlm` accepts only `RedactedEvent`; the redactor is
+    // idempotent so output bytes are unchanged.
     const redactedEvent = redactEventForLlm(event);
     const { outcome: llmOut, record } = await classifyWithLlm(
       redactedEvent,

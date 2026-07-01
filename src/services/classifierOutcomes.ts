@@ -1,8 +1,17 @@
-import type { ClassifyContext } from "./classifier";
 import type { CalendarEvent } from "./googleCalendar";
 import type { LlmCallRecord } from "./llmClassifier";
+import type { Rule } from "./ruleService";
 
 export type RuleRef = { id: string; name: string; colorId: string };
+
+// Classifier input context. Relocated here from the deleted substring
+// `classifier.ts` (ADR-0004 #02). `categories` is assumed pre-sorted by
+// (priority ASC, created_at ASC) at load time (`calendarSync.loadCategories`
+// / `listRules`); the priority tiebreaker relies on that order.
+export type ClassifyContext = {
+  userId: string;
+  categories: Rule[];
+};
 
 export type EmbeddingCandidate = {
   ruleId: string;
@@ -10,12 +19,12 @@ export type EmbeddingCandidate = {
   score: number;
 };
 
-// ADR-0004 (`docs/adr/0004-embedding-classifier.md`) #02 will emit
-// embeddingHit / embeddingMiss / ambiguous; this PR defines their types
-// only. Cases currently emitted: ruleHit, llmHit, llmQuotaExceeded,
-// llmTimeout, llmBadResponse, noMatch.
+// ADR-0004 #02 — Stage 1 is now embedding kNN. `embeddingHit` short-circuits
+// (assign, no LLM); `embeddingMiss` / `ambiguous` fall through to the Stage-2
+// LLM leg (or are emitted directly when the LLM leg is unavailable). The
+// substring `ruleHit` case is gone — Stage 1 no longer inspects keyword
+// substrings (ADR-0004 supersedes §5.1).
 export type ClassificationOutcome =
-  | { kind: "ruleHit"; rule: RuleRef; matchedKeyword: string }
   | {
       kind: "embeddingHit";
       rule: RuleRef;
@@ -36,9 +45,8 @@ export type ClassificationOutcome =
   | { kind: "llmBadResponse"; llmRecord: LlmCallRecord }
   | { kind: "noMatch" };
 
-// Chain's public closure type — single union return signature replaces the
-// pre-PR `Classification | null`. Lives next to the union so the contract
-// is self-contained.
+// Chain's public closure type — single union return signature. Lives next to
+// the union so the contract is self-contained.
 export type ClassifyEventFn = (
   event: CalendarEvent,
   ctx: ClassifyContext,

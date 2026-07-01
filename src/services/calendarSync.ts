@@ -3,13 +3,14 @@ import type { PostgresJsDatabase } from "drizzle-orm/postgres-js";
 
 import { syncState } from "../db/schema";
 import type { Bindings } from "../env";
-import type { ClassifyContext } from "./classifier";
 import { buildDefaultClassifier } from "./classifierChain";
 import type {
   ClassificationOutcome,
+  ClassifyContext,
   ClassifyEventFn,
 } from "./classifierOutcomes";
 import { llmCallsBufferSink, syncSummarySink } from "./classifierSinks";
+import { resolveEmbedder, type EmbedTexts } from "./embeddings";
 import type { LlmCallRecord } from "./llmClassifier";
 import {
   AUTOCOLOR_KEYS,
@@ -126,6 +127,40 @@ async function loadCategories(
   return await listRules(db, userId);
 }
 
+// ADR-0004 #02 AC #6 — per-page batch title embedding. One `env.AI.run` batch
+// per page (aligned to the `res.items` boundary of the existing streaming
+// paging loop). Vectors are transient (never stored) and consumed by Stage-1
+// kNN via the per-page `Map<eventId, vector>`. Cancelled events and empty
+// titles are skipped (they never reach Stage 1). A batch failure leaves the
+// map empty so every event this page degrades to Stage-2 LLM — the systemic
+// Workers-AI failure blast radius (#02 AC #9), bounded by the daily caps.
+async function embedPageTitles(
+  embed: EmbedTexts,
+  items: CalendarEvent[],
+): Promise<Map<string, number[]>> {
+  const map = new Map<string, number[]>();
+  const targets = items.filter(
+    (e) => e.status !== "cancelled" && (e.summary?.trim().length ?? 0) > 0,
+  );
+  if (targets.length === 0) return map;
+  try {
+    const vectors = await embed(targets.map((e) => e.summary!.trim()));
+    for (let i = 0; i < targets.length; i += 1) {
+      const v = vectors[i];
+      if (v) map.set(targets[i]!.id, v);
+    }
+  } catch (err) {
+    console.warn(
+      JSON.stringify({
+        level: "warn",
+        msg: "page title embedding failed (degrade to Stage 2)",
+        error: err instanceof Error ? err.message : String(err),
+      }),
+    );
+  }
+  return map;
+}
+
 async function processEvent(
   ctx: SyncContext,
   accessToken: string,
@@ -187,14 +222,13 @@ async function processEvent(
 }
 
 // Hit narrowing — collapses every outcome shape down to "do we PATCH?".
-// Returns the RuleRef for hit-shaped outcomes (`ruleHit` / `llmHit` /
-// `embeddingHit`) and `null` for everything else. Lives next to processEvent
-// because this is purely a hit-vs-miss decision at the lifecycle layer.
+// Returns the RuleRef for hit-shaped outcomes (`embeddingHit` / `llmHit`) and
+// `null` for everything else. Lives next to processEvent because this is purely
+// a hit-vs-miss decision at the lifecycle layer.
 function outcomeToRuleHit(
   outcome: ClassificationOutcome,
 ): { id: string; name: string; colorId: string } | null {
   switch (outcome.kind) {
-    case "ruleHit":
     case "llmHit":
     case "embeddingHit":
       return outcome.rule;
@@ -279,6 +313,16 @@ async function runPagedList(
     ctx.recordSyncRun?.({ ...summary, outcome });
     return result;
   };
+  // ADR-0004 #02 — Stage-1 embedding kNN. The default classifier reads each
+  // event's title vector from `pageVectors`, refreshed per page by
+  // `embedPageTitles` in the loop below. `getTitleVector` closes over the
+  // (reassigned-per-page) `pageVectors` binding so the classifier always sees
+  // the current page's map. When `env.AI` is unbound, `stage1` is omitted and
+  // the chain degrades to LLM-only (#02 AC #9). A test-injected
+  // `ctx.classifyEvent` bypasses both the chain and per-page embedding.
+  const embedTitles = resolveEmbedder(ctx.env);
+  const usingDefaultClassifier = ctx.classifyEvent === undefined;
+  let pageVectors = new Map<string, number[]>();
   const classify =
     ctx.classifyEvent ??
     buildDefaultClassifier({
@@ -291,6 +335,15 @@ async function runPagedList(
           llmCallBuffer.push(rec);
         }),
       ],
+      ...(embedTitles
+        ? {
+            stage1: {
+              db: ctx.db,
+              embedTexts: embedTitles,
+              getTitleVector: (id: string) => pageVectors.get(id),
+            },
+          }
+        : {}),
     });
 
   try {
@@ -324,6 +377,11 @@ async function runPagedList(
         timeMax: start.timeMax,
       });
       summary.pages += 1;
+      // Refresh the per-page title vectors before classifying this page's
+      // events. Only when the default (embedding) classifier is in use.
+      if (usingDefaultClassifier && embedTitles) {
+        pageVectors = await embedPageTitles(embedTitles, res.items ?? []);
+      }
       for (const ev of res.items ?? []) {
         try {
           await processEvent(ctx, accessToken, ev, classifyCtx, classify, summary);

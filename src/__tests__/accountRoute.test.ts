@@ -224,19 +224,20 @@ describe("POST /api/account/delete", () => {
     expect(revokeSessionMock).not.toHaveBeenCalled();
   });
 
-  it("schema cascade contract: 9 references-to-users.id with onDelete cascade in src/db/schema.ts", () => {
+  it("schema cascade contract: 10 references-to-users.id with onDelete cascade in src/db/schema.ts", () => {
     // Pin the §3 row 179 cascade contract: every user-scoped table FK to
     // users.id must declare onDelete: "cascade". Adding a new such table
     // without the cascade — or removing one — must fail this assertion.
     // The narrowed regex (vs. plain `onDelete: "cascade"`) ensures cascading
     // FKs to OTHER parents (e.g. categories) cannot mask a missing user
-    // cascade by inflating a loose count.
+    // cascade by inflating a loose count. ADR-0004 #02 added `rule_seeds`
+    // (user_id → users cascade), bumping the count 9 → 10.
     const schemaPath = fileURLToPath(new URL("../db/schema.ts", import.meta.url));
     const src = readFileSync(schemaPath, "utf8");
     const matches = src.match(
       /\.references\(\(\) => users\.id, \{ onDelete: "cascade" \}\)/g,
     );
     expect(matches).not.toBeNull();
-    expect(matches?.length).toBe(9);
+    expect(matches?.length).toBe(10);
   });
 });

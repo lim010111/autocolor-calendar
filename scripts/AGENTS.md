@@ -2,7 +2,7 @@
 
 ## Purpose & Owns
 
-This directory owns three single-responsibility TypeScript scripts that the
+This directory owns four single-responsibility TypeScript scripts that the
 operator runs from a developer workstation. None ships into the Worker
 runtime.
 
@@ -13,6 +13,11 @@ runtime.
   shell history).
 - `sim-failure.ts` — `§4A` failure-path simulator that mutates a single
   user's `sync_state` / `oauth_tokens` rows for manual recovery testing.
+- `backfill-name-seeds.ts` — ADR-0004 #02 one-shot: embeds every existing
+  rule's `name` (via Workers AI REST, `CF_*` secrets + the frozen prefix)
+  into `rule_seeds(seed_type='name')`. Idempotent upsert; asserts
+  name-seed count == rule count. Also the 768→1024 flip re-backfill step
+  (see the `drizzle/0017_*.sql` header).
 
 ## Quick commands
 

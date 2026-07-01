@@ -6,15 +6,16 @@ import { getDb } from "../db";
 import { llmCalls, users } from "../db/schema";
 import type { HonoEnv } from "../env";
 import { authMiddleware } from "../middleware/auth";
-import { classifyEvent } from "../services/classifier";
 import { buildDefaultClassifier } from "../services/classifierChain";
 import type {
   ClassificationOutcome,
   RuleRef,
 } from "../services/classifierOutcomes";
 import { previewLlmCallSink } from "../services/classifierSinks";
+import { resolveEmbedder } from "../services/embeddings";
 import type { LlmCallRecord } from "../services/llmClassifier";
 import { listRules, type Rule } from "../services/ruleService";
+import { classifyStage1 } from "../services/stage1";
 
 // Cost guardrail (§5/§6 후속) — preview-LLM throttle window.
 //
@@ -51,8 +52,19 @@ const PreviewBody = z.object({
   llm: z.boolean().optional(),
 });
 
+// ADR-0004 #02 — Stage 1 is embedding kNN, so the substring `matchedKeyword`
+// is gone. An embedding hit surfaces the winning *seed* (its text + cosine
+// score) under the still-`"rule"` source (the embedding leg IS the rule leg).
+// GAS copy impact: the sidebar's `formatMatchLine` currently reads
+// `matchedKeyword`; that field is dropped here and the GAS UI update (show
+// `matchedSeed` / score) is deferred to #03/#05 — see src/AGENTS.md §5.
 type PreviewResponse =
-  | { source: "rule"; category: PreviewCategory; matchedKeyword: string }
+  | {
+      source: "rule";
+      category: PreviewCategory;
+      matchedSeed: string;
+      score: number;
+    }
   | { source: "llm"; category: PreviewCategory }
   | {
       source: "no_match";
@@ -70,26 +82,21 @@ function lookupCategory(rule: RuleRef, rows: Rule[]): PreviewCategory {
     : { id: rule.id, name: rule.name, colorId: rule.colorId };
 }
 
-// Single helper that owns the outcome → wire-shape mapping. ADR-0004 #02
-// will edit this function to surface embedding fields; today the embedding
-// cases are unreachable (chain never emits them) so they fold into the
-// existing `no_match` shape.
+// Single helper that owns the outcome → wire-shape mapping.
 function outcomeToPreviewResponse(
   outcome: ClassificationOutcome,
   rows: Rule[],
   llmAvailable: boolean,
 ): PreviewResponse {
   switch (outcome.kind) {
-    case "ruleHit":
+    case "embeddingHit":
       return {
         source: "rule",
         category: lookupCategory(outcome.rule, rows),
-        matchedKeyword: outcome.matchedKeyword,
+        matchedSeed: outcome.seed.text,
+        score: outcome.score,
       };
     case "llmHit":
-      return { source: "llm", category: lookupCategory(outcome.rule, rows) };
-    case "embeddingHit":
-      // ADR-0004 #02 will rewrite this case to surface seed / grade / score.
       return { source: "llm", category: lookupCategory(outcome.rule, rows) };
     case "noMatch":
     case "embeddingMiss":
@@ -193,6 +200,11 @@ classifyRoutes.post("/preview", async (c) => {
         : {}),
     };
 
+    // ADR-0004 #02 — Stage 1 is embedding kNN. Both paths embed the title via
+    // the frozen-prefix helper (`resolveEmbedder`); no `env.AI` binding →
+    // `no_match` (Stage 1 unavailable). `llm: false` runs Stage 1 only;
+    // `llm: true` runs the full chain (Stage 1 → LLM on miss).
+    const embed = resolveEmbedder(c.env);
     let outcome: ClassificationOutcome;
     if (useLlm) {
       const classifyFn = buildDefaultClassifier({
@@ -204,18 +216,17 @@ classifyRoutes.post("/preview", async (c) => {
             llmCallRecord = rec;
           }),
         ],
+        ...(embed ? { stage1: { db, embedTexts: embed } } : {}),
       });
       outcome = await classifyFn(event, { userId, categories: rows });
     } else {
-      // Rule-only path: avoid building the full chain when the caller opted
-      // out (default). Map directly to a `ruleHit` / `noMatch` outcome.
-      const hit = await classifyEvent(event, { userId, categories: rows });
-      outcome = hit
-        ? {
-            kind: "ruleHit",
-            rule: hit.rule,
-            matchedKeyword: hit.matchedKeyword,
-          }
+      // Stage-1-only path: embedding kNN, no LLM leg.
+      outcome = embed
+        ? await classifyStage1(
+            event,
+            { userId, categories: rows },
+            { db, embedTexts: embed },
+          )
         : { kind: "noMatch" };
     }
 

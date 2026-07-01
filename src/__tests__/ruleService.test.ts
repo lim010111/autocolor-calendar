@@ -226,6 +226,108 @@ describe("updateRule", () => {
   });
 });
 
+describe("name seed write (ADR-0004 #02)", () => {
+  const embedOk = () =>
+    vi.fn(async (texts: string[]) => texts.map(() => [0.1, 0.2, 0.3]));
+
+  it("createRule embeds the name into a rule_seeds 'name' row", async () => {
+    const { db, state } = makeFakeDb({ syncStates: [] });
+    const embed = embedOk();
+    const { rule, sideEffects } = await createRule(
+      db as never,
+      env,
+      USER_A,
+      { name: "회의", colorId: "9", keywords: ["회의"] },
+      embed,
+    );
+    await sideEffects;
+    expect(embed).toHaveBeenCalledWith(["회의"]);
+    expect(state.ruleSeeds).toHaveLength(1);
+    expect(state.ruleSeeds[0]).toMatchObject({
+      ruleId: rule.id,
+      userId: USER_A,
+      seedType: "name",
+      seedText: "회의",
+      embedding: [0.1, 0.2, 0.3],
+    });
+  });
+
+  it("createRule without an embedder (no AI binding) writes no seed", async () => {
+    const { db, state } = makeFakeDb({ syncStates: [] });
+    const { sideEffects } = await createRule(db as never, env, USER_A, {
+      name: "회의",
+      colorId: "9",
+      keywords: ["회의"],
+    });
+    await sideEffects;
+    expect(state.ruleSeeds).toHaveLength(0);
+  });
+
+  it("updateRule re-embeds the name seed when name changes", async () => {
+    const { db, state } = makeFakeDb({
+      categories: [row({ id: RULE_A, userId: USER_A, name: "회의" })],
+      syncStates: [{ userId: USER_A, calendarId: "primary" }],
+    });
+    const embed = embedOk();
+    const result = await updateRule(
+      db as never,
+      env,
+      USER_A,
+      RULE_A,
+      { name: "주간회의" },
+      embed,
+    );
+    await result?.sideEffects;
+    expect(embed).toHaveBeenCalledWith(["주간회의"]);
+    expect(state.ruleSeeds).toHaveLength(1);
+    expect(state.ruleSeeds[0]).toMatchObject({
+      ruleId: RULE_A,
+      seedType: "name",
+      seedText: "주간회의",
+    });
+    // name-only change still does NOT fan out a resync (§02 AC #4).
+    expect(vi.mocked(enqueueSync)).not.toHaveBeenCalled();
+  });
+
+  it("updateRule does NOT re-embed when only colorId changes", async () => {
+    const { db, state } = makeFakeDb({
+      categories: [row({ id: RULE_A, userId: USER_A })],
+      syncStates: [{ userId: USER_A, calendarId: "primary" }],
+    });
+    const embed = embedOk();
+    const result = await updateRule(
+      db as never,
+      env,
+      USER_A,
+      RULE_A,
+      { colorId: "3" },
+      embed,
+    );
+    await result?.sideEffects;
+    expect(embed).not.toHaveBeenCalled();
+    expect(state.ruleSeeds).toHaveLength(0);
+  });
+
+  it("embedding failure is warn-only — the rule still returns, no seed written", async () => {
+    const warnSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    const { db, state } = makeFakeDb({ syncStates: [] });
+    const embed = vi.fn(async () => {
+      throw new Error("AI unavailable");
+    });
+    const { rule, sideEffects } = await createRule(
+      db as never,
+      env,
+      USER_A,
+      { name: "회의", colorId: "9", keywords: ["회의"] },
+      embed,
+    );
+    await expect(sideEffects).resolves.toBeUndefined();
+    expect(rule.name).toBe("회의");
+    expect(state.ruleSeeds).toHaveLength(0);
+    warnSpy.mockRestore();
+  });
+});
+
 describe("deleteRule", () => {
   it("deletes and fans out color_rollback to every user calendar", async () => {
     const { db } = makeFakeDb({
