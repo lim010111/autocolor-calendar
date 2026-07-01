@@ -6,44 +6,43 @@ outside the narrative block; mechanical sections are regenerated every run._
 <!-- narrative:start -->
 ## Current focus
 
-architecture-deepening 트랙의 committed 작업은 완료됐다 — 6개 이슈 전부
-done/wontfix (58/58), 마지막 #06 Watch channel lifecycle Module 이 이번
-세션에 main 머지됨. 남은 것은 un-grilled deepening 후보(CalendarApiError
-pair 등)뿐 — Open decisions 참조.
-spec: `.scratch/architecture-deepening/issues/06-watch-channel-lifecycle-module.md`
-
 embedding-classifier (ADR-0004 구현) — Stage 1 substring → 임베딩 kNN.
-**#01 (모델 eval) D 완료·push 완료** (17/17, branch `embedding-eval-scaffold`).
-운영자 real ko gold set(`ko-v1`, 합성 0줄) 3080 sweep(13,320 레코드) → 결정:
-임베딩 모델 = `embeddinggemma-300m`(768d) **provisional**, 임계값
-`T=(0.30,0.55,0.10)` **provisional**(floor 0.90, 정밀도-우선), 벡터 차원
-**동결은 연기**(단일 persona·ko-only 검정력 약함). 측정 정본 = REPORT.md +
-ADR-0005. **#02 (name seeds) unblock** — 잠정 gemma(768) 위 스키마 작업 가능.
-fix-push 가 advisory finding 1건 발생 → 머지게이트 **pass 2 는 사람 게이트**.
-spec: `.scratch/embedding-classifier/issues/02-embedding-knn-classifier-name-seeds.md`
+**#01 (모델 eval) D 완료·push 완료** (17/17). **#02 (name seeds) 구현 완료**
+— substring Stage 1 을 임베딩 kNN 으로 완전 교체(`name` 씨앗만): `rule_seeds`
+pgvector(HNSW cosine + partial-unique name) + `env.AI` 바인딩 + 프리픽스 강제
+헬퍼 + name 씨앗 create-or-replace write + backfill + per-page batch title
+임베딩 read + 2등급 결정 + substring 폐기. 잠정 gemma(768)·프리픽스·임계값은
+ADR-0005 provisional 로 단일 config 흡수(768→1024 flip = 상수 1줄+마이그레이션+
+backfill 재실행). 14/14 AC, test(493)/typecheck/lint/check-paths 통과. 브랜치
+`feat/embedding-classifier-name-seeds`(`7234421`) 커밋, **push 대기**. 다음은
+#03 (keyword seeds) — #02 로 unblock.
+spec: `.scratch/embedding-classifier/issues/03-keyword-seeds.md`
 (설계 정본: `.scratch/embedding-classifier/01-dataset-design.md`)
+
+architecture-deepening 트랙의 committed 작업은 완료 — 6개 이슈 전부
+done/wontfix (58/58). 남은 것은 un-grilled deepening 후보(CalendarApiError
+pair 등)뿐 — Open decisions 참조.
 
 운영 posture: main 에 local merge-gate 가 **advisory** 로 활성 — main 기준
 브랜치에서 in-scope 커밋 시 백그라운드 Codex produce, push 시 advisory
-verify(보고만, 차단 안 함). AGENTS.md ↔ CLAUDE.md 도 canonicalize 됨
-(AGENTS.md 가 정본, CLAUDE.md 는 `@AGENTS.md` 래퍼; root + 4 모듈).
-harness-doctor 3/3.
+verify(보고만, 차단 안 함). AGENTS.md ↔ CLAUDE.md canonicalize 됨
+(AGENTS.md 가 정본, `@AGENTS.md` 래퍼; root + 4 모듈). harness-doctor 3/3.
 
 ## Start here next session
 
-- **능동 — embedding-classifier #02 (name seeds)**: #01 unblock 완료, 잠정
-  gemma(768) 위 `rule_seeds` pgvector 스키마 + name 씨앗 임베딩 슬라이스 착수.
-  spec: `.scratch/embedding-classifier/issues/02-embedding-knn-classifier-name-seeds.md`.
-- **사람 게이트 — 머지게이트 pass 2**: fix-push(`a7f0f8f`)가 새 advisory
-  review 1건 발생 — `/handle-merge-findings` 재실행 여부는 사람 판단(자동
-  루프 안 함).
-- **병행 — architecture-deepening deepening 후보 (CalendarApiError pair)**:
+- **능동 — embedding-classifier #02 → push**: 구현 완료·브랜치 커밋
+  `7234421`(`feat/embedding-classifier-name-seeds`), **push/PR 은 사용자 지시
+  대기**. push·머지 후 운영 스텝: `pnpm db:migrate`(0017 rule_seeds) + `AI`
+  바인딩 배포 + `scripts/backfill-name-seeds.ts` 1회(CF_* 필요). 그 후 #03
+  (keyword seeds) 착수. spec: `.scratch/embedding-classifier/issues/03-keyword-seeds.md`.
+- **사람 게이트 — 머지게이트 pass 2**: #02 커밋이 백그라운드 advisory produce
+  발생 — `/handle-merge-findings` 재실행 여부는 사람 판단(자동 루프 안 함).
+- **병행 — architecture-deepening 후보 (CalendarApiError pair)**:
   `watch/core.ts` 의 `classify`/`throwWatchError` 가 `googleCalendar.ts` 와
-  중복; `/heal-watch` 의 kind→HTTP switch 도 후보. grill 선행 필요
-  (un-grilled), 별도 PR. 전체 후보 목록은 Open decisions.
-- 사소한 후속 (block 아님): `src/AGENTS.md` / `llmClassifier.ts` 의
-  폐기된 `onLlmCall` / `onLlmAttempted` 콜백 잔존 참조 정리 — 다음 PR 에
-  묶기.
+  중복; `/heal-watch` kind→HTTP switch 도 후보. grill 선행(un-grilled), 별도 PR.
+- 사소한 후속 (block 아님): GAS `formatMatchLine` 이 `matchedKeyword`→
+  `matchedSeed`/score 로 갱신 필요(#02 가 preview 계약 변경, #03/#05 로 이연);
+  `onLlmCall`/`onLlmAttempted` 폐기 참조 정리도 같이.
 
 ## Open decisions
 
@@ -91,13 +90,13 @@ harness-doctor 3/3.
 
 ## embedding-classifier
 
-`███████░░░░░░░░░░░░░░░` 17/51 acceptance criteria met (33%)
+`████████████░░░░░░░░░░` 31/57 acceptance criteria met (54%)
 
 | # | Issue | Triage | Criteria | State | Blocked by |
 |---|-------|--------|----------|-------|-----------|
 | 01 | Embedding model selection eval | `done` | 17/17 | ✅ done | — |
-| 02 | Embedding knn classifier name seeds | `ready-for-agent` | 0/8 | ⬜ todo | — |
-| 03 | Keyword seeds | `ready-for-agent` | 0/5 | ⛔ blocked | #02 |
+| 02 | Embedding knn classifier name seeds | `done` | 14/14 | ✅ done | — |
+| 03 | Keyword seeds | `ready-for-agent` | 0/5 | ⬜ todo | #02 |
 | 04 | Rule editor redesign | `ready-for-agent` | 0/5 | ⛔ blocked | #03 |
 | 05 | Examples seeds instant feedback | `ready-for-agent` | 0/8 | ⛔ blocked | #03 |
 | 06 | History based rule suggestions | `ready-for-agent` | 0/8 | ⛔ blocked | #05 |
