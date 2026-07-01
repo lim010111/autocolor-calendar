@@ -55,9 +55,8 @@ const PreviewBody = z.object({
 // ADR-0004 #02 — Stage 1 is embedding kNN, so the substring `matchedKeyword`
 // is gone. An embedding hit surfaces the winning *seed* (its text + cosine
 // score) under the still-`"rule"` source (the embedding leg IS the rule leg).
-// GAS copy impact: the sidebar's `formatMatchLine` currently reads
-// `matchedKeyword`; that field is dropped here and the GAS UI update (show
-// `matchedSeed` / score) is deferred to #03/#05 — see src/AGENTS.md §5.
+// The GAS sidebar's `formatMatchLine` renders these via `match.byRule.withSeed`
+// (#03 — see src/AGENTS.md §5).
 type PreviewResponse =
   | {
       source: "rule";

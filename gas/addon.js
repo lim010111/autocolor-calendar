@@ -330,7 +330,7 @@ function actionGoToSettings(e) {
 /**
  * Calls the backend classify preview endpoint. Rule-only classifier — LLM
  * fallback runs during sync, not here, to keep sidebar latency predictable.
- * Returns { source, category?, matchedKeyword?, llmAvailable? } on 200 or
+ * Returns { source, category?, matchedSeed?, score?, llmAvailable? } on 200 or
  * { error } for auth/network failure so the caller can render an inline
  * fallback message instead of hanging.
  */
@@ -349,6 +349,16 @@ function fetchPreviewOrError(payload) {
 }
 
 /**
+ * Formats an embedding cosine score (0..1) as a rounded percentage for the
+ * sidebar. Returns '' for a missing/non-numeric score so the match line
+ * degrades gracefully (embedding hits always carry a numeric score).
+ */
+function formatScore(score) {
+  if (typeof score !== 'number' || isNaN(score)) return '';
+  return Math.round(score * 100) + '%';
+}
+
+/**
  * Builds the matched-rule status line. Mirrors the preview-endpoint
  * outcomes (rule / llm / no_match ± llmTried) plus the network-error
  * fallback. Kept as a pure formatter so UI copy tweaks don't require
@@ -362,8 +372,14 @@ function formatMatchLine(preview, L) {
   }
   if (preview.source === 'rule' && preview.category) {
     var name = preview.category.name || t('match.fallbackName', null, L);
-    if (preview.matchedKeyword) {
-      return t('match.byRule.withKeyword', { name: name, keyword: preview.matchedKeyword }, L);
+    // ADR-0004 #03 — the embedding hit surfaces the winning seed (name or
+    // keyword) + its cosine score, replacing the dead substring matchedKeyword.
+    if (preview.matchedSeed) {
+      return t(
+        'match.byRule.withSeed',
+        { name: name, seed: preview.matchedSeed, score: formatScore(preview.score) },
+        L
+      );
     }
     return t('match.byRule', { name: name }, L);
   }
@@ -421,7 +437,7 @@ function onEventOpen(e) {
   var L = pickLocale(e);
   var title = t('event.empty', null, L);
   var appliedColorLabel = t('colors.default', null, L);
-  var previewResult = null; // { source, category?, matchedKeyword?, llmAvailable?, llmTried?, error? }
+  var previewResult = null; // { source, category?, matchedSeed?, score?, llmAvailable?, llmTried?, error? }
 
   // §5 후속 — if actionClassifyWithLlm stashed an on-demand LLM preview in
   // the card parameters, use it instead of re-fetching rule-only. JSON

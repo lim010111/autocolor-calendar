@@ -48,11 +48,11 @@ SELECT indexname FROM pg_indexes WHERE tablename = 'rule_seeds';
 
 ## 2단계 — 기존 규칙들 채우기 (backfill)
 
-이미 만들어져 있던 규칙들의 이름을 임베딩해서 새 테이블에 넣는다. (안 하면
+이미 만들어져 있던 규칙들의 이름 + 키워드를 임베딩해서 새 테이블에 넣는다. (안 하면
 기존 규칙들이 한동안 LLM 으로만 분류돼서 비용이 는다.)
 
 ```bash
-pnpm tsx scripts/backfill-name-seeds.ts
+pnpm tsx scripts/backfill-seeds.ts
 ```
 
 - 몇 번을 다시 돌려도 안전하다(중복 안 생김).

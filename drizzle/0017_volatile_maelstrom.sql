@@ -11,8 +11,8 @@
 --   2. New migration: `ALTER TABLE rule_seeds ALTER COLUMN embedding TYPE
 --      vector(1024) USING NULL` is invalid (dim change is not a cast) — instead
 --      `TRUNCATE rule_seeds` then `ALTER COLUMN embedding TYPE vector(1024)`.
---   3. Re-run the backfill job (scripts/backfill-name-seeds.ts) — idempotent,
---      so the truncate+backfill re-populates every name row under the new dim.
+--   3. Re-run the backfill job (scripts/backfill-seeds.ts) — idempotent, so the
+--      truncate+backfill re-populates every name + keyword row under the new dim.
 --   4. Rebuild the HNSW index (DROP + CREATE below) so it matches the new dim.
 -- The prefix (src/config/embedding.ts EMBEDDING_PREFIX) is frozen and MUST
 -- stay identical across backfill / create-update / sync title hot-path.

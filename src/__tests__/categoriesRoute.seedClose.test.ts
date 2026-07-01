@@ -71,7 +71,18 @@ function makeRaceDb(seed?: Partial<Row>): RaceHandle {
     insert(table: unknown) {
       if (table === ruleSeeds) {
         return {
-          values(v: Record<string, unknown>) {
+          values(v: Record<string, unknown> | Record<string, unknown>[]) {
+            // #03 keyword adds arrive as `.values(array)` awaited directly;
+            // race-aware like the name upsert so a keyword seed written after
+            // this handle's close() throws just as the name seed would.
+            if (Array.isArray(v)) {
+              return Promise.resolve().then(() => {
+                if (closed) {
+                  throw new Error("write CONNECTION_ENDED (pool closed)");
+                }
+                for (const rowv of v) base.state.ruleSeeds.push(rowv);
+              });
+            }
             return {
               onConflictDoUpdate: async (_cfg?: unknown) => {
                 if (closed) {
@@ -179,15 +190,26 @@ describe("categories mutation — name seed survives pool teardown", () => {
       body: JSON.stringify({ name: "주간회의", colorId: "9", keywords: ["주간회의"] }),
     });
     expect(res.status).toBe(201);
-    // The whole point of #02: the Stage-1 name seed must be written. If close()
-    // races the embed, the insert throws into writeNameSeed's warn-only catch
-    // and this stays empty.
-    expect(allSeeds()).toHaveLength(1);
-    expect(allSeeds()[0]).toMatchObject({
-      userId: USER_A,
-      seedType: "name",
-      seedText: "주간회의",
-    });
+    // The whole point of #02/#03: the Stage-1 seeds must be written. If close()
+    // races the embed, the insert throws into the write path's warn-only catch
+    // and these stay empty. Create writes a name seed (#02) AND a keyword seed
+    // (#03, keywords: ["주간회의"]) — both must survive the pool teardown.
+    const seeds = allSeeds();
+    expect(seeds).toHaveLength(2);
+    expect(seeds).toContainEqual(
+      expect.objectContaining({
+        userId: USER_A,
+        seedType: "name",
+        seedText: "주간회의",
+      }),
+    );
+    expect(seeds).toContainEqual(
+      expect.objectContaining({
+        userId: USER_A,
+        seedType: "keyword",
+        seedText: "주간회의",
+      }),
+    );
   });
 
   it("PATCH rename re-embeds and persists the name seed despite close()", async () => {
