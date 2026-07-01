@@ -47,6 +47,13 @@ LLM_GLOBAL_DAILY_LIMIT = "10000"
 [env.dev.triggers]
 crons = ["0 */6 * * *", "0 3 * * *", "5 0 * * *"]
 
+# ADR-0004 #02 — Workers AI binding for embedding-kNN Stage 1. Prefix + model
+# are frozen in src/config/embedding.ts; env.AI is the only surface the Worker
+# uses to embed. No cost concern: Workers AI free tier (~10k neurons/day) vs
+# ~15 tokens/calendar title.
+[env.dev.ai]
+binding = "AI"
+
 [[env.dev.hyperdrive]]
 binding = "HYPERDRIVE"
 id = "0adfbd41c67e4225a63894c3768bb837"
@@ -89,6 +96,10 @@ LLM_GLOBAL_DAILY_LIMIT = "10000"
 # prod Hyperdrive / Queue / cron 활성화 (G2 runbook Step 6-9 결과).
 # Hyperdrive UUID / Queue 이름은 Cloudflare Dashboard에서 생성 후 캡처한 값.
 # dev 블록과 동일한 패턴 — env scoping만 다름.
+
+# ADR-0004 #02 — Workers AI binding (mirrors env.dev.ai).
+[env.prod.ai]
+binding = "AI"
 
 [[env.prod.hyperdrive]]
 binding = "HYPERDRIVE"

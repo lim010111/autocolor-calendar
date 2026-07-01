@@ -1,10 +1,13 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { Bindings } from "../env";
-import type { ClassifyContext } from "../services/classifier";
 import { buildDefaultClassifier } from "../services/classifierChain";
-import type { ClassificationOutcome } from "../services/classifierOutcomes";
+import type {
+  ClassificationOutcome,
+  ClassifyContext,
+} from "../services/classifierOutcomes";
 import type { Sink } from "../services/classifierSinks";
+import type { Stage1Deps } from "../services/stage1";
 import type { CalendarEvent } from "../services/googleCalendar";
 import type { ReserveLlmCallFn } from "../services/llmClassifier";
 import type { Rule } from "../services/ruleService";
@@ -73,6 +76,19 @@ function recordingSink(): { sink: Sink; outcomes: ClassificationOutcome[] } {
   return { sink, outcomes };
 }
 
+// ADR-0004 #02 — a Stage-1 deps whose kNN returns a single high-score seed for
+// `ruleId`, so `classifyStage1` yields an `embeddingHit`. The embed vector
+// content is irrelevant because `db.execute` is faked to return ranked rows
+// directly. Omitting `stage1` from the chain deps skips Stage 1 (miss → LLM),
+// which is how the LLM-leg tests below reach the Stage-2 path.
+function stage1Hit(ruleId = "c-1", seedText = "회의", score = 0.99): Stage1Deps {
+  const rows = [{ ruleId, seedId: "s-1", seedText, seedType: "name", score }];
+  return {
+    db: { execute: async () => rows } as never,
+    embedTexts: async (texts: string[]) => texts.map(() => [0.1, 0.2]),
+  };
+}
+
 describe("buildDefaultClassifier — rule → LLM chain", () => {
   const originalFetch = globalThis.fetch;
   beforeEach(() => vi.restoreAllMocks());
@@ -81,7 +97,7 @@ describe("buildDefaultClassifier — rule → LLM chain", () => {
     vi.restoreAllMocks();
   });
 
-  it("rule hit short-circuits — LLM never invoked, emits ruleHit", async () => {
+  it("embedding hit short-circuits — LLM never invoked, emits embeddingHit", async () => {
     const fetchSpy = vi.fn();
     globalThis.fetch = fetchSpy as unknown as typeof fetch;
     const rec = recordingSink();
@@ -91,16 +107,19 @@ describe("buildDefaultClassifier — rule → LLM chain", () => {
       userId: USER,
       reserve: okReserve,
       sinks: [rec.sink],
+      stage1: stage1Hit("c-1", "회의", 0.99),
     });
     const out = await classify(ev({ summary: "주간 회의" }), ctxOf([cat()]));
     expect(out).toEqual({
-      kind: "ruleHit",
+      kind: "embeddingHit",
       rule: { id: "c-1", name: "회의", colorId: "9" },
-      matchedKeyword: "회의",
+      seed: { id: "s-1", text: "회의" },
+      grade: "declared",
+      score: 0.99,
     });
     expect(fetchSpy).not.toHaveBeenCalled();
     expect(rec.outcomes).toHaveLength(1);
-    expect(rec.outcomes[0]!.kind).toBe("ruleHit");
+    expect(rec.outcomes[0]!.kind).toBe("embeddingHit");
   });
 
   it("rule miss + LLM hit → emits llmHit with llmRecord attached", async () => {
@@ -356,9 +375,10 @@ describe("buildDefaultClassifier — rule → LLM chain", () => {
       userId: USER,
       reserve: okReserve,
       sinks: [badSink, goodSink],
+      stage1: stage1Hit(),
     });
     const out = await classify(ev({ summary: "주간 회의" }), ctxOf([cat()]));
-    expect(out.kind).toBe("ruleHit");
+    expect(out.kind).toBe("embeddingHit");
     expect(goodSink).toHaveBeenCalledTimes(1);
     // Exactly one warn line referencing the sink failure.
     const sinkFailLogs = warnSpy.mock.calls.filter((c) =>
@@ -387,9 +407,10 @@ describe("buildDefaultClassifier — rule → LLM chain", () => {
       userId: USER,
       reserve: okReserve,
       sinks: [syncThrowSink, goodSink],
+      stage1: stage1Hit(),
     });
     const out = await classify(ev({ summary: "주간 회의" }), ctxOf([cat()]));
-    expect(out.kind).toBe("ruleHit");
+    expect(out.kind).toBe("embeddingHit");
     expect(goodSink).toHaveBeenCalledTimes(1);
     const sinkFailLogs = warnSpy.mock.calls.filter((c) =>
       c.some((arg) => typeof arg === "string" && arg.includes("classifier sink failed")),

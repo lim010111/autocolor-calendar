@@ -396,17 +396,73 @@ Retention: no TTL in Wave B. The `(user_id, finished_at)` btree keeps
 recent-window reads fast, but `sync_runs` grows monotonically. A pg_cron
 purge lands with the §3-후속 "세션 GC" job.
 
+## Stage 1: embedding kNN classifier (§5.1, ADR-0004)
+
+Stage 1 is embedding **kNN** — the substring keyword matcher is gone
+(ADR-0004 supersedes the old §5.1 substring contract; `classifier.ts` deleted).
+`classifierChain.buildDefaultClassifier` runs Stage 1 first; an `embeddingHit`
+short-circuits (assign, LLM never called), a miss/ambiguous falls through to the
+Stage-2 LLM leg below.
+
+- **Rule meaning = seed vectors.** A Rule's meaning is its *seeds* — name +
+  keyword + example — each embedded **separately** (no centroid/concat; a Rule
+  can be multi-modal). `score(rule)` = **max cosine** over that rule's seeds vs
+  the event-title vector (k = seed pool, agg = max, metric = cosine). This
+  slice (#02) stores `seed_type='name'` rows only; keyword (#03) / example (#05)
+  arrive later.
+- **Trust grades (derived, never stored).** example = **verified** (Instant
+  Feedback, strong), name/keyword = **declared** (weak). Grade-aware bar:
+  `T_verified` (low) for verified best seeds, `T_declared` (high) for declared.
+  Name-only seeds are all declared, so `T_verified` is inert until #05.
+- **Two-tier decision (`decideStage1`, unit-tested).** `score(best) < bar` →
+  Stage-2 LLM fallback; `best - second < margin` → ambiguous → Stage-2 fallback;
+  else assign best. Stage 1 never guesses.
+- **Config is single-sourced** in `src/config/embedding.ts`: model
+  `@cf/google/embeddinggemma-300m`, `EMBEDDING_DIM=768`, the frozen prefix
+  (`task: sentence similarity | query: `, sha256_16 `793518b01601c92e`), and
+  thresholds `T_verified=0.30`/`T_declared=0.55`/`margin=0.10`. **Dimension and
+  thresholds are ADR-0005 PROVISIONAL** (freeze deferred / WAI-parity pending);
+  a 768→1024 flip is a one-const edit + the bounded migration in
+  `drizzle/0017_*.sql` + a backfill re-run.
+- **Prefix is a single enforcement point.** `src/services/embeddings.ts`
+  (`makeWorkersAiEmbedder`) is the ONLY caller of `env.AI.run` for embeddings
+  and forces the prefix — seed vectors (write) and title vectors (read) always
+  match. Requires the `env.AI` binding (`wrangler.toml` `[env.*.ai]`).
+- **Storage = `rule_seeds` (pgvector).** HNSW `vector_cosine_ops`, partial-unique
+  `(rule_id) WHERE seed_type='name'` (one name row per rule), `user_id` tenant
+  scope. Seed vectors are durable; **title vectors are transient** —
+  `calendarSync.runPagedList` batch-embeds each page's titles into a per-page
+  `Map<eventId, vector>` (1 `env.AI.run` per page) and never stores them. Every
+  Stage-1 kNN query MUST filter `where user_id = ctx.userId` ("Tenant
+  isolation" — RLS is bypassed on the Worker path).
+- **Write path.** Rule create/update embeds the name into `rule_seeds` via the
+  existing `RuleSideEffects` (`ruleService.ts` → route `waitUntil`), as a
+  **create-or-replace**. Re-embed fires **only when the name text is in the
+  patch** (colorId/priority-only never re-embeds, consistent with `triggerSync`;
+  a rename does not fan out a full resync — reclassification stays eventual).
+  Embedding failure on this path is **warn-only** (fan-out failure model — the
+  request still succeeds). Existing rules are seeded once via
+  `scripts/backfill-name-seeds.ts`.
+- **Embedding-failure behavior (read path).** A title-embed failure (per-event
+  or a whole-page batch failure) degrades that event to the **Stage-2 LLM leg**
+  (not a silent no_match). Blast radius: a systemic Workers-AI outage pushes
+  every event to the LLM leg, but the two-tier daily caps (global 10k /
+  per-user 200) + per-run quota-latch bound the spend (see "Cost guardrail").
+- **`matchedKeyword` is gone.** The substring hit-word had no meaning under
+  embeddings. `POST /api/classify/preview` keeps `source:"rule"` for an
+  embedding hit but replaces `matchedKeyword` with **`matchedSeed`** (the
+  winning seed text) + `score`. The GAS sidebar's `formatMatchLine` still reads
+  the old field; updating that copy is deferred to #03/#05 (GAS is out of #02's
+  scope).
+
 ## LLM semantic matching policy (§5.3)
 
-> **Superseded-by-decision (not yet implemented).** ADR-0004
-> (`docs/adr/0004-embedding-classifier.md`, 2026-05-20) decided to
-> replace the Stage 1 substring keyword matcher with an embedding kNN
-> classifier. The §5 contract below — substring Stage 1, this LLM Stage 2 —
-> documents the **currently-running** pipeline and remains the live
-> invariant until the implementation PR lands and rewrites §5 in lockstep
-> (`docs/adr/README.md` Drift policy: this file outranks the ADR).
-> Stage 2 (the LLM leg described here) survives the redesign; ADR-0002's
-> model decision (gpt-5.4-nano) is **not** superseded.
+> **Stage 2 survives the ADR-0004 redesign.** The embedding kNN classifier
+> (§5.1 above, ADR-0004 #02) replaced the Stage-1 substring matcher; the LLM
+> Stage-2 leg described here is unchanged and ADR-0002's model decision
+> (gpt-5.4-nano) is **not** superseded. The traffic mix reaching Stage 2 shifts
+> (substring false-positives gone; Stage-1 below-threshold / ambiguous cases now
+> arrive) but the policy below still governs it.
 
 The §5.3 fallback runs only on rule-miss events (`classifierChain`'s second
 leg) and is configured to match by *meaning*, not surface-token containment.
@@ -842,15 +898,17 @@ wrangler.toml only, with the rationale comment co-located there.
 path required by Marketplace privacy review. Contract:
 
 - **`DELETE FROM users WHERE id = ?` is the sole authoritative writer.** All
-  9 user-scoped tables declare `onDelete: "cascade"` (oauth_tokens, sessions,
+  10 user-scoped tables declare `onDelete: "cascade"` (oauth_tokens, sessions,
   categories, sync_state, llm_usage_daily, sync_failures, llm_calls,
-  rollback_runs, sync_runs); the cascade is the only row-removal mechanism.
-  Adding a new user-scoped table without
-  `references(() => users.id, { onDelete: "cascade" })` would silently leak
-  rows on deletion — pinned by the regex test in `accountRoute.test.ts`
-  ("schema cascade contract") that greps the schema source for that exact
-  pattern and asserts exactly 9 occurrences. Loosening that regex weakens
-  the contract.
+  rollback_runs, sync_runs, rule_seeds); the cascade is the only row-removal
+  mechanism. `rule_seeds` (ADR-0004 #02) carries a direct `user_id → users`
+  cascade in addition to its `rule_id → categories` cascade, so a user delete
+  removes its seed vectors whichever FK fires first. Adding a new user-scoped
+  table without `references(() => users.id, { onDelete: "cascade" })` would
+  silently leak rows on deletion — pinned by the regex test in
+  `accountRoute.test.ts` ("schema cascade contract") that greps the schema
+  source for that exact pattern and asserts exactly 10 occurrences. Loosening
+  that regex weakens the contract.
 - **Google revoke + watch teardown are best-effort.** The channels.stop loop
   is owned by `teardownWatchesForUser` (`src/services/watch/teardown.ts`),
   which wraps every failure in a warn-only try/catch and never throws — Google

@@ -16,6 +16,9 @@ export default [
       "docs/",
       "*.config.js",
       "evals/dataset-builder/",
+      // Local Python virtualenvs (gitignored; embedding-eval / dataset-builder
+      // operator harnesses). eslint must never lint a venv's bundled JS.
+      "**/.venv/",
     ],
   },
   js.configs.recommended,
@@ -42,6 +45,7 @@ export default [
         btoa: "readonly",
         process: "readonly",
         Hyperdrive: "readonly",
+        Ai: "readonly",
         ExecutionContext: "readonly",
         RequestInit: "readonly",
         RequestInfo: "readonly",

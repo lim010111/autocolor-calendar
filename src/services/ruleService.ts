@@ -1,9 +1,10 @@
 import { and, asc, eq } from "drizzle-orm";
 import type { PostgresJsDatabase } from "drizzle-orm/postgres-js";
 
-import { categories, syncState } from "../db/schema";
+import { categories, ruleSeeds, syncState } from "../db/schema";
 import type { Bindings } from "../env";
 import { enqueueSync } from "../queues/syncProducer";
+import { resolveEmbedder, type EmbedTexts } from "./embeddings";
 import type { ConsentedExample } from "./piiRedactor";
 
 // Rule aggregate module — single source of truth for the user-defined
@@ -242,11 +243,56 @@ function fanOutColorRollback(
   });
 }
 
+// ADR-0004 #02 — name-seed create-or-replace. Embeds the rule's name with
+// the frozen prefix (enforced inside `embed`) and upserts the single
+// `seed_type='name'` row (partial-unique `(rule_id) WHERE seed_type='name'`).
+// Runs inside `RuleSideEffects.sideEffects` via `waitUntil`, so a failure
+// follows the fan-out failure model: warn-only, the user request already
+// succeeded, recovery is the next rule edit or the backfill job. A missing
+// embedder (no `env.AI` binding — unit tests / misconfig) is a silent skip.
+async function writeNameSeed(
+  db: PostgresJsDatabase,
+  embed: EmbedTexts | undefined,
+  args: { ruleId: string; userId: string; name: string },
+): Promise<void> {
+  if (!embed) return;
+  try {
+    const vectors = await embed([args.name]);
+    const embedding = vectors[0];
+    if (!embedding) throw new Error("empty embedding result");
+    await db
+      .insert(ruleSeeds)
+      .values({
+        ruleId: args.ruleId,
+        userId: args.userId,
+        seedType: "name",
+        seedText: args.name,
+        embedding,
+      })
+      .onConflictDoUpdate({
+        target: ruleSeeds.ruleId,
+        targetWhere: eq(ruleSeeds.seedType, "name"),
+        set: { seedText: args.name, embedding },
+      });
+  } catch (err) {
+    console.error(
+      JSON.stringify({
+        level: "error",
+        msg: "name seed embedding failed",
+        userId: args.userId,
+        ruleId: args.ruleId,
+        error: err instanceof Error ? err.message : String(err),
+      }),
+    );
+  }
+}
+
 export async function createRule(
   db: PostgresJsDatabase,
   env: Bindings,
   userId: string,
   input: RuleCreateInput,
+  embed?: EmbedTexts,
 ): Promise<RuleMutationResult> {
   let row: CategoriesRow;
   try {
@@ -268,11 +314,18 @@ export async function createRule(
     throw err;
   }
 
+  const embedder = embed ?? resolveEmbedder(env);
   const calendarIds = await listCalendarsForUser(db, userId);
-  const sideEffects =
+  const fanOut =
     calendarIds.length > 0
       ? fanOutFullResync(env, userId, calendarIds)
       : Promise.resolve();
+  const nameSeed = writeNameSeed(db, embedder, {
+    ruleId: row.id,
+    userId,
+    name: row.name,
+  });
+  const sideEffects = Promise.all([fanOut, nameSeed]).then(() => undefined);
 
   return { rule: toRule(row), sideEffects };
 }
@@ -283,6 +336,7 @@ export async function updateRule(
   userId: string,
   ruleId: string,
   patch: RuleUpdateInput,
+  embed?: EmbedTexts,
 ): Promise<RuleMutationResult | null> {
   const update: {
     name?: string;
@@ -312,23 +366,40 @@ export async function updateRule(
   }
   if (!row) return null;
 
-  // Classification-affecting fields only. `name` change is metadata and
-  // does not alter the rule-keyword match or the per-event PATCH target,
-  // so a typo-fix rename should not spend Google API quota on a full
-  // calendar re-evaluation. `priority` is included because it is the
-  // tiebreaker among multiple matching rules.
+  // Full-resync trigger — classification-affecting fields that need the
+  // existing +365d/-30d window re-evaluated + Google API quota spent.
+  // `priority` is the tiebreaker among matching rules. `name` is deliberately
+  // NOT here: under ADR-0004 the name is now a Declared *seed*, so a rename
+  // re-embeds that seed (below) but the reclassification of already-synced
+  // events stays eventual (next incremental/triggered sync) — same posture as
+  // before, and consistent with #02 AC "정합 with 기존 triggerSync". A rename
+  // alone should not spend a full calendar re-evaluation.
   const triggerSync =
     patch.colorId !== undefined ||
     patch.keywords !== undefined ||
     patch.priority !== undefined;
 
-  let sideEffects: Promise<void> = Promise.resolve();
+  // ADR-0004 #02 — re-embed the name seed only when `name` is in the patch
+  // (create-or-replace via `writeNameSeed`). colorId / priority-only changes
+  // never touch the seed. Idempotent, so a no-op rename (same text) just
+  // rewrites the same vector.
+  const embedder = embed ?? resolveEmbedder(env);
+  const tasks: Promise<void>[] = [];
   if (triggerSync) {
     const calendarIds = await listCalendarsForUser(db, userId);
     if (calendarIds.length > 0) {
-      sideEffects = fanOutFullResync(env, userId, calendarIds);
+      tasks.push(fanOutFullResync(env, userId, calendarIds));
     }
   }
+  if (patch.name !== undefined) {
+    tasks.push(
+      writeNameSeed(db, embedder, { ruleId: row.id, userId, name: row.name }),
+    );
+  }
+  const sideEffects: Promise<void> =
+    tasks.length > 0
+      ? Promise.all(tasks).then(() => undefined)
+      : Promise.resolve();
 
   return { rule: toRule(row), sideEffects };
 }

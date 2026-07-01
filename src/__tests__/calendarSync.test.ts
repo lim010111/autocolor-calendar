@@ -212,9 +212,11 @@ describe("calendarSync.runIncrementalSync", () => {
     }) as typeof fetch;
 
     const classify: ClassifyEventFn = async () => ({
-      kind: "ruleHit",
+      kind: "embeddingHit",
       rule: { id: "cat-1", name: "cat-1", colorId: "3" },
-      matchedKeyword: "standup",
+      seed: { id: "s-1", text: "standup" },
+      grade: "declared",
+      score: 0.9,
     });
     const result = await runIncrementalSync({
       db,
@@ -267,9 +269,11 @@ describe("calendarSync.runIncrementalSync", () => {
     }) as typeof fetch;
 
     const classify: ClassifyEventFn = async () => ({
-      kind: "ruleHit",
+      kind: "embeddingHit",
       rule: { id: "cat-1", name: "cat-1", colorId: "3" },
-      matchedKeyword: "standup",
+      seed: { id: "s-1", text: "standup" },
+      grade: "declared",
+      score: 0.9,
     });
     const result = await runIncrementalSync({
       db,
@@ -314,9 +318,11 @@ describe("calendarSync.runIncrementalSync", () => {
     }) as typeof fetch;
 
     const classify: ClassifyEventFn = async () => ({
-      kind: "ruleHit",
+      kind: "embeddingHit",
       rule: { id: "cat-1", name: "cat-1", colorId: "3" },
-      matchedKeyword: "standup",
+      seed: { id: "s-1", text: "standup" },
+      grade: "declared",
+      score: 0.9,
     });
     const result = await runIncrementalSync({
       db,
@@ -367,9 +373,11 @@ describe("calendarSync.runIncrementalSync", () => {
     }) as typeof fetch;
 
     const classify: ClassifyEventFn = async () => ({
-      kind: "ruleHit",
+      kind: "embeddingHit",
       rule: { id: "cat-1", name: "cat-1", colorId: "3" },
-      matchedKeyword: "standup",
+      seed: { id: "s-1", text: "standup" },
+      grade: "declared",
+      score: 0.9,
     });
     const result = await runIncrementalSync({
       db,
@@ -455,9 +463,11 @@ describe("calendarSync — §5.4 ownership-aware color application", () => {
   }
 
   const classifyToBlue: ClassifyEventFn = async () => ({
-    kind: "ruleHit",
+    kind: "embeddingHit",
     rule: { id: "cat-1", name: "cat-1", colorId: "3" },
-    matchedKeyword: "kw",
+    seed: { id: "s-1", text: "kw" },
+    grade: "declared",
+    score: 0.9,
   });
 
   it("PATCHes empty-color event with marker payload", async () => {

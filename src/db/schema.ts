@@ -15,10 +15,24 @@ import {
   uuid,
 } from "drizzle-orm/pg-core";
 
+import { EMBEDDING_DIM } from "../config/embedding";
+
 const bytea = customType<{ data: Uint8Array; driverData: Uint8Array }>({
   dataType: () => "bytea",
   fromDriver: (value) => new Uint8Array(value),
   toDriver: (value) => value,
+});
+
+// pgvector column (ADR-0004 #02). Dimension is single-sourced from
+// `EMBEDDING_DIM` (ADR-0005 provisional 768) so a 768→1024 flip is one edit
+// in `src/config/embedding.ts` + the migration re-run documented in the
+// `rule_seeds` migration header. `toDriver` emits pgvector's `'[a,b,...]'`
+// literal; `fromDriver` parses it back (pgvector returns the same text form).
+const vector = customType<{ data: number[]; driverData: string }>({
+  dataType: () => `vector(${EMBEDDING_DIM})`,
+  toDriver: (value) => `[${value.join(",")}]`,
+  fromDriver: (value) =>
+    typeof value === "string" ? (JSON.parse(value) as number[]) : value,
 });
 
 export const users = pgTable("users", {
@@ -110,6 +124,53 @@ export const categories = pgTable(
     check(
       "categories_color_id_check",
       sql`${t.colorId} IN ('1','2','3','4','5','6','7','8','9','10','11')`,
+    ),
+  ],
+);
+
+// ADR-0004 #02 — embedding kNN Stage-1 seed store. One row per textual seed
+// contributing to a Rule's meaning (name / keyword / example), each embedded
+// separately (no centroid/concat — a Rule can be multi-modal). This slice
+// (#02) writes `seed_type='name'` rows only; keyword (#03) and example (#05)
+// rows arrive later. The DB table is `categories` for legacy reasons but the
+// domain term is `Rule` (see CONTEXT.md "Flagged ambiguities").
+//
+// Trust grade is DERIVED from `seed_type`, never stored: name/keyword =
+// declared, example = verified (ADR-0004 trust grades + `synthesizeSeeds`).
+//
+// Two indexes live ONLY in the SQL migration (drizzle can't express them),
+// see drizzle/0017_*.sql: (1) HNSW `vector_cosine_ops` on `embedding`
+// (ADR-0004 cosine contract), (2) partial UNIQUE `(rule_id) WHERE
+// seed_type='name'` enforcing the one-name-row-per-rule create-or-replace
+// invariant. The `(user_id)` tenant index below IS emitted by drizzle.
+export const ruleSeeds = pgTable(
+  "rule_seeds",
+  {
+    id: uuid("id")
+      .primaryKey()
+      .default(sql`gen_random_uuid()`),
+    // ON DELETE CASCADE from the Rule (categories) row: deleting a rule drops
+    // its seeds. Separate from the user cascade below — a rule delete must not
+    // wait on user deletion.
+    ruleId: uuid("rule_id")
+      .notNull()
+      .references(() => categories.id, { onDelete: "cascade" }),
+    // Tenant scope + Account deletion (§3 row 179) 10-table cascade. Every
+    // Stage-1 kNN query MUST filter on this column (RLS is bypassed on the
+    // Worker path — src/AGENTS.md "Tenant isolation").
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    seedType: text("seed_type").notNull(),
+    seedText: text("seed_text").notNull(),
+    embedding: vector("embedding").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    index("rule_seeds_user_id_idx").on(t.userId),
+    check(
+      "rule_seeds_seed_type_check",
+      sql`${t.seedType} IN ('name','keyword','example')`,
     ),
   ],
 );

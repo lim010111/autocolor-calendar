@@ -19,7 +19,6 @@ export type Sink = (outcome: ClassificationOutcome) => Promise<void>;
 export function syncSummarySink(summary: SyncSummary): Sink {
   return async (outcome) => {
     switch (outcome.kind) {
-      case "ruleHit":
       case "embeddingHit":
         return;
       case "llmHit":

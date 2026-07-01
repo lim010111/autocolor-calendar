@@ -10,19 +10,27 @@ vi.mock("../services/sessionService", () => ({
 vi.mock("../services/classifierChain", () => ({
   buildDefaultClassifier: vi.fn(),
 }));
+// ADR-0004 #02 — Stage 1 is embedding kNN. The rule-only (`llm:false`) path
+// calls `classifyStage1` directly; mock it at the module boundary so the
+// preview suite drives its outcome without wiring real embeddings / pgvector.
+// The real Stage 1 has its own coverage in stage1.test.ts.
+vi.mock("../services/stage1", () => ({
+  classifyStage1: vi.fn(),
+}));
 
 import { app } from "../index";
 import { getDb } from "../db";
 import { verifySession } from "../services/sessionService";
 import { buildDefaultClassifier } from "../services/classifierChain";
 import type { ChainDeps } from "../services/classifierChain";
-import type { ClassifyContext } from "../services/classifier";
 import type {
   ClassificationOutcome,
+  ClassifyContext,
   ClassifyEventFn,
 } from "../services/classifierOutcomes";
 import type { CalendarEvent } from "../services/googleCalendar";
 import type { LlmCallRecord } from "../services/llmClassifier";
+import { classifyStage1 } from "../services/stage1";
 
 const USER_A = "00000000-0000-0000-0000-00000000000a";
 const USER_B = "00000000-0000-0000-0000-00000000000b";
@@ -182,6 +190,9 @@ const baseEnv = {
   TOKEN_ENCRYPTION_KEY: "x",
   SESSION_HMAC_KEY: "x",
   SESSION_PEPPER: "x",
+  // ADR-0004 #02 — a truthy AI binding so `resolveEmbedder` yields an embedder
+  // (Stage 1 runs). `classifyStage1` is mocked, so the binding is never called.
+  AI: {} as unknown as Ai,
 };
 
 const ctx = {
@@ -222,6 +233,9 @@ beforeEach(() => {
   vi.mocked(buildDefaultClassifier).mockImplementation(() => {
     throw new Error("buildDefaultClassifier called without test-specific stub");
   });
+  // Default Stage 1 outcome = miss (→ no_match on the rule-only path). Tests
+  // that assert a hit override this per-case.
+  vi.mocked(classifyStage1).mockResolvedValue({ kind: "embeddingMiss" });
 });
 
 // Helper — returns a stub `ChainDeps → ClassifyEventFn` builder that invokes
@@ -242,11 +256,18 @@ function stubChain(opts: {
 
 // Convenience helpers that build common outcomes used across the
 // preview-LLM suite — keeps the test bodies readable.
-function ruleHit(
+function embeddingHit(
   rule: { id: string; name: string; colorId: string },
-  matchedKeyword: string,
-): ClassificationOutcome {
-  return { kind: "ruleHit", rule, matchedKeyword };
+  seedText: string,
+  score = 0.9,
+): Extract<ClassificationOutcome, { kind: "embeddingHit" }> {
+  return {
+    kind: "embeddingHit",
+    rule,
+    seed: { id: "s-1", text: seedText },
+    grade: "declared",
+    score,
+  };
 }
 
 function llmHit(
@@ -305,9 +326,20 @@ describe("POST /api/classify/preview", () => {
     expect(await res.json()).toEqual({ source: "no_match", llmAvailable: true });
   });
 
-  it("returns rule hit with matchedKeyword when summary contains a keyword", async () => {
+  it("returns embedding hit (source:'rule') surfacing matchedSeed + score", async () => {
     currentDb.state.rows.push(
       row({ id: "11111111-1111-1111-1111-111111111111" }),
+    );
+    vi.mocked(classifyStage1).mockResolvedValue(
+      embeddingHit(
+        {
+          id: "11111111-1111-1111-1111-111111111111",
+          name: "주간회의",
+          colorId: "9",
+        },
+        "주간회의",
+        0.91,
+      ),
     );
     const res = await invoke("/api/classify/preview", {
       method: "POST",
@@ -323,7 +355,8 @@ describe("POST /api/classify/preview", () => {
         name: "주간회의",
         colorId: "9",
       },
-      matchedKeyword: "주간회의",
+      matchedSeed: "주간회의",
+      score: 0.91,
     });
   });
 
@@ -346,8 +379,11 @@ describe("POST /api/classify/preview", () => {
     expect(body.source).toBe("no_match");
   });
 
-  it("matches description when summary doesn't contain keyword", async () => {
+  it("llm:false + Stage-1 miss → no_match (embeds title only, no description matching)", async () => {
     currentDb.state.rows.push(row({ keywords: ["운동"] }));
+    // Default mock returns embeddingMiss. Under ADR-0004 embeddings score the
+    // event title only, so the old substring "matched via description"
+    // behavior no longer exists.
     const res = await invoke("/api/classify/preview", {
       method: "POST",
       userToken: "token-a",
@@ -357,12 +393,8 @@ describe("POST /api/classify/preview", () => {
         description: "헬스장에서 운동 후 식사",
       }),
     });
-    const body = (await res.json()) as {
-      source: string;
-      matchedKeyword?: string;
-    };
-    expect(body.source).toBe("rule");
-    expect(body.matchedKeyword).toBe("운동");
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ source: "no_match", llmAvailable: false });
   });
 
   // §5 후속 — on-demand LLM preview. These cases pin the `llm: true` branch.
@@ -370,6 +402,16 @@ describe("POST /api/classify/preview", () => {
   // be called when the flag is absent, so the rule-only path stays cheap.
   it("llm flag omitted — buildDefaultClassifier never called (regression guard)", async () => {
     currentDb.state.rows.push(row({ keywords: ["주간회의"] }));
+    vi.mocked(classifyStage1).mockResolvedValue(
+      embeddingHit(
+        {
+          id: "11111111-1111-1111-1111-111111111111",
+          name: "주간회의",
+          colorId: "9",
+        },
+        "주간회의",
+      ),
+    );
     const res = await invoke("/api/classify/preview", {
       method: "POST",
       userToken: "token-a",
@@ -399,17 +441,17 @@ describe("POST /api/classify/preview", () => {
     expect(await res.json()).toEqual({ source: "no_match", llmAvailable: false });
   });
 
-  it("llm:true + rule hit (via chain) — source:'rule', LLM leg never engages", async () => {
+  it("llm:true + embedding hit (via chain) — source:'rule', LLM leg never engages", async () => {
     currentDb.state.rows.push(row({ keywords: ["회의"] }));
     vi.mocked(buildDefaultClassifier).mockImplementation(
       stubChain({
-        outcome: ruleHit(
+        outcome: embeddingHit(
           {
             id: "11111111-1111-1111-1111-111111111111",
             name: "주간회의",
             colorId: "9",
           },
-          "회의",
+          "주간회의",
         ),
       }),
     );
@@ -424,7 +466,7 @@ describe("POST /api/classify/preview", () => {
     const body = (await res.json()) as Record<string, unknown>;
     expect(body.source).toBe("rule");
     expect(body).not.toHaveProperty("llmTried");
-    expect(body.matchedKeyword).toBe("회의");
+    expect(body.matchedSeed).toBe("주간회의");
   });
 
   it("llm:true + LLM hit — source:'llm', category shape correct, no matchedKeyword", async () => {

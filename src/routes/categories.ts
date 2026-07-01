@@ -96,15 +96,18 @@ categoriesRoutes.post("/", async (c) => {
       userId,
       parsed.data,
     );
-    c.executionCtx.waitUntil(sideEffects);
+    // close() = client.end(); the name-seed write inside sideEffects awaits an
+    // embedding network call before its db.insert, so close() MUST be chained
+    // after sideEffects. A separate waitUntil(close()) ends the pool mid-embed
+    // and the seed insert silently fails — mirror index.ts's .finally(close).
+    c.executionCtx.waitUntil(sideEffects.finally(() => close()));
     return c.json({ category: toWire(rule) }, 201);
   } catch (err) {
+    c.executionCtx.waitUntil(close());
     if (err instanceof DuplicateRuleNameError) {
       return c.json({ error: "duplicate_name" }, 409);
     }
     throw err;
-  } finally {
-    c.executionCtx.waitUntil(close());
   }
 });
 
@@ -134,16 +137,19 @@ categoriesRoutes.patch("/:id", async (c) => {
       idParse.data,
       parsed.data,
     );
-    if (!result) return c.json({ error: "not_found" }, 404);
-    c.executionCtx.waitUntil(result.sideEffects);
+    if (!result) {
+      c.executionCtx.waitUntil(close());
+      return c.json({ error: "not_found" }, 404);
+    }
+    // Chain close() after sideEffects — see the POST handler note above.
+    c.executionCtx.waitUntil(result.sideEffects.finally(() => close()));
     return c.json({ category: toWire(result.rule) });
   } catch (err) {
+    c.executionCtx.waitUntil(close());
     if (err instanceof DuplicateRuleNameError) {
       return c.json({ error: "duplicate_name" }, 409);
     }
     throw err;
-  } finally {
-    c.executionCtx.waitUntil(close());
   }
 });
 
