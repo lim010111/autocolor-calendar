@@ -91,6 +91,63 @@ export function extractEq(
   return out;
 }
 
+// Collects the scalar values of an IN list from a drizzle SQL subtree.
+// drizzle renders `inArray(col, ["a","b"])` with the JS array placed *directly*
+// as a query chunk (constructor `Array`), so the values are bare primitives —
+// not Param nodes. StringChunks (whose `.value` is itself an array) are
+// skipped. Recurses so it is robust to future nesting.
+function gatherParams(node: unknown, out: unknown[]): void {
+  if (node === null || node === undefined) return;
+  if (Array.isArray(node)) {
+    for (const el of node) gatherParams(el, out);
+    return;
+  }
+  if (typeof node !== "object") {
+    out.push(node); // bare primitive = an IN value
+    return;
+  }
+  const n = node as { value?: unknown; queryChunks?: unknown[] };
+  if (Array.isArray(n.queryChunks)) {
+    for (const c of n.queryChunks) gatherParams(c, out);
+    return;
+  }
+  if ("value" in n && !Array.isArray(n.value)) out.push(n.value);
+}
+
+// Walks a drizzle SQL tree to extract an `inArray(column, values)` fragment.
+// `inArray` renders as `[_, Column, StringChunk(" in "), Param…, _]`, and
+// `extractEq` deliberately skips it (its separator is " in ", not " = "), so
+// the `rule_seeds` delete (ADR-0004 #03 — `seed_text IN (…)`) needs this
+// companion walker. Behavior is pinned by `fakeDb.guard.test.ts` alongside
+// `extractEq` — a drizzle-orm bump that reshapes the AST fails there.
+export function extractInArray(
+  node: unknown,
+): { column: string; values: unknown[] } | null {
+  if (!node || typeof node !== "object") return null;
+  const chunks = (node as { queryChunks?: unknown[] }).queryChunks;
+  if (!Array.isArray(chunks)) return null;
+  for (let i = 0; i < chunks.length; i++) {
+    const c = chunks[i] as { name?: string; queryChunks?: unknown[] };
+    const colName = c?.name;
+    if (typeof colName === "string" && !Array.isArray(c.queryChunks)) {
+      const sep = chunks[i + 1] as { value?: unknown };
+      const sepArr = (sep as { value?: unknown[] })?.value;
+      if (Array.isArray(sepArr) && String(sepArr[0]).includes(" in ")) {
+        const values: unknown[] = [];
+        for (let j = i + 2; j < chunks.length; j++) {
+          gatherParams(chunks[j], values);
+        }
+        return { column: colName, values };
+      }
+    }
+    if (Array.isArray((c as { queryChunks?: unknown }).queryChunks)) {
+      const found = extractInArray(c);
+      if (found) return found;
+    }
+  }
+  return null;
+}
+
 function matches(r: Row, whereSql: unknown): boolean {
   const constraints = extractEq(whereSql);
   for (const [sqlCol, val] of Object.entries(constraints)) {
@@ -161,17 +218,21 @@ function fillRowDefaults(v: Partial<Row>): Row {
   };
 }
 
+// ADR-0004 #02/#03 — captured `rule_seeds` rows. Keyed loosely because the row
+// shape (ruleId / userId / seedType / seedText / embedding) is not the
+// `categories` Row.
+export type RuleSeedRow = Record<string, unknown>;
+
 export type FakeDbInitial = {
   categories?: Row[];
   syncStates?: SyncStateRow[];
+  // ADR-0004 #03 — pre-existing seed rows (keyword reconciliation reads these
+  // to compute its add/remove diff). Rows use the camelCase drizzle-column
+  // keys the write path inserts (ruleId / userId / seedType / seedText).
+  ruleSeeds?: RuleSeedRow[];
   failInsertWith?: Error;
   failUpdateWith?: Error;
 };
-
-// ADR-0004 #02 — captured `rule_seeds` upserts (name-seed write path). Keyed
-// loosely because the row shape (ruleId / userId / seedType / seedText /
-// embedding) is not the `categories` Row.
-export type RuleSeedRow = Record<string, unknown>;
 
 export type FakeDbState = {
   categories: Row[];
@@ -189,7 +250,7 @@ export function makeFakeDb(initial: FakeDbInitial = {}): FakeDbHandle {
   const state: FakeDbState = {
     categories: [...(initial.categories ?? [])],
     syncStates: [...(initial.syncStates ?? [])],
-    ruleSeeds: [],
+    ruleSeeds: [...(initial.ruleSeeds ?? [])],
   };
 
   const db = {
@@ -203,6 +264,26 @@ export function makeFakeDb(initial: FakeDbInitial = {}): FakeDbHandle {
                 const uid = constraints["user_id"];
                 const filtered = state.syncStates.filter(
                   (r) => r.userId === uid,
+                );
+                return Promise.resolve(filtered);
+              },
+            };
+          }
+          // ADR-0004 #03 — keyword reconciliation reads existing seed rows.
+          // `.where()` resolves directly (no orderBy/limit); filter by the eq
+          // predicates (rule_id / seed_type / user_id) the read issues.
+          if (table === ruleSeeds) {
+            return {
+              where(whereSql: unknown) {
+                const c = extractEq(whereSql);
+                const filtered = state.ruleSeeds.filter(
+                  (r) =>
+                    (c["rule_id"] === undefined ||
+                      r["ruleId"] === c["rule_id"]) &&
+                    (c["user_id"] === undefined ||
+                      r["userId"] === c["user_id"]) &&
+                    (c["seed_type"] === undefined ||
+                      r["seedType"] === c["seed_type"]),
                 );
                 return Promise.resolve(filtered);
               },
@@ -227,15 +308,27 @@ export function makeFakeDb(initial: FakeDbInitial = {}): FakeDbHandle {
       };
     },
     insert(table: unknown) {
-      // ADR-0004 #02 — name-seed create-or-replace. `writeNameSeed` issues
-      // `insert(ruleSeeds).values(...).onConflictDoUpdate(...)`; capture the
-      // row so tests can assert the seed write without a real pgvector upsert.
+      // ADR-0004 #02/#03 — `rule_seeds` writes. Two shapes:
+      //   - name seed (#02): `.values(obj).onConflictDoUpdate(...)`, a
+      //     create-or-replace against the partial-unique `(rule_id) WHERE
+      //     seed_type='name'` — model it by replacing an existing name row.
+      //   - keyword adds (#03): `.values(array)` awaited directly (plain
+      //     insert, no conflict target — keyword rows are unconstrained).
       if (table === ruleSeeds) {
         return {
-          values(v: RuleSeedRow) {
+          values(v: RuleSeedRow | RuleSeedRow[]) {
+            if (Array.isArray(v)) {
+              for (const rowv of v) state.ruleSeeds.push(rowv);
+              return Promise.resolve(undefined);
+            }
             return {
               onConflictDoUpdate: async (_cfg?: unknown) => {
-                state.ruleSeeds.push(v);
+                const idx = state.ruleSeeds.findIndex(
+                  (r) =>
+                    r["ruleId"] === v["ruleId"] && r["seedType"] === "name",
+                );
+                if (idx >= 0) state.ruleSeeds[idx] = v;
+                else state.ruleSeeds.push(v);
                 return undefined;
               },
             };
@@ -295,7 +388,32 @@ export function makeFakeDb(initial: FakeDbInitial = {}): FakeDbHandle {
         },
       };
     },
-    delete(_table: unknown) {
+    delete(table: unknown) {
+      // ADR-0004 #03 — keyword removal. `.where()` resolves directly (no
+      // `.returning()`); delete rows matching the eq predicates (rule_id /
+      // user_id / seed_type) AND the `seed_text IN (…)` list.
+      if (table === ruleSeeds) {
+        return {
+          where(whereSql: unknown) {
+            const eqc = extractEq(whereSql);
+            const inClause = extractInArray(whereSql);
+            const inSet = inClause ? new Set(inClause.values) : null;
+            state.ruleSeeds = state.ruleSeeds.filter((r) => {
+              const eqMatch =
+                (eqc["rule_id"] === undefined ||
+                  r["ruleId"] === eqc["rule_id"]) &&
+                (eqc["user_id"] === undefined ||
+                  r["userId"] === eqc["user_id"]) &&
+                (eqc["seed_type"] === undefined ||
+                  r["seedType"] === eqc["seed_type"]);
+              const inMatch = inSet ? inSet.has(r["seedText"]) : true;
+              // keep rows that do NOT match every delete predicate
+              return !(eqMatch && inMatch);
+            });
+            return Promise.resolve(undefined);
+          },
+        };
+      }
       return {
         where(whereSql: unknown) {
           return {

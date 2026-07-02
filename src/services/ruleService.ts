@@ -1,4 +1,4 @@
-import { and, asc, eq } from "drizzle-orm";
+import { and, asc, eq, inArray } from "drizzle-orm";
 import type { PostgresJsDatabase } from "drizzle-orm/postgres-js";
 
 import { categories, ruleSeeds, syncState } from "../db/schema";
@@ -287,6 +287,141 @@ async function writeNameSeed(
   }
 }
 
+// Normalizes a raw keyword list to the durable seed set: trim, drop empties,
+// dedupe (first occurrence wins). Mirrors the backfill's distinct-keyword
+// verification (`keyword 행 수 == Σ rule 별 distinct keyword 수`), so the two
+// write paths agree on what a rule's keyword seed set is.
+function dedupeNonEmpty(keywords: string[]): string[] {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const raw of keywords) {
+    const k = raw.trim();
+    if (k.length === 0 || seen.has(k)) continue;
+    seen.add(k);
+    out.push(k);
+  }
+  return out;
+}
+
+// ADR-0004 #03 — pure keyword set diff. Unlike the single-row `name` seed
+// (create-or-replace on the partial-unique index), a rule owns 0..N `keyword`
+// seeds with no uniqueness, so a keyword edit is a set reconciliation, not a
+// replace-all: only the delta is embedded/written. `unchanged` is returned for
+// clarity but is deliberately never re-embedded or re-written (#02 "re-embed
+// only when the text changes" discipline — the reason this is a diff).
+export function computeKeywordDiff(
+  existing: string[],
+  incoming: string[],
+): { toAdd: string[]; toRemove: string[]; unchanged: string[] } {
+  const existingSet = new Set(existing);
+  const next = dedupeNonEmpty(incoming);
+  const nextSet = new Set(next);
+  const toAdd = next.filter((k) => !existingSet.has(k));
+  const toRemove = existing.filter((k) => !nextSet.has(k));
+  const unchanged = next.filter((k) => existingSet.has(k));
+  return { toAdd, toRemove, unchanged };
+}
+
+// ADR-0004 #03 — keyword-seed set reconciliation. Reconciles a rule's stored
+// `seed_type='keyword'` rows against the incoming keyword list via an
+// incremental diff (add / remove / unchanged), reusing the same `RuleSideEffects`
+// seam + frozen-prefix `embedTexts` path as `writeNameSeed`.
+//
+// embed-before-mutate: the `toAdd` batch is embedded FIRST (one call, frozen
+// prefix). Only after embedding succeeds are rows mutated — additions insert
+// then removals delete (see the insert-before-delete rationale at the call
+// site). An embedding failure is warn-only and leaves every existing keyword
+// seed untouched (same fan-out failure model as `writeNameSeed`: the request
+// already succeeded, recovery is the next edit or the backfill job). A missing
+// embedder (no `env.AI` binding) is a silent skip.
+//
+// The delete is tenant-scoped (`user_id` predicate — RLS is bypassed on the
+// Worker path, src/AGENTS.md "Tenant isolation") and restricted to this rule's
+// keyword seeds and the exact `toRemove` texts. `keywords=[]` removes them all.
+//
+// Concurrency is eventually-consistent — the same posture as the #02 name-seed
+// write: keyword rows have no uniqueness constraint, and two racing PATCHes'
+// fire-and-forget reconciles can land out of order, so the seed set may
+// transiently duplicate a keyword row or reflect an older edit than
+// `categories.keywords` (recovery = next edit / backfill). Left unconstrained
+// per ADR-0004 #03 AC #1 — no version-checking or locks.
+async function reconcileKeywordSeeds(
+  db: PostgresJsDatabase,
+  embed: EmbedTexts | undefined,
+  args: { ruleId: string; userId: string; keywords: string[] },
+): Promise<void> {
+  if (!embed) return;
+  try {
+    const existingRows = await db
+      .select({ seedText: ruleSeeds.seedText })
+      .from(ruleSeeds)
+      .where(
+        and(
+          eq(ruleSeeds.ruleId, args.ruleId),
+          eq(ruleSeeds.seedType, "keyword"),
+        ),
+      );
+    const { toAdd, toRemove } = computeKeywordDiff(
+      existingRows.map((r) => r.seedText),
+      args.keywords,
+    );
+    if (toAdd.length === 0 && toRemove.length === 0) return;
+
+    // embed-before-mutate — a failure here throws to the catch below with no
+    // rows changed, preserving the existing keyword seeds.
+    let vectors: number[][] = [];
+    if (toAdd.length > 0) {
+      vectors = await embed(toAdd);
+      if (vectors.length !== toAdd.length) {
+        throw new Error(
+          `keyword embedding count mismatch: ${vectors.length} != ${toAdd.length}`,
+        );
+      }
+    }
+
+    // insert-before-delete: the insert and delete are separate, non-transactional
+    // statements. Doing the additions FIRST means a mid-mutation DB failure (the
+    // insert throws) degrades to a benign stale-EXTRA keyword — over-inclusive,
+    // self-heals on the next edit/backfill — instead of losing the pre-existing
+    // seed (under-inclusive data loss). `toAdd` and `toRemove` are disjoint
+    // (toAdd = next − existing, toRemove = existing − next), so the order never
+    // changes the success-case result.
+    if (toAdd.length > 0) {
+      await db.insert(ruleSeeds).values(
+        toAdd.map((seedText, i) => ({
+          ruleId: args.ruleId,
+          userId: args.userId,
+          seedType: "keyword",
+          seedText,
+          embedding: vectors[i]!,
+        })),
+      );
+    }
+    if (toRemove.length > 0) {
+      await db
+        .delete(ruleSeeds)
+        .where(
+          and(
+            eq(ruleSeeds.ruleId, args.ruleId),
+            eq(ruleSeeds.userId, args.userId),
+            eq(ruleSeeds.seedType, "keyword"),
+            inArray(ruleSeeds.seedText, toRemove),
+          ),
+        );
+    }
+  } catch (err) {
+    console.error(
+      JSON.stringify({
+        level: "error",
+        msg: "keyword seed reconciliation failed",
+        userId: args.userId,
+        ruleId: args.ruleId,
+        error: err instanceof Error ? err.message : String(err),
+      }),
+    );
+  }
+}
+
 export async function createRule(
   db: PostgresJsDatabase,
   env: Bindings,
@@ -325,7 +460,16 @@ export async function createRule(
     userId,
     name: row.name,
   });
-  const sideEffects = Promise.all([fanOut, nameSeed]).then(() => undefined);
+  // ADR-0004 #03 — a fresh rule has no existing keyword seeds, so reconcile
+  // treats every `input.keywords` entry as an add (one embed batch + insert).
+  const keywordSeeds = reconcileKeywordSeeds(db, embedder, {
+    ruleId: row.id,
+    userId,
+    keywords: input.keywords,
+  });
+  const sideEffects = Promise.all([fanOut, nameSeed, keywordSeeds]).then(
+    () => undefined,
+  );
 
   return { rule: toRule(row), sideEffects };
 }
@@ -394,6 +538,18 @@ export async function updateRule(
   if (patch.name !== undefined) {
     tasks.push(
       writeNameSeed(db, embedder, { ruleId: row.id, userId, name: row.name }),
+    );
+  }
+  // ADR-0004 #03 — reconcile keyword seeds only when the keywords are in the
+  // patch (colorId/priority-only edits leave them untouched, mirroring the
+  // name-seed re-embed discipline above). `row.keywords` is the updated set.
+  if (patch.keywords !== undefined) {
+    tasks.push(
+      reconcileKeywordSeeds(db, embedder, {
+        ruleId: row.id,
+        userId,
+        keywords: row.keywords,
+      }),
     );
   }
   const sideEffects: Promise<void> =

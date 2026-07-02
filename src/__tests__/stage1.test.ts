@@ -101,6 +101,57 @@ describe("decideStage1 — three branches (declared bar)", () => {
   });
 });
 
+// ADR-0004 #03 — keyword seeds join the same ranking as name seeds. The read
+// path (`knnByUser`) has NO `seed_type` filter, so a keyword row competes in
+// the per-rule `DISTINCT ON (rule_id)` max-cosine pool exactly like a name row;
+// grade derivation maps keyword → declared. These guards pin that behavior
+// (no read-path code changed in #03 — regression protection only).
+describe("keyword seeds are declared-grade first-class in the ranking", () => {
+  it("keyword best seed above the declared bar → embeddingHit (grade declared)", () => {
+    const out = decideStage1(
+      [seed("c-1", 0.85, "keyword", "스크럼")],
+      [rule("c-1", "회의")],
+    );
+    expect(out.kind).toBe("embeddingHit");
+    if (out.kind !== "embeddingHit") return;
+    expect(out.grade).toBe("declared");
+    expect(out.seed).toEqual({ id: "s-c-1", text: "스크럼" });
+  });
+
+  it("keyword best seed below the declared bar → miss (keyword is NOT verified)", () => {
+    // 0.40 hits as an example (verified, 0.30 bar) but a keyword uses the
+    // declared bar (0.55), so the very same score misses.
+    const out = decideStage1(
+      [seed("c-1", T_DECLARED - 0.05, "keyword")],
+      [rule("c-1")],
+    );
+    expect(out.kind).toBe("embeddingMiss");
+  });
+
+  it("a keyword kNN row flows end-to-end to a declared embeddingHit", async () => {
+    // knnByUser returns whichever seed_type won the rule's max-cosine pool.
+    const knnRows = [
+      {
+        ruleId: "c-1",
+        seedId: "s-1",
+        seedText: "스크럼",
+        seedType: "keyword",
+        score: 0.9,
+      },
+    ];
+    const db = { execute: async () => knnRows } as never;
+    const embedTexts = vi.fn(async (t: string[]) => t.map(() => [0.1, 0.2]));
+    const out = await classifyStage1(ev("데일리 스크럼"), ctx([rule("c-1", "회의")]), {
+      db,
+      embedTexts,
+    });
+    expect(out.kind).toBe("embeddingHit");
+    if (out.kind !== "embeddingHit") return;
+    expect(out.grade).toBe("declared");
+    expect(out.seed.text).toBe("스크럼");
+  });
+});
+
 describe("classifyStage1 — degradation to Stage 2", () => {
   const knnRows = [
     { ruleId: "c-1", seedId: "s-1", seedText: "회의", seedType: "name", score: 0.9 },

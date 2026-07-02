@@ -13,6 +13,7 @@ import {
 } from "../services/piiRedactor";
 import {
   addExample,
+  computeKeywordDiff,
   createRule,
   deleteRule,
   DuplicateRuleNameError,
@@ -21,7 +22,8 @@ import {
   synthesizeSeeds,
   updateRule,
 } from "../services/ruleService";
-import { categories } from "../db/schema";
+import type { RuleSeedRow } from "./_helpers/fakeDb";
+import { categories, ruleSeeds } from "../db/schema";
 
 import { type Row, makeFakeDb } from "./_helpers/fakeDb";
 
@@ -242,8 +244,10 @@ describe("name seed write (ADR-0004 #02)", () => {
     );
     await sideEffects;
     expect(embed).toHaveBeenCalledWith(["회의"]);
-    expect(state.ruleSeeds).toHaveLength(1);
-    expect(state.ruleSeeds[0]).toMatchObject({
+    // Create also reconciles keyword seeds (#03); assert the name seed
+    // specifically rather than that it is the only row.
+    const nameSeed = state.ruleSeeds.find((s) => s["seedType"] === "name");
+    expect(nameSeed).toMatchObject({
       ruleId: rule.id,
       userId: USER_A,
       seedType: "name",
@@ -325,6 +329,271 @@ describe("name seed write (ADR-0004 #02)", () => {
     expect(rule.name).toBe("회의");
     expect(state.ruleSeeds).toHaveLength(0);
     warnSpy.mockRestore();
+  });
+});
+
+describe("computeKeywordDiff (ADR-0004 #03)", () => {
+  it("adds new, removes dropped, keeps unchanged", () => {
+    expect(computeKeywordDiff(["a", "b"], ["b", "c"])).toEqual({
+      toAdd: ["c"],
+      toRemove: ["a"],
+      unchanged: ["b"],
+    });
+  });
+
+  it("empty incoming removes every existing keyword", () => {
+    expect(computeKeywordDiff(["a", "b"], [])).toEqual({
+      toAdd: [],
+      toRemove: ["a", "b"],
+      unchanged: [],
+    });
+  });
+
+  it("all unchanged → no add / no remove (nothing re-embedded)", () => {
+    expect(computeKeywordDiff(["a", "b"], ["a", "b"])).toEqual({
+      toAdd: [],
+      toRemove: [],
+      unchanged: ["a", "b"],
+    });
+  });
+
+  it("trims, drops empties, and dedupes the incoming set", () => {
+    expect(computeKeywordDiff([], ["a", "a", "  b  ", " ", ""])).toEqual({
+      toAdd: ["a", "b"],
+      toRemove: [],
+      unchanged: [],
+    });
+  });
+});
+
+describe("keyword seed reconciliation (ADR-0004 #03)", () => {
+  const embedOk = () =>
+    vi.fn(async (texts: string[]) => texts.map(() => [0.1, 0.2, 0.3]));
+
+  const kwSeed = (seedText: string, embedding: number[] = [0, 0, 1]): RuleSeedRow => ({
+    ruleId: RULE_A,
+    userId: USER_A,
+    seedType: "keyword",
+    seedText,
+    embedding,
+  });
+
+  const keywordSeeds = (state: { ruleSeeds: RuleSeedRow[] }) =>
+    state.ruleSeeds.filter((s) => s["seedType"] === "keyword");
+
+  it("createRule adds one keyword seed per (deduped) keyword", async () => {
+    const { db, state } = makeFakeDb({ syncStates: [] });
+    const embed = embedOk();
+    const { rule, sideEffects } = await createRule(
+      db as never,
+      env,
+      USER_A,
+      { name: "회의", colorId: "9", keywords: ["스크럼", "데일리", "스크럼"] },
+      embed,
+    );
+    await sideEffects;
+    const kw = keywordSeeds(state);
+    expect(kw.map((s) => s["seedText"]).sort()).toEqual(["데일리", "스크럼"]);
+    expect(
+      kw.every((s) => s["ruleId"] === rule.id && s["userId"] === USER_A),
+    ).toBe(true);
+    // A fresh rule embeds its keyword adds in ONE batch (deduped).
+    expect(embed).toHaveBeenCalledWith(["스크럼", "데일리"]);
+  });
+
+  it("updateRule reconciles: adds new, removes dropped, leaves unchanged untouched", async () => {
+    const { db, state } = makeFakeDb({
+      categories: [row({ id: RULE_A, userId: USER_A })],
+      syncStates: [{ userId: USER_A, calendarId: "primary" }],
+      ruleSeeds: [kwSeed("a", [1, 0, 0]), kwSeed("b", [0, 1, 0])],
+    });
+    const embed = embedOk();
+    const result = await updateRule(
+      db as never,
+      env,
+      USER_A,
+      RULE_A,
+      { keywords: ["b", "c"] },
+      embed,
+    );
+    await result?.sideEffects;
+
+    const kw = keywordSeeds(state);
+    expect(kw.map((s) => s["seedText"]).sort()).toEqual(["b", "c"]);
+    // Only the ADDED keyword is embedded; the unchanged "b" is never touched.
+    expect(embed).toHaveBeenCalledTimes(1);
+    expect(embed).toHaveBeenCalledWith(["c"]);
+    const b = kw.find((s) => s["seedText"] === "b");
+    expect(b?.["embedding"]).toEqual([0, 1, 0]);
+  });
+
+  it("updateRule with keywords:[] removes all keyword seeds (embeds nothing)", async () => {
+    const { db, state } = makeFakeDb({
+      categories: [row({ id: RULE_A, userId: USER_A })],
+      syncStates: [],
+      ruleSeeds: [kwSeed("a"), kwSeed("b")],
+    });
+    const embed = embedOk();
+    const result = await updateRule(
+      db as never,
+      env,
+      USER_A,
+      RULE_A,
+      { keywords: [] },
+      embed,
+    );
+    await result?.sideEffects;
+    expect(keywordSeeds(state)).toHaveLength(0);
+    expect(embed).not.toHaveBeenCalled();
+  });
+
+  it("updateRule colorId-only does NOT reconcile keyword seeds", async () => {
+    const { db, state } = makeFakeDb({
+      categories: [row({ id: RULE_A, userId: USER_A })],
+      syncStates: [{ userId: USER_A, calendarId: "primary" }],
+      ruleSeeds: [kwSeed("a")],
+    });
+    const embed = embedOk();
+    const result = await updateRule(
+      db as never,
+      env,
+      USER_A,
+      RULE_A,
+      { colorId: "3" },
+      embed,
+    );
+    await result?.sideEffects;
+    expect(embed).not.toHaveBeenCalled();
+    expect(keywordSeeds(state)).toHaveLength(1);
+  });
+
+  it("embed failure is warn-only and preserves existing keyword seeds (embed-before-mutate)", async () => {
+    const errSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    const { db, state } = makeFakeDb({
+      categories: [row({ id: RULE_A, userId: USER_A })],
+      syncStates: [],
+      ruleSeeds: [kwSeed("a", [9, 9, 9])],
+    });
+    // Incoming drops "a" and adds "c": the embed of "c" fails BEFORE the
+    // removal delete, so "a" must survive (no partial mutation).
+    const embed = vi.fn(async () => {
+      throw new Error("AI unavailable");
+    });
+    const result = await updateRule(
+      db as never,
+      env,
+      USER_A,
+      RULE_A,
+      { keywords: ["c"] },
+      embed,
+    );
+    await expect(result?.sideEffects).resolves.toBeUndefined();
+    const kw = keywordSeeds(state);
+    expect(kw).toHaveLength(1);
+    expect(kw[0]).toMatchObject({ seedText: "a", embedding: [9, 9, 9] });
+    errSpy.mockRestore();
+  });
+
+  it("no embedder (no AI binding) → keyword seeds untouched", async () => {
+    const { db, state } = makeFakeDb({
+      categories: [row({ id: RULE_A, userId: USER_A })],
+      syncStates: [],
+      ruleSeeds: [kwSeed("a")],
+    });
+    // Omit the embed arg → resolveEmbedder(env) returns undefined (no env.AI).
+    const result = await updateRule(db as never, env, USER_A, RULE_A, {
+      keywords: ["b"],
+    });
+    await result?.sideEffects;
+    expect(keywordSeeds(state).map((s) => s["seedText"])).toEqual(["a"]);
+  });
+});
+
+// ─── Finding-1 oracle (merge-gate codex:finding-1) ──────────────────────────
+// "Keyword reconciliation is not atomic after delete." reconcileKeywordSeeds
+// embeds `toAdd` first (embed-before-mutate), then runs a DELETE of `toRemove`
+// followed by a SEPARATE, non-transactional INSERT of `toAdd`, with a warn-only
+// catch. embed-before-mutate only guards against an EMBED failure — it does
+// nothing for a DB failure that lands BETWEEN the committed delete and the
+// insert. For an edit ['a'] -> ['b'] where embed SUCCEEDS but the INSERT
+// throws, the catch swallows it and the rule is left with NEITHER 'a' (already
+// deleted) NOR 'b' (insert failed): a partial-failure data loss.
+describe("finding-1 oracle: keyword reconcile atomicity after delete", () => {
+  const embedOk = () =>
+    vi.fn(async (texts: string[]) => texts.map(() => [0.1, 0.2, 0.3]));
+
+  const kwSeed = (seedText: string): RuleSeedRow => ({
+    ruleId: RULE_A,
+    userId: USER_A,
+    seedType: "keyword",
+    seedText,
+    embedding: [9, 9, 9],
+  });
+
+  // Wraps makeFakeDb and overrides insert(ruleSeeds) so the ARRAY-insert path
+  // (the #03 keyword adds) throws — a transient DB failure AFTER the removal
+  // delete has already committed. The name-seed onConflictDoUpdate path is
+  // left intact (unused here — this is a keywords-only patch).
+  function makeInsertFailDb() {
+    const base = makeFakeDb({
+      categories: [row({ id: RULE_A, userId: USER_A, keywords: ["a"] })],
+      syncStates: [],
+      ruleSeeds: [kwSeed("a")],
+    });
+    const realInsert = (base.db as { insert: (t: unknown) => unknown }).insert;
+    const db = {
+      ...(base.db as object),
+      insert(table: unknown) {
+        if (table === ruleSeeds) {
+          return {
+            values(v: RuleSeedRow | RuleSeedRow[]) {
+              if (Array.isArray(v)) {
+                return Promise.resolve().then(() => {
+                  throw new Error(
+                    "rule_seeds INSERT failed (transient DB error)",
+                  );
+                });
+              }
+              return (
+                realInsert(table) as { values: (x: unknown) => unknown }
+              ).values(v);
+            },
+          };
+        }
+        return realInsert(table);
+      },
+    };
+    return { db, state: base.state };
+  }
+
+  it("preserves the old keyword seed 'a' when the INSERT of 'b' fails after the DELETE", async () => {
+    const errSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    const { db, state } = makeInsertFailDb();
+    // embed SUCCEEDS — this is a DB failure, NOT an embed failure, so the
+    // embed-before-mutate guard does not fire.
+    const embed = embedOk();
+
+    const result = await updateRule(
+      db as never,
+      env,
+      USER_A,
+      RULE_A,
+      { keywords: ["b"] },
+      embed,
+    );
+    // The warn-only catch swallows the insert failure; sideEffects still
+    // resolves (no error surfaces to the caller).
+    await expect(result?.sideEffects).resolves.toBeUndefined();
+    // Confirm the embed leg actually ran (rules out an embed-count-mismatch or
+    // no-embedder path — the delete DID reach the DB and the insert DID throw).
+    expect(embed).toHaveBeenCalledWith(["b"]);
+
+    const kw = state.ruleSeeds.filter((s) => s["seedType"] === "keyword");
+    // Data-preservation oracle: a mid-mutation DB failure must not lose the
+    // pre-existing seed. On HEAD 'a' was deleted before the insert threw, so
+    // this FAILS — proving the non-atomic partial-failure data loss.
+    expect(kw.map((s) => s["seedText"])).toContain("a");
+    errSpy.mockRestore();
   });
 });
 

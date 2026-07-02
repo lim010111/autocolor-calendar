@@ -435,14 +435,21 @@ Stage-2 LLM leg below.
   `Map<eventId, vector>` (1 `env.AI.run` per page) and never stores them. Every
   Stage-1 kNN query MUST filter `where user_id = ctx.userId` ("Tenant
   isolation" — RLS is bypassed on the Worker path).
-- **Write path.** Rule create/update embeds the name into `rule_seeds` via the
-  existing `RuleSideEffects` (`ruleService.ts` → route `waitUntil`), as a
-  **create-or-replace**. Re-embed fires **only when the name text is in the
-  patch** (colorId/priority-only never re-embeds, consistent with `triggerSync`;
-  a rename does not fan out a full resync — reclassification stays eventual).
-  Embedding failure on this path is **warn-only** (fan-out failure model — the
-  request still succeeds). Existing rules are seeded once via
-  `scripts/backfill-name-seeds.ts`.
+- **Write path.** Rule create/update embeds seeds into `rule_seeds` via the
+  existing `RuleSideEffects` (`ruleService.ts` → route `waitUntil`).
+  - *name* (#02) is a **create-or-replace** (one row per rule); it re-embeds
+    **only when the name text is in the patch** (colorId/priority-only never
+    re-embeds, consistent with `triggerSync`; a rename does not fan out a full
+    resync — reclassification stays eventual).
+  - *keyword* (#03) is a **set reconciliation** (`reconcileKeywordSeeds`): 0..N
+    rows per rule, incremental diff (add → embed+insert, remove → tenant-scoped
+    delete, unchanged → untouched, never re-embedded). Fires **only when
+    `patch.keywords` is present**; `keywords=[]` clears the rule's keyword seeds.
+  - Both are **embed-before-mutate**: the additions are embedded first, and an
+    embedding failure is **warn-only** with rows left unchanged (fan-out failure
+    model — the request still succeeds; recovery is the next edit or backfill).
+  Existing rules are seeded once via `scripts/backfill-seeds.ts` (name +
+  keyword, idempotent).
 - **Embedding-failure behavior (read path).** A title-embed failure (per-event
   or a whole-page batch failure) degrades that event to the **Stage-2 LLM leg**
   (not a silent no_match). Blast radius: a systemic Workers-AI outage pushes
@@ -451,9 +458,9 @@ Stage-2 LLM leg below.
 - **`matchedKeyword` is gone.** The substring hit-word had no meaning under
   embeddings. `POST /api/classify/preview` keeps `source:"rule"` for an
   embedding hit but replaces `matchedKeyword` with **`matchedSeed`** (the
-  winning seed text) + `score`. The GAS sidebar's `formatMatchLine` still reads
-  the old field; updating that copy is deferred to #03/#05 (GAS is out of #02's
-  scope).
+  winning seed text) + `score`. The GAS sidebar's `formatMatchLine` renders the
+  winning seed via the `match.byRule.withSeed` i18n key (#03; superseded the
+  dead `withKeyword` branch).
 
 ## LLM semantic matching policy (§5.3)
 
