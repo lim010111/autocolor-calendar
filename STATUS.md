@@ -7,42 +7,41 @@ outside the narrative block; mechanical sections are regenerated every run._
 ## Current focus
 
 embedding-classifier (ADR-0004 구현) — Stage 1 substring → 임베딩 kNN.
-**#01 (모델 eval) D 완료·push 완료** (17/17). **#02 (name seeds) 구현 완료**
-— substring Stage 1 을 임베딩 kNN 으로 완전 교체(`name` 씨앗만): `rule_seeds`
-pgvector(HNSW cosine + partial-unique name) + `env.AI` 바인딩 + 프리픽스 강제
-헬퍼 + name 씨앗 create-or-replace write + backfill + per-page batch title
-임베딩 read + 2등급 결정 + substring 폐기. 잠정 gemma(768)·프리픽스·임계값은
-ADR-0005 provisional 로 단일 config 흡수(768→1024 flip = 상수 1줄+마이그레이션+
-backfill 재실행). 14/14 AC, test(493)/typecheck/lint/check-paths 통과. 브랜치
-`feat/embedding-classifier-name-seeds`(`7234421`) 커밋, **push 대기**. 다음은
-#03 (keyword seeds) — #02 로 unblock.
-spec: `.scratch/embedding-classifier/issues/03-keyword-seeds.md`
-(설계 정본: `.scratch/embedding-classifier/01-dataset-design.md`)
+**#01·#02·#03 done** (모델 eval / name 씨앗 / keyword 씨앗). substring 완전
+폐기, `rule_seeds` pgvector(HNSW cosine) + 프리픽스 강제 헬퍼 + name
+create-or-replace + keyword incremental-diff reconcile + backfill + per-page
+title 임베딩 read + 2등급 `decideStage1`. 잠정 gemma(768)·임계값
+`T=(0.30,0.55,0.10)` 는 ADR-0005 provisional 로 단일 config
+(`src/config/embedding.ts`) 흡수.
 
-architecture-deepening 트랙의 committed 작업은 완료 — 6개 이슈 전부
-done/wontfix (58/58). 남은 것은 un-grilled deepening 후보(CalendarApiError
-pair 등)뿐 — Open decisions 참조.
+남은 트랙 (둘 다 harden 완료, 이번 세션):
+- **#04 rule editor redesign (6 AC)** — GAS 편집기 마이크로카피를 "씨앗" 모델로,
+  name/keyword 역할 시각 분리 + keyword collapse. 순수 GAS UI, **외부 게이트 없음**.
+- **#05 examples + Instant Feedback (19 AC)** — `example` verified 씨앗 +
+  `T_verified` 활성 + 생애주기(캡10/FIFO/title당 1 Rule) + `consentExample`→
+  `addExample` durable 저장. **OAuth 게이트: 백엔드/seams/테스트는 pre-OAuth
+  다크 빌드(저장 0), UI+동의+개인정보처리방침은 검수 통과 후 별도 PR.**
+- #06 (history-based suggestions) 은 #05 로 blocked (동일 OAuth 게이트).
 
-운영 posture: main 에 local merge-gate 가 **advisory** 로 활성 — main 기준
-브랜치에서 in-scope 커밋 시 백그라운드 Codex produce, push 시 advisory
-verify(보고만, 차단 안 함). AGENTS.md ↔ CLAUDE.md canonicalize 됨
-(AGENTS.md 가 정본, `@AGENTS.md` 래퍼; root + 4 모듈). harness-doctor 3/3.
+운영 posture: main 에 local merge-gate advisory 활성(보고만, 차단 안 함).
+AGENTS.md ↔ CLAUDE.md canonicalize(AGENTS.md 정본, `@AGENTS.md` 래퍼).
+이번 세션은 #04/#05 **이슈 파일 harden 만**(docs-only, in-scope 코드 변경 없음).
 
 ## Start here next session
 
-- **능동 — embedding-classifier #02 → push**: 구현 완료·브랜치 커밋
-  `7234421`(`feat/embedding-classifier-name-seeds`), **push/PR 은 사용자 지시
-  대기**. push·머지 후 운영 스텝: `pnpm db:migrate`(0017 rule_seeds) + `AI`
-  바인딩 배포 + `scripts/backfill-name-seeds.ts` 1회(CF_* 필요). 그 후 #03
-  (keyword seeds) 착수. spec: `.scratch/embedding-classifier/issues/03-keyword-seeds.md`.
-- **사람 게이트 — 머지게이트 pass 2**: #02 커밋이 백그라운드 advisory produce
-  발생 — `/handle-merge-findings` 재실행 여부는 사람 판단(자동 루프 안 함).
-- **병행 — architecture-deepening 후보 (CalendarApiError pair)**:
-  `watch/core.ts` 의 `classify`/`throwWatchError` 가 `googleCalendar.ts` 와
-  중복; `/heal-watch` kind→HTTP switch 도 후보. grill 선행(un-grilled), 별도 PR.
-- 사소한 후속 (block 아님): GAS `formatMatchLine` 이 `matchedKeyword`→
-  `matchedSeed`/score 로 갱신 필요(#02 가 preview 계약 변경, #03/#05 로 이연);
-  `onLlmCall`/`onLlmAttempted` 폐기 참조 정리도 같이.
+- **능동 — embedding-classifier #04 (rule editor)**: harden 완료(6 AC),
+  #03 로 unblock, 외부 게이트 없음 — 가장 작은 착수 후보. GAS 카피+collapse,
+  검증은 코드+PR 스크린샷. spec:
+  `.scratch/embedding-classifier/issues/04-rule-editor-redesign.md`.
+- **능동 — embedding-classifier #05 (examples + Instant Feedback)**: harden
+  완료(19 AC). **다크 빌드** 범위(`addExample` 실동작·`decideStage1` verified
+  경로·생애주기·프롬프트)를 pre-OAuth 머지; UI 표면화+동의+개인정보처리방침은
+  OAuth 검수 통과 후 별도 PR. spec:
+  `.scratch/embedding-classifier/issues/05-examples-seeds-instant-feedback.md`.
+- **병행 — architecture-deepening 후보 (CalendarApiError pair)**: un-grilled,
+  grill 선행, 별도 PR. (`watch/core.ts` classify ↔ `googleCalendar.ts` 중복.)
+- **휴면 — #06 (history-based suggestions)**: #05 로 blocked, 동일 OAuth 게이트 —
+  건드리지 말 것.
 
 ## Open decisions
 
@@ -50,28 +49,23 @@ verify(보고만, 차단 안 함). AGENTS.md ↔ CLAUDE.md canonicalize 됨
   전환은 팀 준비되면 `harness.toml` 에서.
 - 벡터 차원 **동결** 미확정 — #01 이 잠정 `embeddinggemma-300m`(768d) 선정,
   단 *동결*은 멀티 persona/다국어 골드셋까지 **연기**(단일 persona·ko-only·
-  cat_0 47% 검정력 약함, ADR-0005 §8). #02~#06 은 잠정 gemma(768)로 진행,
+  cat_0 47% 검정력 약함, ADR-0005 §8). #04~#06 은 잠정 gemma(768)로 진행,
   1024 로 뒤집히면 스키마 마이그레이션.
 - 임계값 `T=(0.30,0.55,0.10)` = **provisional** — `sts` 프리픽스의 Workers-AI
   parity 가 빈 prefix 로만 측정됨(mean 1.0). 승자 `sts` 프리픽스로 WAI 재측정
   후 provisional 해제(ADR-0005 §6). en/zh 는 ko 잠정값 차용·미검증.
-- examples 씨앗(embedding-classifier #05/#06)은 캘린더 제목의 최초
-  durable 저장 → 개인정보처리방침/동의 표면 변경 필요. OAuth 검수
-  (2026-05-14 재제출) 통과 전 출시 불가. **eval 의 persona/en-zh 확장**
-  (#01 gold set 의 단일 persona·ko-only 한계 해소를 위한 제품 내 opt-in
-  익명 기여)도 동일 게이트에 묶임 — 그전 단계는 동의자 오프라인 export.
-- un-grilled architecture-deepening 후보 (#06 외 미착수, 필요 시 별도
-  grill): CalendarApiError factory + kind→HTTP mapper (`watch/core.ts`
-  classify 가 `googleCalendar.ts` 와 중복; #06 이 옮겼을 뿐 dedup 별도),
-  ColorOwnershipMarker (§5.4 read/probe 통합),
+- **외부 게이트 — OAuth 검수**(2026-05-14 재제출): #05/#06 examples 씨앗 출시 +
+  GAS Instant Feedback UI 표면화가 여기 묶임(캘린더 제목 최초 durable 저장 →
+  개인정보처리방침/동의 표면 변경). #05 는 다크-빌드 전략으로 harden 됨(백엔드는
+  pre-OAuth 머지 가능, 출시만 gated). **eval persona/en-zh 확장**(제품 내 opt-in
+  익명 기여)도 동일 게이트 — 그전 단계는 동의자 오프라인 export.
+- un-grilled architecture-deepening 후보 (필요 시 별도 grill):
+  CalendarApiError factory + kind→HTTP mapper (`watch/core.ts` classify 가
+  `googleCalendar.ts` 와 중복), ColorOwnershipMarker (§5.4 read/probe 통합),
   ResultHandler (sync/rollback outcome→Queue-action dispatch),
-  ObservabilityRecorder (+finalization-invariant harness — ADR-0004 새
-  outcome 대비), route-test-harness, GAS `fetchBackendEndpoint`. drop 판정:
-  gas-response-adapter (formatMatchLine 이 이미 중앙화), row-fixture-builder
-  (#05 잔여 hygiene). Claim primitive 는 이번 sweep 에서 keep 으로 안
-  올라옴 (`watchClaim.ts` 가 공유 추출을 명시적으로 반대) — 보류 확정.
-- GAS Instant Feedback UI surfacing 은 OAuth 검수 통과 후 (위 examples
-  씨앗 게이트와 동일 트리거).
+  ObservabilityRecorder (+finalization-invariant harness), route-test-harness,
+  GAS `fetchBackendEndpoint`. drop 판정: gas-response-adapter·row-fixture-builder.
+  Claim primitive 은 보류 확정(`watchClaim.ts` 가 공유 추출 명시적 반대).
 
 <!-- narrative:end -->
 
@@ -90,15 +84,15 @@ verify(보고만, 차단 안 함). AGENTS.md ↔ CLAUDE.md canonicalize 됨
 
 ## embedding-classifier
 
-`████████████░░░░░░░░░░` 31/57 acceptance criteria met (54%)
+`█████████████░░░░░░░░░` 45/78 acceptance criteria met (58%)
 
 | # | Issue | Triage | Criteria | State | Blocked by |
 |---|-------|--------|----------|-------|-----------|
 | 01 | Embedding model selection eval | `done` | 17/17 | ✅ done | — |
 | 02 | Embedding knn classifier name seeds | `done` | 14/14 | ✅ done | — |
-| 03 | Keyword seeds | `ready-for-agent` | 0/5 | ⬜ todo | #02 |
-| 04 | Rule editor redesign | `ready-for-agent` | 0/5 | ⛔ blocked | #03 |
-| 05 | Examples seeds instant feedback | `ready-for-agent` | 0/8 | ⛔ blocked | #03 |
+| 03 | Keyword seeds | `ready-for-agent` | 14/14 | ✅ done | — |
+| 04 | Rule editor redesign | `ready-for-agent` | 0/6 | ⬜ todo | #03 |
+| 05 | Examples seeds instant feedback | `ready-for-agent` | 0/19 | ⬜ todo | #03 |
 | 06 | History based rule suggestions | `ready-for-agent` | 0/8 | ⛔ blocked | #05 |
 
 State is derived: all criteria checked → `done`; some → `in-progress`; none
