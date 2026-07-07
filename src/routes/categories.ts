@@ -96,12 +96,17 @@ categoriesRoutes.post("/", async (c) => {
       userId,
       parsed.data,
     );
+    // card-latency #02 — return the updated list in the mutation response so
+    // GAS rebuilds the card without a follow-up GET (2 roundtrips → 1). The
+    // list SELECT is awaited here (plain DB read), NOT the embedding
+    // sideEffects — the response must never wait on the name-seed embed.
+    const rules = await listRules(db, userId);
     // close() = client.end(); the name-seed write inside sideEffects awaits an
     // embedding network call before its db.insert, so close() MUST be chained
     // after sideEffects. A separate waitUntil(close()) ends the pool mid-embed
     // and the seed insert silently fails — mirror index.ts's .finally(close).
     c.executionCtx.waitUntil(sideEffects.finally(() => close()));
-    return c.json({ category: toWire(rule) }, 201);
+    return c.json({ category: toWire(rule), categories: rules.map(toWire) }, 201);
   } catch (err) {
     c.executionCtx.waitUntil(close());
     if (err instanceof DuplicateRuleNameError) {
@@ -163,7 +168,11 @@ categoriesRoutes.delete("/:id", async (c) => {
     const result = await deleteRule(db, c.env, userId, idParse.data);
     if (!result) return c.json({ error: "not_found" }, 404);
     c.executionCtx.waitUntil(result.sideEffects);
-    return c.body(null, 204);
+    // card-latency #02 — 204 → 200 with the updated list so GAS skips the
+    // follow-up GET. Status change is safe: the GAS client treats any 2xx as
+    // success and previously ignored the (empty) DELETE body.
+    const rules = await listRules(db, userId);
+    return c.json({ categories: rules.map(toWire) });
   } finally {
     c.executionCtx.waitUntil(close());
   }

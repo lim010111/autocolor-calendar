@@ -582,7 +582,7 @@ export async function deleteRule(
   // Postgres transaction, so a partial failure (e.g. queue binding
   // transient error on the 2nd of 3 calendars) leaves orphan markers.
   // We log explicitly so §6 observability can surface the rate, and the
-  // route still returns 204 — re-deleting the same rule won't help (row
+  // route still returns 200 — re-deleting the same rule won't help (row
   // is gone), the recovery path is a future manual "resync cleanup" tool.
   const calendarIds = await listCalendarsForUser(db, userId);
   const sideEffects = fanOutColorRollback(env, userId, ruleId, calendarIds);

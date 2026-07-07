@@ -184,6 +184,31 @@ describe("/api/categories — create (POST)", () => {
     expect(currentDb.state.categories[0]?.userId).toBe(USER_A);
   });
 
+  it("card-latency #02 — response carries the updated categories list (tenant-scoped)", async () => {
+    currentDb.state.categories.push(
+      row({ id: CAT_A_ID, userId: USER_A, name: "기존규칙" }),
+      row({ id: CAT_B_ID, userId: USER_B, name: "B's rule" }),
+    );
+    const res = await post({
+      name: "주간회의",
+      colorId: "9",
+      keywords: ["주간회의"],
+    });
+    expect(res.status).toBe(201);
+    const body = (await res.json()) as {
+      category: { id: string };
+      categories: Array<{ id: string; name: string }>;
+    };
+    // Updated list = existing row + freshly created row, user A only.
+    expect(body.categories).toHaveLength(2);
+    expect(body.categories.map((c) => c.name).sort()).toEqual([
+      "기존규칙",
+      "주간회의",
+    ]);
+    expect(body.categories.some((c) => c.id === CAT_B_ID)).toBe(false);
+    expect(body.categories.some((c) => c.id === body.category.id)).toBe(true);
+  });
+
   it("400 when colorId is outside 1..11", async () => {
     const res = await post({ name: "x", colorId: "12", keywords: ["x"] });
     expect(res.status).toBe(400);
@@ -451,14 +476,39 @@ describe("/api/categories — patch (PATCH)", () => {
 });
 
 describe("/api/categories — delete (DELETE)", () => {
-  it("204 on success and removes the row", async () => {
+  it("200 on success and removes the row", async () => {
     currentDb.state.categories.push(row({ id: CAT_A_ID, userId: USER_A }));
     const res = await invoke(`/api/categories/${CAT_A_ID}`, {
       method: "DELETE",
       userToken: "token-a",
     });
-    expect(res.status).toBe(204);
+    // card-latency #02 — 204 → 200 with the updated list in the body.
+    expect(res.status).toBe(200);
     expect(currentDb.state.categories).toHaveLength(0);
+  });
+
+  it("card-latency #02 — response carries the updated categories list (tenant-scoped)", async () => {
+    currentDb.state.categories.push(
+      row({ id: CAT_A_ID, userId: USER_A, name: "지울규칙" }),
+      row({
+        id: "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaa02",
+        userId: USER_A,
+        name: "남는규칙",
+      }),
+      row({ id: CAT_B_ID, userId: USER_B, name: "B's rule" }),
+    );
+    const res = await invoke(`/api/categories/${CAT_A_ID}`, {
+      method: "DELETE",
+      userToken: "token-a",
+    });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as {
+      categories: Array<{ id: string; name: string }>;
+    };
+    // Updated list = user A's surviving row only.
+    expect(body.categories).toHaveLength(1);
+    expect(body.categories[0]?.name).toBe("남는규칙");
+    expect(body.categories.some((c) => c.id === CAT_B_ID)).toBe(false);
   });
 
   it("enqueues one color_rollback job per calendar in sync_state", async () => {
@@ -472,7 +522,7 @@ describe("/api/categories — delete (DELETE)", () => {
       method: "DELETE",
       userToken: "token-a",
     });
-    expect(res.status).toBe(204);
+    expect(res.status).toBe(200);
     const calls = vi.mocked(enqueueSync).mock.calls;
     // Exactly two jobs — user A's two calendars. User B's row must not leak.
     expect(calls).toHaveLength(2);
@@ -493,7 +543,7 @@ describe("/api/categories — delete (DELETE)", () => {
       method: "DELETE",
       userToken: "token-a",
     });
-    expect(res.status).toBe(204);
+    expect(res.status).toBe(200);
     expect(vi.mocked(enqueueSync)).not.toHaveBeenCalled();
   });
 
@@ -572,7 +622,7 @@ describe("/api/categories — round-trip", () => {
       method: "DELETE",
       userToken: "token-a",
     });
-    expect(deleted.status).toBe(204);
+    expect(deleted.status).toBe(200);
 
     // list empty
     const list3 = await invoke("/api/categories", { userToken: "token-a" });
