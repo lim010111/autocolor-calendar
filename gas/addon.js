@@ -814,17 +814,87 @@ function readRuleFormValue(e, fieldName) {
   return "";
 }
 
+// Parameter budget (chars) for the pass-through categories snapshot.
+// CardService action-parameter limits are undocumented; 8192 is a
+// conservative budget (~70+ rules at ~100 bytes/rule — well past the
+// "규칙 수십 개" target population) pending a live measurement. Over
+// budget → the parameter is omitted and the color pick falls back to fetch.
+var CATEGORIES_SNAPSHOT_PARAM_MAX_CHARS = 8192;
+
+/**
+ * card-latency #01 — serializes the trimmed `{id, keyword, colorId}` rules
+ * list for the color-grid pass-through parameter. Returns null when the
+ * list is unavailable (fetch error) or the JSON exceeds the parameter
+ * budget, so callers omit the parameter and the re-render fetches instead.
+ */
+function serializeCategoriesSnapshot(rules) {
+  if (!Array.isArray(rules)) return null;
+  var json;
+  try {
+    json = JSON.stringify(rules.map(function (r) {
+      return { id: r.id, keyword: r.keyword, colorId: r.colorId };
+    }));
+  } catch (_err) {
+    return null;
+  }
+  if (json.length > CATEGORIES_SNAPSHOT_PARAM_MAX_CHARS) return null;
+  return json;
+}
+
+/**
+ * card-latency #01 — reads the pass-through categories snapshot stashed by
+ * buildRuleManagementCard on the color-pick action. Returns null if absent
+ * or unparsable so the caller falls back to a fresh fetch. Checks both the
+ * `e.parameters` and `commonEventObject.parameters` shapes the framework
+ * flips between (same convention as readStashedLlmPreview).
+ */
+function readCategoriesSnapshot(e) {
+  var raw = null;
+  if (e && e.parameters && e.parameters.categoriesSnapshotJson) {
+    raw = e.parameters.categoriesSnapshotJson;
+  } else if (
+    e && e.commonEventObject && e.commonEventObject.parameters &&
+    e.commonEventObject.parameters.categoriesSnapshotJson
+  ) {
+    raw = e.commonEventObject.parameters.categoriesSnapshotJson;
+  }
+  if (!raw) return null;
+  try {
+    var parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed : null;
+  } catch (_err) {
+    return null;
+  }
+}
+
 /**
  * Screen 4: Rule Management Card.
+ *
+ * `categoriesSnapshot` (optional) — a trimmed `[{id, keyword, colorId}]`
+ * list already fetched earlier in the same render cycle (card-latency #01).
+ * When present, the builder reuses it instead of re-fetching
+ * `/api/categories` — a pure-UI re-render (color pick) must not cost a
+ * backend roundtrip. Consecutive color picks re-carry it on purpose:
+ * every pick is fetch-free (#01 AC), not just the first — do NOT "fix"
+ * this into a one-shot. It is still NOT a cache: it lives only in this
+ * card's action parameters; any mutation (add/delete) or card exit
+ * discards it and the next render re-fetches, so the Halt-on-Failure
+ * "no cache" contract holds. When absent, behavior is unchanged
+ * (fetch + AUTH_EXPIRED short-circuit).
  */
-function buildRuleManagementCard(e) {
+function buildRuleManagementCard(e, categoriesSnapshot) {
   var L = pickLocale(e);
-  // Session check up front — AUTH_EXPIRED short-circuits to the reconnect
-  // card so the user gets an OAuth re-login button instead of being stranded
-  // on an inline error. Mirrors actionSyncNow / actionAddRule / actionDeleteRule.
-  var fetched = fetchCategoriesOrError();
-  if (fetched.error === 'AUTH_EXPIRED') {
-    return buildReconnectCard(null, L);
+  var fetched;
+  if (categoriesSnapshot) {
+    fetched = { rules: categoriesSnapshot };
+  } else {
+    // Session check up front — AUTH_EXPIRED short-circuits to the reconnect
+    // card so the user gets an OAuth re-login button instead of being stranded
+    // on an inline error. Mirrors actionSyncNow / actionAddRule / actionDeleteRule.
+    fetched = fetchCategoriesOrError();
+    if (fetched.error === 'AUTH_EXPIRED') {
+      return buildReconnectCard(null, L);
+    }
   }
 
   var builder = CardService.newCardBuilder();
@@ -882,10 +952,22 @@ function buildRuleManagementCard(e) {
   // primary action sits at the bottom of the card.
   var colorSection = CardService.newCardSection();
 
+  // card-latency #01 — carry the already-fetched list on the color-pick
+  // action so its re-render skips the /api/categories roundtrip. Omitted
+  // (→ fetch fallback) when the list errored or exceeds the parameter
+  // budget. Only the color-pick action gets it: mutation actions
+  // (add/delete) must re-fetch to show the updated list.
+  var colorPickAction = CardService.newAction()
+    .setFunctionName("actionSelectColorForRule");
+  var snapshotJson = serializeCategoriesSnapshot(fetched.rules);
+  if (snapshotJson) {
+    colorPickAction.setParameters({ categoriesSnapshotJson: snapshotJson });
+  }
+
   var colorGrid = CardService.newGrid()
     .setTitle(t('rules.colorPicker', null, L))
     .setNumColumns(6)
-    .setOnClickAction(CardService.newAction().setFunctionName("actionSelectColorForRule"));
+    .setOnClickAction(colorPickAction);
 
   var colors = getCalendarColors(L);
 
@@ -1000,8 +1082,12 @@ function actionSelectColorForRule(e) {
   if (!e.parameters) e.parameters = {};
   e.parameters.selectedColorIdForRule = selectedColorId;
 
+  // card-latency #01 — reuse the list this render already carries; null
+  // (absent / over budget / unparsable) falls back to the builder's fetch.
+  var categoriesSnapshot = readCategoriesSnapshot(e);
+
   return CardService.newActionResponseBuilder()
-    .setNavigation(CardService.newNavigation().updateCard(buildRuleManagementCard(e)))
+    .setNavigation(CardService.newNavigation().updateCard(buildRuleManagementCard(e, categoriesSnapshot)))
     .setNotification(CardService.newNotification().setText(t('color.toast.selected', { label: selectedLabel }, L)))
     .build();
 }

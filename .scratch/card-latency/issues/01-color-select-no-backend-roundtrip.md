@@ -1,4 +1,4 @@
-Status: ready-for-agent
+Status: ready-for-human
 
 ## What to build
 
@@ -25,21 +25,41 @@ CardService action parameter로 전달한다. 일반 사용자(규칙 수십 개
 
 ## Acceptance criteria
 
-- [ ] 규칙 관리 카드 빌더가 optional 카테고리 스냅샷 인자를 받는다; 인자 부재 시
+- [x] 규칙 관리 카드 빌더가 optional 카테고리 스냅샷 인자를 받는다; 인자 부재 시
       기존처럼 fetch (회귀 없음)
 - [ ] 색 선택 액션이 pass-through 스냅샷으로 재렌더 — 색 선택 시 `/api/categories`
       GET 0회 (`wrangler tail`에 해당 GET 라인 없음으로 검증)
-- [ ] pass-through 스냅샷은 trim된 `{id, keyword, colorId}`; 파라미터 크기 초과 시
+- [x] pass-through 스냅샷은 trim된 `{id, keyword, colorId}`; 파라미터 크기 초과 시
       fetch 폴백
 - [ ] 색 선택 후에도 기존 규칙 리스트가 그대로 보인다 (목록 사라짐 회귀 없음)
 - [ ] 폼 입력값(rule_name / rule_keywords) 보존 유지 (기존 form-state 보존 동작
       회귀 없음)
-- [ ] 사용자 노출 카피 변경 없음 (신규 카피 발생 시 en/ko/zh-CN/zh-TW 4 bundle 동시
+- [x] 사용자 노출 카피 변경 없음 (신규 카피 발생 시 en/ko/zh-CN/zh-TW 4 bundle 동시
       추가)
 - [ ] 기존 deployment "New version"으로 배포 — `/exec` URL 불변, `appsscript.json`
       scopes 불변 ("New deployment" 금지)
-- [ ] `python3 scripts/check-context-paths.py` 통과
+- [x] `python3 scripts/check-context-paths.py` 통과
 
 ## Blocked by
 
 None — can start immediately.
+
+## Comments
+
+**2026-07-07 (agent)** — 구현 완료 (`gas/addon.js`,
+branch `feat/card-latency-01-color-select-no-roundtrip`):
+
+- Prefactor: `buildRuleManagementCard(e, categoriesSnapshot)` — optional 인자,
+  부재 시 기존 fetch + AUTH_EXPIRED 단락 그대로 (#02도 이 시그니처를 소비).
+- Pass-through: 색상 그리드 액션에만 `categoriesSnapshotJson` 파라미터로 trim된
+  `{id, keyword, colorId}` JSON 부착. mutation 액션(add/delete)에는 미부착 —
+  변경 후엔 반드시 재fetch.
+- 직렬화 = 단일 파라미터 JSON 문자열. 크기 한도: CardService 파라미터 한도가
+  비문서화라 보수 예산 `CATEGORIES_SNAPSHOT_PARAM_MAX_CHARS = 8192`(≈규칙 70+개)
+  적용, 초과 시 파라미터 생략 → fetch 폴백. **정확한 실측 한도는 라이브 검증 때
+  확정 예정.**
+- 로컬 검증: node vm 시뮬레이션 11/11 통과 (스냅샷 시 backend 호출 0회 / 부재 시
+  1회 / 한도 초과 폴백 / 폼 보존 / 목록 렌더 / corrupt JSON 폴백).
+
+남은 것 (라이브, 사람 게이트): "New version" 배포(AC7) → `wrangler tail`로
+색 선택 시 GET 0회(AC2) + 목록 유지(AC4) + 폼 보존(AC5) 확인.
