@@ -82,6 +82,16 @@ AGENTS.md ↔ CLAUDE.md canonicalize(AGENTS.md 정본, `@AGENTS.md` 래퍼).
 | 05 | Fakedb test helper extraction | `ready-for-agent` | 11/11 | ✅ done | — |
 | 06 | Watch channel lifecycle module | `done` | 12/12 | ✅ done | — |
 
+## card-latency
+
+`░░░░░░░░░░░░░░░░░░░░░░` 0/24 acceptance criteria met (0%)
+
+| # | Issue | Triage | Criteria | State | Blocked by |
+|---|-------|--------|----------|-------|-----------|
+| 01 | Color select no backend roundtrip | `ready-for-agent` | 0/8 | ⬜ todo | — |
+| 02 | Mutation response single roundtrip | `ready-for-agent` | 0/9 | ⛔ blocked | #01 |
+| 03 | Color swatch image latency | `ready-for-agent` | 0/7 | ⬜ todo | — |
+
 ## embedding-classifier
 
 `█████████████░░░░░░░░░` 45/78 acceptance criteria met (58%)
@@ -97,5 +107,4 @@ AGENTS.md ↔ CLAUDE.md canonicalize(AGENTS.md 정본, `@AGENTS.md` 래퍼).
 
 State is derived: all criteria checked → `done`; some → `in-progress`; none
 with an unfinished blocker → `blocked`; otherwise → `todo`. Issues triaged
-`wontfix` (decided against) or `parked` (deferred until operator opt-in) show
-that triage state and are excluded from the progress bar.
+`wontfix` show as `wontfix` and are excluded from the progress bar.
