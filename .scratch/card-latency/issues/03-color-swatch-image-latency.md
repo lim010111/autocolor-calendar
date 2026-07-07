@@ -20,12 +20,16 @@ GitHub: #133
 ## Acceptance criteria
 
 - [ ] 11색 스와치가 외부 `placehold.co` 왕복 없이 렌더된다
-- [ ] 선택 상태 전환이 신규 외부 fetch / 캐시 미스를 유발하지 않는다
-- [ ] 11색의 id·라벨·색상값이 기존과 동일 (Google Calendar colorId 매핑 불변)
-- [ ] en/ko/zh-CN/zh-TW 4 로케일 라벨 무변경
-- [ ] 규칙 편집기와 이벤트 사이드바 양쪽 색 선택 표면에 동일 팔레트 반영
+      — 코드상 `placehold.co` 참조 0건(inline data URI), "렌더된다"는 라이브
+      검증(사람 게이트) 후 flip
+- [x] 선택 상태 전환이 신규 외부 fetch / 캐시 미스를 유발하지 않는다
+      (url/selectedUrl 모두 카드 JSON에 인라인된 data URI — 외부 URL 자체가 없음)
+- [x] 11색의 id·라벨·색상값이 기존과 동일 (Google Calendar colorId 매핑 불변)
+- [x] en/ko/zh-CN/zh-TW 4 로케일 라벨 무변경
+- [x] 규칙 편집기와 이벤트 사이드바 양쪽 색 선택 표면에 동일 팔레트 반영
+      (공유 `COLOR_PALETTE`/`getCalendarColors`만 변경, addon.js 두 표면 무수정)
 - [ ] 기존 deployment "New version"으로 배포 — `/exec` URL·scopes 불변
-- [ ] `python3 scripts/check-context-paths.py` 통과
+- [x] `python3 scripts/check-context-paths.py` 통과
 
 ## Blocked by
 

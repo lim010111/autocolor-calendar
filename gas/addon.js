@@ -550,7 +550,7 @@ function onEventOpen(e) {
     .setNumColumns(6)
     .setOnClickAction(CardService.newAction().setFunctionName("actionSelectColor"));
 
-  // Mock placeholders for color icons
+  // Inline data-URI swatches — no external image host (card-latency #03)
   var colors = getCalendarColors(L);
 
   var selectedColorId = null;
