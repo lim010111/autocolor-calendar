@@ -19,19 +19,19 @@ GitHub: #132
 
 ## Acceptance criteria
 
-- [ ] `POST /api/categories` 응답에 갱신된 카테고리 목록 포함 (기존 필드
+- [x] `POST /api/categories` 응답에 갱신된 카테고리 목록 포함 (기존 필드
       backward-compat, 추가만)
-- [ ] `DELETE /api/categories/:id` 응답에 갱신된 목록 포함
+- [x] `DELETE /api/categories/:id` 응답에 갱신된 목록 포함
 - [ ] `actionAddRule` — POST 응답 목록으로 재빌드, 후속 GET 제거 (add 시 왕복 1회,
-      `wrangler tail`로 검증)
-- [ ] `actionDeleteRule` — 동일하게 후속 GET 제거 (delete 시 왕복 1회)
-- [ ] 라우트 테스트 — POST / DELETE 응답에 목록이 실리는지 assertion
-- [ ] 에러 경로 동작 보존 — duplicate_name(409) / AUTH_EXPIRED / 저장 실패 시 기존
+      `wrangler tail`로 검증) — 코드(응답 목록 재빌드·후속 GET 제거) 완료, tail 라이브 검증은 사람 게이트
+- [x] `actionDeleteRule` — 동일하게 후속 GET 제거 (delete 시 왕복 1회)
+- [x] 라우트 테스트 — POST / DELETE 응답에 목록이 실리는지 assertion
+- [x] 에러 경로 동작 보존 — duplicate_name(409) / AUTH_EXPIRED / 저장 실패 시 기존
       토스트·재연결 흐름 그대로
-- [ ] name-seed 임베딩 부수효과 타이밍 불변 — 응답이 `waitUntil` 임베딩을 기다리지
+- [x] name-seed 임베딩 부수효과 타이밍 불변 — 응답이 `waitUntil` 임베딩을 기다리지
       않음 (route의 close() 체이닝 계약 유지)
 - [ ] 기존 deployment "New version"으로 배포 — `/exec` URL·scopes 불변
-- [ ] `python3 scripts/check-context-paths.py` 통과
+- [x] `python3 scripts/check-context-paths.py` 통과
 
 ## Blocked by
 

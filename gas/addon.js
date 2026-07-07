@@ -409,18 +409,44 @@ function fetchCategoriesOrError() {
   try {
     var res = AutoColorAPI.fetchBackend('/api/categories', { method: 'get' });
     var body = JSON.parse(res.getContentText() || '{}');
-    var rules = (body.categories || []).map(function (c) {
-      return {
-        id: c.id,
-        // 다중 키워드 규칙도 사용자가 입력한 원문 라벨(name)을 그대로 보여주도록.
-        // 과거에는 keywords[0]만 사용해서 "프로젝트, 개발" 입력이 "프로젝트"로만 표시됐음.
-        keyword: c.name || (c.keywords && c.keywords[0]) || "",
-        colorId: c.colorId,
-      };
-    });
-    return { rules: rules };
+    return { rules: mapWireCategoriesToRules(body.categories || []) };
   } catch (err) {
     return { error: err.message };
+  }
+}
+
+/**
+ * Maps the backend wire shape (`{ id, name, colorId, keywords, ... }`) to the
+ * trimmed `{ id, keyword, colorId }` rule rows the card builders consume.
+ * Shared by fetchCategoriesOrError and the mutation-response fast path below.
+ */
+function mapWireCategoriesToRules(categories) {
+  return categories.map(function (c) {
+    return {
+      id: c.id,
+      // 다중 키워드 규칙도 사용자가 입력한 원문 라벨(name)을 그대로 보여주도록.
+      // 과거에는 keywords[0]만 사용해서 "프로젝트, 개발" 입력이 "프로젝트"로만 표시됐음.
+      keyword: c.name || (c.keywords && c.keywords[0]) || "",
+      colorId: c.colorId,
+    };
+  });
+}
+
+/**
+ * card-latency #02 — reads the updated `categories` list a mutation response
+ * (POST / DELETE /api/categories) carries so the card rebuild skips the
+ * follow-up GET (2 roundtrips → 1). Returns null when the body is missing,
+ * unparsable, or predates the list-carrying Worker — the caller then falls
+ * back to buildRuleManagementCard's own fetch. This is NOT a cache: the list
+ * comes fresh from the mutation's own response, so Halt-on-Failure holds.
+ */
+function readCategoriesFromMutationResponse(res) {
+  try {
+    var body = JSON.parse(res.getContentText() || '{}');
+    if (!body || !Array.isArray(body.categories)) return null;
+    return mapWireCategoriesToRules(body.categories);
+  } catch (_err) {
+    return null;
   }
 }
 
@@ -878,9 +904,9 @@ function readCategoriesSnapshot(e) {
  * every pick is fetch-free (#01 AC), not just the first — do NOT "fix"
  * this into a one-shot. It is still NOT a cache: it lives only in this
  * card's action parameters; any mutation (add/delete) or card exit
- * discards it and the next render re-fetches, so the Halt-on-Failure
- * "no cache" contract holds. When absent, behavior is unchanged
- * (fetch + AUTH_EXPIRED short-circuit).
+ * discards it — the mutation render uses the fresh list its own response
+ * carries (#02), so the Halt-on-Failure "no cache" contract holds. When
+ * absent, behavior is unchanged (fetch + AUTH_EXPIRED short-circuit).
  */
 function buildRuleManagementCard(e, categoriesSnapshot) {
   var L = pickLocale(e);
@@ -956,7 +982,8 @@ function buildRuleManagementCard(e, categoriesSnapshot) {
   // action so its re-render skips the /api/categories roundtrip. Omitted
   // (→ fetch fallback) when the list errored or exceeds the parameter
   // budget. Only the color-pick action gets it: mutation actions
-  // (add/delete) must re-fetch to show the updated list.
+  // (add/delete) must NOT reuse this stale snapshot — they rebuild from
+  // the updated list their own mutation response carries (#02).
   var colorPickAction = CardService.newAction()
     .setFunctionName("actionSelectColorForRule");
   var snapshotJson = serializeCategoriesSnapshot(fetched.rules);
@@ -1126,7 +1153,7 @@ function actionAddRule(e) {
   }
 
   try {
-    AutoColorAPI.fetchBackend('/api/categories', {
+    var res = AutoColorAPI.fetchBackend('/api/categories', {
       method: 'post',
       contentType: 'application/json',
       payload: JSON.stringify({
@@ -1135,8 +1162,11 @@ function actionAddRule(e) {
         keywords: keywords
       })
     });
+    // card-latency #02 — rebuild from the POST response's updated list;
+    // null (missing/unparsable) falls back to the builder's own fetch.
+    var updatedRules = readCategoriesFromMutationResponse(res);
     return CardService.newActionResponseBuilder()
-      .setNavigation(CardService.newNavigation().updateCard(buildRuleManagementCard(e)))
+      .setNavigation(CardService.newNavigation().updateCard(buildRuleManagementCard(e, updatedRules)))
       .setNotification(CardService.newNotification().setText(t('rules.toast.added', null, L)))
       .build();
   } catch (err) {
@@ -1165,11 +1195,14 @@ function actionDeleteRule(e) {
       .build();
   }
   try {
-    AutoColorAPI.fetchBackend('/api/categories/' + encodeURIComponent(id), {
+    var res = AutoColorAPI.fetchBackend('/api/categories/' + encodeURIComponent(id), {
       method: 'delete'
     });
+    // card-latency #02 — rebuild from the DELETE response's updated list;
+    // null (missing/unparsable) falls back to the builder's own fetch.
+    var updatedRules = readCategoriesFromMutationResponse(res);
     return CardService.newActionResponseBuilder()
-      .setNavigation(CardService.newNavigation().updateCard(buildRuleManagementCard(e)))
+      .setNavigation(CardService.newNavigation().updateCard(buildRuleManagementCard(e, updatedRules)))
       .setNotification(CardService.newNotification().setText(t('rules.toast.deleted', null, L)))
       .build();
   } catch (err) {
