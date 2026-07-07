@@ -151,14 +151,14 @@ curl -s https://autocolorcal.app/healthz
 |---|---|
 | 화면 1 | Home Card 의 "색상 규칙 관리" 버튼 클릭 (`home.btn.rules` — `gas/addon.js:178-180`, action `actionGoToRuleManagement`) |
 | 동작 1 | `buildRuleManagementCard` (`gas/addon.js:794`) 카드 진입 — 비어 있는 상태 ("아직 등록된 규칙이 없습니다. 위에서 첫 규칙을 만들어보세요." `rules.list.empty`) |
-| 동작 2 | 동일 카드 상단의 "키워드 입력" 섹션 (`rules.section.add`) — 입력 placeholder "예: 회의, 미팅"에 `meeting` 타이핑 |
+| 동작 2 | 카드 상단의 "규칙 만들기" 섹션 (`rules.section.create`) — "규칙 이름"(`rules.name.label`) 입력란에 `meeting` 타이핑. 키워드는 그 아래 접힌 "키워드 (선택)" 섹션(`rules.section.keywords`)에 있고 선택 입력이라 데모에선 생략 |
 | 동작 3 | "일정 색상 선택" (`rules.colorPicker`) 에서 "Sage" (또는 시각적으로 두드러지는 색) 선택 |
 | 동작 4 | "규칙 추가" 버튼 (`rules.btn.add`, action `actionAddRule` — `gas/addon.js:856`) 클릭 → 같은 카드가 재렌더되며 "내 규칙 목록"(`rules.section.list`)에 1건이 추가된 상태로 노출 + "새 규칙이 저장되었습니다" 토스트(`rules.toast.added`) |
 | 자막 (EN) | **"Define a rule: events matching 'meeting' should be colored Sage."** |
 | 사용된 scope | (Rule 목록은 우리 backend DB 작업 — Calendar API 사용 0. 단 다음 Scene 4의 sync에서 `calendar.events` PATCH 트리거가 됨) |
 
 > 규칙 추가는 별도 카드가 아니라 `buildRuleManagementCard` 한 화면 안에
-> 인라인 섹션으로 노출된다 (상단 "키워드 입력" / 하단 "내 규칙 목록").
+> 인라인 섹션으로 노출된다 (상단 "규칙 만들기" / 하단 "내 규칙 목록").
 > 따라서 별도 진입/복귀 동작 없이 같은 카드에서 입력 → 저장 → 목록 갱신
 > 까지 일관되게 시각화된다. reviewer는 "rule 시스템이 존재한다"는 사실만
 > 확인하면 됨.
