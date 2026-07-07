@@ -34,4 +34,4 @@ Status: ready-for-agent
 
 ## Blocked by
 
-- #01 (카드 빌더가 목록 스냅샷을 인자로 받는 prefactor를 공유)
+None — #01 done (prefactor 머지됨), can start immediately.

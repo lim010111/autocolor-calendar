@@ -14,12 +14,11 @@ embedding-classifier (ADR-0004) — Stage 1 = 임베딩 kNN(substring 폐기).
 **#04 rule editor redesign — PR #128 머지됨.** 남은 건 4 로케일 편집기 스크린샷
 첨부(6번째 AC) 하나 — `ready-for-human` 5/6.
 
-**card-latency #01 — 구현 완료, 사람 게이트 대기 (`ready-for-human` 4/8).**
-스냅샷 pass-through 구현이 `feat/card-latency-01-color-select-no-roundtrip`
-브랜치에 커밋됨(로컬 vm 시뮬레이션 11/11). 남은 것 전부 라이브 단계: clasp
-push → "New version" 배포(`/exec` 불변) → `wrangler tail` 로 AC2/4/5 검증.
-tail 은 wrangler OAuth 로 동작 확인됨 — CF_API_TOKEN 재발급 불필요. spec:
-`.scratch/card-latency/issues/01-color-select-no-backend-roundtrip.md`.
+**card-latency — #01 done (8/8, 운영 설치본 라이브 검증 완료), 다음 = #02·#03.**
+색 선택 왕복 제거 실증(진입 GET 1회 → 클릭 0회, tail). 배포 주의: 설치본
+deployment 는 `AKfycbxfHV5…`(/exec 웹앱 겸용, 동결 URL) — 버전 갱신 시 반드시
+이걸 편집 (#01 Resolution + 메모리 참조). #02 가 #01 prefactor 를 소비, #03 은
+독립. 근거: `.scratch/card-latency/PRD.md`.
 
 남은 embedding 트랙 (둘 다 OAuth 게이트):
 - **#05 examples + Instant Feedback (19 AC)** — verified 씨앗 + `T_verified` +
@@ -35,11 +34,11 @@ AGENTS.md ↔ CLAUDE.md canonicalize(AGENTS.md 정본, `@AGENTS.md` 래퍼).
 - **사람 — embedding-classifier #04 (rule editor)**: PR #128 머지됨. 남은 건
   사람 단계 하나 — 4 로케일 편집기 스크린샷 각 1장 이슈 첨부 → 6번째 AC 체크 →
   done. (로컬에 2장만 있음, 4 로케일 아님.)
-- **능동 — card-latency #01 (색상 선택 왕복 제거)**: 구현·커밋 완료
-  (`feat/card-latency-01-color-select-no-roundtrip`). 다음 액션 = 사람 게이트:
-  clasp push + 기존 배포 "New version" 승인 → 배포 후 `wrangler tail --env
-  prod` 붙이고 색 스와치 클릭으로 AC2/4/5 검증 → 브랜치 push(`--no-verify`)·
-  PR. 끝나면 #02 unblock, #03 은 독립·병렬 가능.
+- **능동 — card-latency #02 (mutation 단일 왕복)**: #01 done 으로 unblock.
+  POST/DELETE 응답에 갱신 목록을 실어 후속 GET 제거 — #01 prefactor(빌더
+  스냅샷 인자) 소비. spec:
+  `.scratch/card-latency/issues/02-mutation-response-single-roundtrip.md`.
+  #03(스와치 이미지 지연)은 독립·병렬 가능.
 - **능동 — embedding-classifier #05 (examples + Instant Feedback)**: harden
   완료(19 AC). **다크 빌드** 범위(`addExample` 실동작·`decideStage1` verified
   경로·생애주기·프롬프트)를 pre-OAuth 머지; UI 표면화+동의+개인정보처리방침은
@@ -90,12 +89,12 @@ AGENTS.md ↔ CLAUDE.md canonicalize(AGENTS.md 정본, `@AGENTS.md` 래퍼).
 
 ## card-latency
 
-`████░░░░░░░░░░░░░░░░░░` 4/24 acceptance criteria met (17%)
+`███████░░░░░░░░░░░░░░░` 8/24 acceptance criteria met (33%)
 
 | # | Issue | Triage | Criteria | State | Blocked by |
 |---|-------|--------|----------|-------|-----------|
-| 01 | Color select no backend roundtrip | `ready-for-human` | 4/8 | 🔵 in-progress | — |
-| 02 | Mutation response single roundtrip | `ready-for-agent` | 0/9 | ⛔ blocked | #01 |
+| 01 | Color select no backend roundtrip | `done` | 8/8 | ✅ done | — |
+| 02 | Mutation response single roundtrip | `ready-for-agent` | 0/9 | ⬜ todo | — |
 | 03 | Color swatch image latency | `ready-for-agent` | 0/7 | ⬜ todo | — |
 
 ## embedding-classifier

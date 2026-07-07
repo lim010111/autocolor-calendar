@@ -1,4 +1,4 @@
-Status: ready-for-human
+Status: done
 
 ## What to build
 
@@ -27,16 +27,16 @@ CardService action parameter로 전달한다. 일반 사용자(규칙 수십 개
 
 - [x] 규칙 관리 카드 빌더가 optional 카테고리 스냅샷 인자를 받는다; 인자 부재 시
       기존처럼 fetch (회귀 없음)
-- [ ] 색 선택 액션이 pass-through 스냅샷으로 재렌더 — 색 선택 시 `/api/categories`
+- [x] 색 선택 액션이 pass-through 스냅샷으로 재렌더 — 색 선택 시 `/api/categories`
       GET 0회 (`wrangler tail`에 해당 GET 라인 없음으로 검증)
 - [x] pass-through 스냅샷은 trim된 `{id, keyword, colorId}`; 파라미터 크기 초과 시
       fetch 폴백
-- [ ] 색 선택 후에도 기존 규칙 리스트가 그대로 보인다 (목록 사라짐 회귀 없음)
-- [ ] 폼 입력값(rule_name / rule_keywords) 보존 유지 (기존 form-state 보존 동작
+- [x] 색 선택 후에도 기존 규칙 리스트가 그대로 보인다 (목록 사라짐 회귀 없음)
+- [x] 폼 입력값(rule_name / rule_keywords) 보존 유지 (기존 form-state 보존 동작
       회귀 없음)
 - [x] 사용자 노출 카피 변경 없음 (신규 카피 발생 시 en/ko/zh-CN/zh-TW 4 bundle 동시
       추가)
-- [ ] 기존 deployment "New version"으로 배포 — `/exec` URL 불변, `appsscript.json`
+- [x] 기존 deployment "New version"으로 배포 — `/exec` URL 불변, `appsscript.json`
       scopes 불변 ("New deployment" 금지)
 - [x] `python3 scripts/check-context-paths.py` 통과
 
@@ -63,3 +63,21 @@ branch `feat/card-latency-01-color-select-no-roundtrip`):
 
 남은 것 (라이브, 사람 게이트): "New version" 배포(AC7) → `wrangler tail`로
 색 선택 시 GET 0회(AC2) + 목록 유지(AC4) + 폼 보존(AC5) 확인.
+
+**2026-07-07 (agent) — 라이브 검증 완료, done.**
+
+- PR #130 머지(CI 5/5). merge-gate finding 1건(스냅샷 재부착)은 스펙상
+  의도된 동작(AC2가 모든 클릭에서 GET 0회 요구)이라 drop, 주석 명확화만 반영.
+- **배포 함정 발견**: "New version"이 설치본과 무관한 deployment(AKfycbxKZ…)에
+  적용돼 설치본이 v49 구코드로 잔류 — 편집기 실행 메뉴의 "버전" 컬럼으로 진단,
+  `clasp deploy -i AKfycbxfHV5… -V 54`(설치본+/exec 웹앱 겸용 deployment,
+  URL 불변·200 확인)로 repoint하여 해결.
+- **AC2 실증** (`wrangler tail --env prod`, 17:06 KST): 편집기 진입
+  `/api/categories` GET 1회 → 색 스와치 연속 클릭 GET **0회** (구코드
+  라운드는 클릭마다 GET 3~4회로 대비 명확). 실행 기록 버전 54 확인.
+- AC4(목록 유지)·AC5(폼 보존) 사용자 육안 확인. 부수 실측: Grid 클릭도
+  `Action.setParameters`를 전달함 (`grid_item_identifier`와 함께 p1/p2 모두,
+  스냅샷 237자 무손실 도착).
+
+> **Resolution:** PR #130 (`gas/addon.js` 스냅샷 pass-through) + deployment
+> repoint. 후속: #02 (mutation 단일 왕복, prefactor 공유) unblock.
