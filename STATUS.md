@@ -6,35 +6,40 @@ outside the narrative block; mechanical sections are regenerated every run._
 <!-- narrative:start -->
 ## Current focus
 
-embedding-classifier (ADR-0004 구현) — Stage 1 substring → 임베딩 kNN.
-**#01·#02·#03 done** (모델 eval / name 씨앗 / keyword 씨앗). substring 완전
-폐기, `rule_seeds` pgvector(HNSW cosine) + 프리픽스 강제 헬퍼 + name
-create-or-replace + keyword incremental-diff reconcile + backfill + per-page
-title 임베딩 read + 2등급 `decideStage1`. 잠정 gemma(768)·임계값
-`T=(0.30,0.55,0.10)` 는 ADR-0005 provisional 로 단일 config
-(`src/config/embedding.ts`) 흡수.
+embedding-classifier (ADR-0004) — Stage 1 = 임베딩 kNN(substring 폐기).
+**#01·#02·#03 done**(모델 eval / name·keyword 씨앗), `rule_seeds` pgvector +
+2등급 `decideStage1`. 잠정 gemma(768)·`T=(0.30,0.55,0.10)` = ADR-0005 provisional
+(config `src/config/embedding.ts`).
 
-**#04 rule editor redesign — 코드·배포 완료, PR #128 open, 스크린샷 1 AC 대기.**
-GAS 편집기를 "씨앗" 모델로: name(필수)/keyword(선택) 역할 시각 분리 + keyword
-collapse + 4 로케일 i18n, 옛 substring 카피 키 grep 0. 순수 GAS UI(백엔드 무변경).
-prod-webapp deployment 새 버전(v52, `/exec` URL 불변·scopes 불변) 배포·검증 완료.
-남은 1 AC(4 로케일 편집기 스크린샷 PR 첨부)만 사람 단계.
+**#04 rule editor redesign — PR #128 머지됨.** 남은 건 4 로케일 편집기 스크린샷
+첨부(6번째 AC) 하나 — `ready-for-human` 5/6.
 
-남은 트랙:
-- **#05 examples + Instant Feedback (19 AC)** — `example` verified 씨앗 +
-  `T_verified` 활성 + 생애주기(캡10/FIFO/title당 1 Rule) + `consentExample`→
-  `addExample` durable 저장. **OAuth 게이트: 백엔드/seams/테스트는 pre-OAuth
-  다크 빌드(저장 0), UI+동의+개인정보처리방침은 검수 통과 후 별도 PR.**
-- #06 (history-based suggestions) 은 #05 로 blocked (동일 OAuth 게이트).
+**card-latency #01 — 구현 완료, 사람 게이트 대기 (`ready-for-human` 4/8).**
+스냅샷 pass-through 구현이 `feat/card-latency-01-color-select-no-roundtrip`
+브랜치에 커밋됨(로컬 vm 시뮬레이션 11/11). 남은 것 전부 라이브 단계: clasp
+push → "New version" 배포(`/exec` 불변) → `wrangler tail` 로 AC2/4/5 검증.
+tail 은 wrangler OAuth 로 동작 확인됨 — CF_API_TOKEN 재발급 불필요. spec:
+`.scratch/card-latency/issues/01-color-select-no-backend-roundtrip.md`.
+
+남은 embedding 트랙 (둘 다 OAuth 게이트):
+- **#05 examples + Instant Feedback (19 AC)** — verified 씨앗 + `T_verified` +
+  생애주기 + `consentExample`→`addExample` durable 저장. 백엔드/테스트는 pre-OAuth
+  다크 빌드(저장 0), UI+동의+개인정보처리방침은 검수 통과 후 별도 PR.
+- #06 (history-based suggestions) — #05 로 blocked.
 
 운영 posture: main 에 local merge-gate advisory 활성(보고만, 차단 안 함).
 AGENTS.md ↔ CLAUDE.md canonicalize(AGENTS.md 정본, `@AGENTS.md` 래퍼).
 
 ## Start here next session
 
-- **능동 — embedding-classifier #04 (rule editor)**: 코드·PR #128·배포(prod-webapp
-  v52) 완료. 남은 것은 사람 단계 하나 — 4 로케일 편집기 스크린샷 각 1장 PR #128
-  첨부 → 마지막 AC 체크 → 이슈 done.
+- **사람 — embedding-classifier #04 (rule editor)**: PR #128 머지됨. 남은 건
+  사람 단계 하나 — 4 로케일 편집기 스크린샷 각 1장 이슈 첨부 → 6번째 AC 체크 →
+  done. (로컬에 2장만 있음, 4 로케일 아님.)
+- **능동 — card-latency #01 (색상 선택 왕복 제거)**: 구현·커밋 완료
+  (`feat/card-latency-01-color-select-no-roundtrip`). 다음 액션 = 사람 게이트:
+  clasp push + 기존 배포 "New version" 승인 → 배포 후 `wrangler tail --env
+  prod` 붙이고 색 스와치 클릭으로 AC2/4/5 검증 → 브랜치 push(`--no-verify`)·
+  PR. 끝나면 #02 unblock, #03 은 독립·병렬 가능.
 - **능동 — embedding-classifier #05 (examples + Instant Feedback)**: harden
   완료(19 AC). **다크 빌드** 범위(`addExample` 실동작·`decideStage1` verified
   경로·생애주기·프롬프트)를 pre-OAuth 머지; UI 표면화+동의+개인정보처리방침은
@@ -60,18 +65,13 @@ AGENTS.md ↔ CLAUDE.md canonicalize(AGENTS.md 정본, `@AGENTS.md` 래퍼).
 - 임계값 `T=(0.30,0.55,0.10)` = **provisional** — `sts` 프리픽스의 Workers-AI
   parity 가 빈 prefix 로만 측정됨(mean 1.0). 승자 `sts` 프리픽스로 WAI 재측정
   후 provisional 해제(ADR-0005 §6). en/zh 는 ko 잠정값 차용·미검증.
-- **외부 게이트 — OAuth 검수**(2026-05-14 재제출): #05/#06 examples 씨앗 출시 +
-  GAS Instant Feedback UI 표면화가 여기 묶임(캘린더 제목 최초 durable 저장 →
-  개인정보처리방침/동의 표면 변경). #05 는 다크-빌드 전략으로 harden 됨(백엔드는
-  pre-OAuth 머지 가능, 출시만 gated). **eval persona/en-zh 확장**(제품 내 opt-in
-  익명 기여)도 동일 게이트 — 그전 단계는 동의자 오프라인 export.
-- un-grilled architecture-deepening 후보 (필요 시 별도 grill):
-  CalendarApiError factory + kind→HTTP mapper (`watch/core.ts` classify 가
-  `googleCalendar.ts` 와 중복), ColorOwnershipMarker (§5.4 read/probe 통합),
-  ResultHandler (sync/rollback outcome→Queue-action dispatch),
-  ObservabilityRecorder (+finalization-invariant harness), route-test-harness,
-  GAS `fetchBackendEndpoint`. drop 판정: gas-response-adapter·row-fixture-builder.
-  Claim primitive 은 보류 확정(`watchClaim.ts` 가 공유 추출 명시적 반대).
+- **외부 게이트 — OAuth 검수**(2026-05-14 재제출): #05/#06 씨앗 출시 + GAS Instant
+  Feedback UI 표면화가 묶임(제목 durable 저장 → 개인정보처리방침/동의 변경). #05 는
+  다크-빌드로 백엔드만 pre-OAuth 머지 가능. eval persona/en-zh 확장도 동일 게이트.
+- un-grilled architecture-deepening 후보 (필요 시 별도 grill): CalendarApiError
+  factory(1순위, `watch/core.ts`↔`googleCalendar.ts` 중복), ColorOwnershipMarker,
+  ResultHandler, ObservabilityRecorder, route-test-harness, GAS
+  `fetchBackendEndpoint`. Claim primitive 은 보류 확정.
 
 <!-- narrative:end -->
 
@@ -90,11 +90,11 @@ AGENTS.md ↔ CLAUDE.md canonicalize(AGENTS.md 정본, `@AGENTS.md` 래퍼).
 
 ## card-latency
 
-`░░░░░░░░░░░░░░░░░░░░░░` 0/24 acceptance criteria met (0%)
+`████░░░░░░░░░░░░░░░░░░` 4/24 acceptance criteria met (17%)
 
 | # | Issue | Triage | Criteria | State | Blocked by |
 |---|-------|--------|----------|-------|-----------|
-| 01 | Color select no backend roundtrip | `ready-for-agent` | 0/8 | ⬜ todo | — |
+| 01 | Color select no backend roundtrip | `ready-for-human` | 4/8 | 🔵 in-progress | — |
 | 02 | Mutation response single roundtrip | `ready-for-agent` | 0/9 | ⛔ blocked | #01 |
 | 03 | Color swatch image latency | `ready-for-agent` | 0/7 | ⬜ todo | — |
 
@@ -113,4 +113,5 @@ AGENTS.md ↔ CLAUDE.md canonicalize(AGENTS.md 정본, `@AGENTS.md` 래퍼).
 
 State is derived: all criteria checked → `done`; some → `in-progress`; none
 with an unfinished blocker → `blocked`; otherwise → `todo`. Issues triaged
-`wontfix` show as `wontfix` and are excluded from the progress bar.
+`wontfix` (decided against) or `parked` (deferred until operator opt-in) show
+that triage state and are excluded from the progress bar.
