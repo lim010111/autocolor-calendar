@@ -1,4 +1,5 @@
 Status: ready-for-agent
+GitHub: #132
 
 ## What to build
 
