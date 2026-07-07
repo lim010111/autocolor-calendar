@@ -874,10 +874,13 @@ function readCategoriesSnapshot(e) {
  * list already fetched earlier in the same render cycle (card-latency #01).
  * When present, the builder reuses it instead of re-fetching
  * `/api/categories` — a pure-UI re-render (color pick) must not cost a
- * backend roundtrip. This is NOT a cache: the snapshot lives only in the
- * current card's action parameters and dies with the render cycle, so the
- * Halt-on-Failure "no cache" contract holds. When absent, behavior is
- * unchanged (fetch + AUTH_EXPIRED short-circuit).
+ * backend roundtrip. Consecutive color picks re-carry it on purpose:
+ * every pick is fetch-free (#01 AC), not just the first — do NOT "fix"
+ * this into a one-shot. It is still NOT a cache: it lives only in this
+ * card's action parameters; any mutation (add/delete) or card exit
+ * discards it and the next render re-fetches, so the Halt-on-Failure
+ * "no cache" contract holds. When absent, behavior is unchanged
+ * (fetch + AUTH_EXPIRED short-circuit).
  */
 function buildRuleManagementCard(e, categoriesSnapshot) {
   var L = pickLocale(e);
