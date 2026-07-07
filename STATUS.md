@@ -14,9 +14,13 @@ title 임베딩 read + 2등급 `decideStage1`. 잠정 gemma(768)·임계값
 `T=(0.30,0.55,0.10)` 는 ADR-0005 provisional 로 단일 config
 (`src/config/embedding.ts`) 흡수.
 
-남은 트랙 (둘 다 harden 완료, 이번 세션):
-- **#04 rule editor redesign (6 AC)** — GAS 편집기 마이크로카피를 "씨앗" 모델로,
-  name/keyword 역할 시각 분리 + keyword collapse. 순수 GAS UI, **외부 게이트 없음**.
+**#04 rule editor redesign — 코드·배포 완료, PR #128 open, 스크린샷 1 AC 대기.**
+GAS 편집기를 "씨앗" 모델로: name(필수)/keyword(선택) 역할 시각 분리 + keyword
+collapse + 4 로케일 i18n, 옛 substring 카피 키 grep 0. 순수 GAS UI(백엔드 무변경).
+prod-webapp deployment 새 버전(v52, `/exec` URL 불변·scopes 불변) 배포·검증 완료.
+남은 1 AC(4 로케일 편집기 스크린샷 PR 첨부)만 사람 단계.
+
+남은 트랙:
 - **#05 examples + Instant Feedback (19 AC)** — `example` verified 씨앗 +
   `T_verified` 활성 + 생애주기(캡10/FIFO/title당 1 Rule) + `consentExample`→
   `addExample` durable 저장. **OAuth 게이트: 백엔드/seams/테스트는 pre-OAuth
@@ -25,14 +29,12 @@ title 임베딩 read + 2등급 `decideStage1`. 잠정 gemma(768)·임계값
 
 운영 posture: main 에 local merge-gate advisory 활성(보고만, 차단 안 함).
 AGENTS.md ↔ CLAUDE.md canonicalize(AGENTS.md 정본, `@AGENTS.md` 래퍼).
-이번 세션은 #04/#05 **이슈 파일 harden 만**(docs-only, in-scope 코드 변경 없음).
 
 ## Start here next session
 
-- **능동 — embedding-classifier #04 (rule editor)**: harden 완료(6 AC),
-  #03 로 unblock, 외부 게이트 없음 — 가장 작은 착수 후보. GAS 카피+collapse,
-  검증은 코드+PR 스크린샷. spec:
-  `.scratch/embedding-classifier/issues/04-rule-editor-redesign.md`.
+- **능동 — embedding-classifier #04 (rule editor)**: 코드·PR #128·배포(prod-webapp
+  v52) 완료. 남은 것은 사람 단계 하나 — 4 로케일 편집기 스크린샷 각 1장 PR #128
+  첨부 → 마지막 AC 체크 → 이슈 done.
 - **능동 — embedding-classifier #05 (examples + Instant Feedback)**: harden
   완료(19 AC). **다크 빌드** 범위(`addExample` 실동작·`decideStage1` verified
   경로·생애주기·프롬프트)를 pre-OAuth 머지; UI 표면화+동의+개인정보처리방침은
@@ -47,6 +49,10 @@ AGENTS.md ↔ CLAUDE.md canonicalize(AGENTS.md 정본, `@AGENTS.md` 래퍼).
 
 - merge-gate enforcement = advisory (보고만, 차단 안 함). client-side-blocking
   전환은 팀 준비되면 `harness.toml` 에서.
+- **#04 keyword optional ↔ backend `keywords.min(1)`** — 편집기는 keyword 를
+  0..N·선택으로 노출하나 `POST /api/categories` CreateBody 는 `keywords.min(1)`
+  요구. #04(gas-only)는 미입력 시 `keywords=[name]` 폴백으로 우회(name 이 seed라
+  무해). 진짜 optional 로 만들려면 후속 PR 에서 Zod `.min(1)` 완화 — 미결.
 - 벡터 차원 **동결** 미확정 — #01 이 잠정 `embeddinggemma-300m`(768d) 선정,
   단 *동결*은 멀티 persona/다국어 골드셋까지 **연기**(단일 persona·ko-only·
   cat_0 47% 검정력 약함, ADR-0005 §8). #04~#06 은 잠정 gemma(768)로 진행,
@@ -84,14 +90,14 @@ AGENTS.md ↔ CLAUDE.md canonicalize(AGENTS.md 정본, `@AGENTS.md` 래퍼).
 
 ## embedding-classifier
 
-`█████████████░░░░░░░░░` 45/78 acceptance criteria met (58%)
+`██████████████░░░░░░░░` 50/78 acceptance criteria met (64%)
 
 | # | Issue | Triage | Criteria | State | Blocked by |
 |---|-------|--------|----------|-------|-----------|
 | 01 | Embedding model selection eval | `done` | 17/17 | ✅ done | — |
 | 02 | Embedding knn classifier name seeds | `done` | 14/14 | ✅ done | — |
 | 03 | Keyword seeds | `ready-for-agent` | 14/14 | ✅ done | — |
-| 04 | Rule editor redesign | `ready-for-agent` | 0/6 | ⬜ todo | #03 |
+| 04 | Rule editor redesign | `ready-for-human` | 5/6 | 🔵 in-progress | #03 |
 | 05 | Examples seeds instant feedback | `ready-for-agent` | 0/19 | ⬜ todo | #03 |
 | 06 | History based rule suggestions | `ready-for-agent` | 0/8 | ⛔ blocked | #05 |
 

@@ -792,6 +792,29 @@ function actionSaveEventOverride(e) {
 }
 
 /**
+ * Reads a card form-input value across the two shapes CardService flips
+ * between (`e.formInput` vs `e.commonEventObject.formInputs`). Used to
+ * re-populate the rule editor's name / keyword fields after a color-grid
+ * re-render, and to read them on submit in actionAddRule. Returns "" when
+ * absent.
+ */
+function readRuleFormValue(e, fieldName) {
+  if (e && e.formInput && e.formInput[fieldName]) {
+    return e.formInput[fieldName];
+  }
+  if (
+    e && e.commonEventObject && e.commonEventObject.formInputs &&
+    e.commonEventObject.formInputs[fieldName] &&
+    e.commonEventObject.formInputs[fieldName].stringInputs &&
+    e.commonEventObject.formInputs[fieldName].stringInputs.value &&
+    e.commonEventObject.formInputs[fieldName].stringInputs.value.length > 0
+  ) {
+    return e.commonEventObject.formInputs[fieldName].stringInputs.value[0];
+  }
+  return "";
+}
+
+/**
  * Screen 4: Rule Management Card.
  */
 function buildRuleManagementCard(e) {
@@ -812,24 +835,52 @@ function buildRuleManagementCard(e) {
     .setOnClickAction(CardService.newAction().setFunctionName("actionGoBack"))));
   builder.addSection(navSection);
 
-  var addSection = CardService.newCardSection()
-    .setHeader(t('rules.section.add', null, L));
+  // §5.1 (ADR-0004) — the editor separates the two seed roles the embedding
+  // classifier consumes: `name` (1개·필수, the rule's UI label AND a seed) and
+  // `keyword` (0..N·선택 intent phrases). Splitting them across sections makes
+  // "1 required vs 0..N optional" read visually; the keyword bundle collapses
+  // to keep the narrow card uncluttered.
+  var priorName = readRuleFormValue(e, 'rule_name');
+  var priorKeywords = readRuleFormValue(e, 'rule_keywords');
 
-  var priorKeyword = "";
-  if (e && e.formInput && e.formInput.rule_keyword) {
-    priorKeyword = e.formInput.rule_keyword;
-  } else if (e && e.commonEventObject && e.commonEventObject.formInputs &&
-             e.commonEventObject.formInputs.rule_keyword &&
-             e.commonEventObject.formInputs.rule_keyword.stringInputs &&
-             e.commonEventObject.formInputs.rule_keyword.stringInputs.value &&
-             e.commonEventObject.formInputs.rule_keyword.stringInputs.value.length > 0) {
-    priorKeyword = e.commonEventObject.formInputs.rule_keyword.stringInputs.value[0];
-  }
+  var createSection = CardService.newCardSection()
+    .setHeader(t('rules.section.create', null, L));
 
-  addSection.addWidget(CardService.newTextInput()
-    .setFieldName("rule_keyword")
-    .setTitle(t('rules.input.placeholder', null, L))
-    .setValue(priorKeyword));
+  createSection.addWidget(CardService.newTextInput()
+    .setFieldName("rule_name")
+    .setTitle(t('rules.name.label', null, L))
+    .setHint(t('rules.name.hint', null, L))
+    .setValue(priorName));
+
+  builder.addSection(createSection);
+
+  // Keywords are optional intent phrases (CONTEXT.md "Keyword") — embedded into
+  // the rule's meaning, never string-matched. Collapsed by default to reduce
+  // card clutter. (examples 묶음 collapse는 #05 소관 — examples UI 가 거기서
+  // 처음 렌더된다.)
+  // Collapsed (0 widgets shown) when empty to de-clutter the narrow card; but
+  // when a color-pick re-render carries prior keyword text, show both widgets so
+  // the user's typed input isn't hidden behind the collapse (mirrors the rule-
+  // card form-state-preservation fix — TODO.md).
+  var keywordSection = CardService.newCardSection()
+    .setHeader(t('rules.section.keywords', null, L))
+    .setCollapsible(true)
+    .setNumUncollapsibleWidgets(priorKeywords ? 2 : 0);
+
+  keywordSection.addWidget(CardService.newTextParagraph()
+    .setText(t('rules.keywords.help', null, L)));
+
+  keywordSection.addWidget(CardService.newTextInput()
+    .setFieldName("rule_keywords")
+    .setTitle(t('rules.keywords.label', null, L))
+    .setHint(t('rules.keywords.hint', null, L))
+    .setValue(priorKeywords));
+
+  builder.addSection(keywordSection);
+
+  // Color + submit trail the create flow (name → keywords → color → add) so the
+  // primary action sits at the bottom of the card.
+  var colorSection = CardService.newCardSection();
 
   var colorGrid = CardService.newGrid()
     .setTitle(t('rules.colorPicker', null, L))
@@ -854,18 +905,18 @@ function buildRuleManagementCard(e) {
         .setCropStyle(CardService.newImageCropStyle().setImageCropType(CardService.ImageCropType.CIRCLE))));
   });
 
-  addSection.addWidget(colorGrid);
+  colorSection.addWidget(colorGrid);
 
   var addAction = CardService.newAction().setFunctionName("actionAddRule");
   if (selectedColorId) {
     addAction = addAction.setParameters({ selectedColorIdForRule: selectedColorId });
   }
-  addSection.addWidget(CardService.newTextButton()
+  colorSection.addWidget(CardService.newTextButton()
     .setText(t('rules.btn.add', null, L))
     .setTextButtonStyle(CardService.TextButtonStyle.FILLED)
     .setOnClickAction(addAction));
 
-  builder.addSection(addSection);
+  builder.addSection(colorSection);
 
   var listSection = CardService.newCardSection()
     .setHeader(t('rules.section.list', null, L));
@@ -957,24 +1008,25 @@ function actionSelectColorForRule(e) {
 
 function actionAddRule(e) {
   var L = pickLocale(e);
-  var keywordRaw = e.formInput && e.formInput.rule_keyword;
-  if (!keywordRaw || !keywordRaw.trim()) {
+  var nameRaw = readRuleFormValue(e, 'rule_name');
+  if (!nameRaw || !nameRaw.trim()) {
     return CardService.newActionResponseBuilder()
-      .setNotification(CardService.newNotification().setText(t('rules.toast.keywordRequired', null, L)))
+      .setNotification(CardService.newNotification().setText(t('rules.toast.nameRequired', null, L)))
       .build();
   }
+  var name = nameRaw.trim();
 
-  // 콤마(,)로 구분된 입력을 개별 키워드 배열로 split. backend `classifier.ts`는
-  // `keywords[]` 각 원소를 substring 매칭하므로, 단일 문자열로 보내면
-  // "프로젝트, 개발" 전체가 needle이 되어 어떤 이벤트에도 매칭되지 않음.
-  var keywords = keywordRaw
+  // Keywords are optional intent-phrase seeds (CONTEXT.md "Keyword"; §5.1) —
+  // embedded into the rule's meaning, no longer substring needles, so a comma
+  // just separates independent seeds. Empty is allowed: the rule name is itself
+  // a seed (#02 name create-or-replace), so we fall back to [name] to satisfy
+  // the backend CreateBody `keywords.min(1)` contract without a backend change.
+  var keywords = readRuleFormValue(e, 'rule_keywords')
     .split(',')
     .map(function (k) { return k.trim(); })
     .filter(function (k) { return k.length > 0; });
   if (keywords.length === 0) {
-    return CardService.newActionResponseBuilder()
-      .setNotification(CardService.newNotification().setText(t('rules.toast.keywordRequired', null, L)))
-      .build();
+    keywords = [name];
   }
 
   var selectedColorId = (e.parameters && e.parameters.selectedColorIdForRule)
@@ -992,7 +1044,7 @@ function actionAddRule(e) {
       method: 'post',
       contentType: 'application/json',
       payload: JSON.stringify({
-        name: keywordRaw.trim(),
+        name: name,
         colorId: selectedColorId,
         keywords: keywords
       })
