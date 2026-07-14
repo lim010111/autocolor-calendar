@@ -1,4 +1,4 @@
-Status: ready-for-agent
+Status: ready-for-human
 GitHub: #133
 
 ## What to build
@@ -28,9 +28,21 @@ GitHub: #133
 - [x] en/ko/zh-CN/zh-TW 4 로케일 라벨 무변경
 - [x] 규칙 편집기와 이벤트 사이드바 양쪽 색 선택 표면에 동일 팔레트 반영
       (공유 `COLOR_PALETTE`/`getCalendarColors`만 변경, addon.js 두 표면 무수정)
-- [ ] 기존 deployment "New version"으로 배포 — `/exec` URL·scopes 불변
+- [x] 기존 deployment "New version"으로 배포 — `/exec` URL·scopes 불변
+      (2026-07-14, `clasp deploy -i AKfycbxfHV5… -V 55`, @55 확인)
 - [x] `python3 scripts/check-context-paths.py` 통과
 
 ## Blocked by
 
 None — can start immediately.
+
+## 기록
+
+**2026-07-14 (human+agent) — v55 배포 완료, 렌더 육안 확인 대기.**
+
+- PR #135 머지(CI 5/5, #134 위로 rebase). GAS v55 = data URI 팔레트 포함.
+- 남은 것 하나: **11색 스와치 그리드 라이브 렌더 육안 확인** (Grid
+  `ImageComponent`의 data URI 지원이 문서상 모호 — merge-gate finding·PR 본문
+  공통 지목 리스크). 규칙 add가 라이브에서 성공한 것으로 보아 그리드 클릭은
+  동작했으나, 이미지 표시 여부는 화면으로만 판정 가능. 빈 이미지면
+  `clasp deploy -i AKfycbxfHV5… -V 54` 로 즉시 롤백 후 자체 호스팅 asset 재작업.
