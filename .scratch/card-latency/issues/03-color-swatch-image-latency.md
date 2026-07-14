@@ -1,4 +1,4 @@
-Status: ready-for-human
+Status: done
 GitHub: #133
 
 ## What to build
@@ -19,9 +19,9 @@ GitHub: #133
 
 ## Acceptance criteria
 
-- [ ] 11색 스와치가 외부 `placehold.co` 왕복 없이 렌더된다
-      — 코드상 `placehold.co` 참조 0건(inline data URI), "렌더된다"는 라이브
-      검증(사람 게이트) 후 flip
+- [x] 11색 스와치가 외부 `placehold.co` 왕복 없이 렌더된다
+      — 코드상 `placehold.co` 참조 0건(inline data URI), 2026-07-14 v55 라이브
+      육안 확인 완료(하단 기록)
 - [x] 선택 상태 전환이 신규 외부 fetch / 캐시 미스를 유발하지 않는다
       (url/selectedUrl 모두 카드 JSON에 인라인된 data URI — 외부 URL 자체가 없음)
 - [x] 11색의 id·라벨·색상값이 기존과 동일 (Google Calendar colorId 매핑 불변)
@@ -38,11 +38,15 @@ None — can start immediately.
 
 ## 기록
 
-**2026-07-14 (human+agent) — v55 배포 완료, 렌더 육안 확인 대기.**
+**2026-07-14 (human+agent) — v55 배포 + 라이브 렌더 육안 확인 완료, done.**
 
 - PR #135 머지(CI 5/5, #134 위로 rebase). GAS v55 = data URI 팔레트 포함.
-- 남은 것 하나: **11색 스와치 그리드 라이브 렌더 육안 확인** (Grid
-  `ImageComponent`의 data URI 지원이 문서상 모호 — merge-gate finding·PR 본문
-  공통 지목 리스크). 규칙 add가 라이브에서 성공한 것으로 보아 그리드 클릭은
-  동작했으나, 이미지 표시 여부는 화면으로만 판정 가능. 빈 이미지면
-  `clasp deploy -i AKfycbxfHV5… -V 54` 로 즉시 롤백 후 자체 호스팅 asset 재작업.
+- **라이브 육안 확인 (사람)**: 11색 스와치 그리드 · 선택 체크마크 전환 · 규칙
+  목록 색 아이콘 · 이벤트 사이드바 색 선택 표면 — 모두 정상 렌더. Grid
+  `ImageComponent`의 data URI 렌더가 문서상 모호하다는 리스크(merge-gate
+  finding·PR 본문 공통 지목)는 라이브에서 실증으로 해소.
+
+> **Resolution:** PR #135 (`gas/i18n.js` COLOR_PALETTE 를 inline base64 data
+> URI 22장으로 교체, 재생성 스크립트 `scripts/gen-swatch-assets.py` 동봉) +
+> GAS v55 배포 + 라이브 육안 확인. 외부 이미지 호스트 의존 0, 선택 전환
+> 캐시 미스 구조적으로 제거.
