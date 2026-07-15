@@ -37,5 +37,7 @@ ADR-0006 Decision 4 (깨끗한 컷오버, 이중 모드 없음).
 
 ## Blocked by
 
-- native-labels #02, #03
-- sync-reliability #01 또는 #02 (full resync fan-out 이 Free 캡과 충돌)
+- #02 (마커 v2 + 라벨 쓰기)
+- #03 (편집기 A2 재배선)
+- sync-reliability #01 또는 #02 (full resync fan-out 이 Free 캡과 충돌 —
+  크로스 트랙이라 표에는 안 잡힘, STATUS narrative 로 추적)

@@ -24,23 +24,25 @@ OAuth 게이트 (#05 는 다크빌드 백엔드만 pre-OAuth 가능).
 깨끗한 컷오버. raw API 실측으로 **현행 파이프라인이 라벨/비클래식 색
 이벤트를 "색 없음"으로 오판해 덮어쓰는 결함 재현** — #01 방어 패치가 런칭
 게이트급. 새 OAuth 스코프 불필요. 상세: `.scratch/native-labels/PRD.md` +
-ADR-0006. **산출물(ADR·PRD·이슈 4) 미커밋.**
+ADR-0006 (PR #139 머지, 07-15).
 
 운영 posture: main 에 local merge-gate advisory 활성(보고만, 차단 안 함).
 AGENTS.md ↔ CLAUDE.md canonicalize(AGENTS.md 정본, `@AGENTS.md` 래퍼).
 
 ## Start here next session
 
-- **사람 — embedding-classifier #04 (rule editor)**: PR #128 머지됨. 남은 건
-  사람 단계 하나 — 4 로케일 편집기 스크린샷 각 1장 이슈 첨부 → 6번째 AC 체크 →
-  done. (로컬에 2장만 있음, 4 로케일 아님.)
+**트랙 간 권장 순서(07-15 확정)**: ① sync-reliability #01(사람, 플랜 결정)
+→ ② native-labels #01(사용자 색 선택 파괴 방어가 최우선) → ③
+sync-reliability #03 → ④ sync-reliability #02(①이 업그레이드면 긴급도↓)
+→ ⑤ native-labels #02→#03→#04(컷오버는 ① 또는 ④ 게이트).
+
 - **사람 — sync-reliability #01 (Workers Paid 결정)**: Free 플랜 50-fetch 캡이
   원인으로 확정 — $5/월 업그레이드 즉시 vs 트리거 조건부 보류 결정만 하면 됨.
   **native-labels #04(컷오버)도 이 결정에 게이트됨.**
   spec: `.scratch/sync-reliability/issues/01-workers-paid-plan-decision.md`.
-- **능동 — native-labels 산출물 커밋**: ADR-0006 + PRD + 이슈 4 + CONTEXT.md
-  미커밋 상태 — 커밋(+ 원하면 GitHub 이슈 미러) 승인 대기. (실측은 양방향
-  육안 검증까지 완결 — PRD 실측 절 참조.)
+- **사람 — embedding-classifier #04 (rule editor)**: PR #128 머지됨. 남은 건
+  사람 단계 하나 — 4 로케일 편집기 스크린샷 각 1장 이슈 첨부 → 6번째 AC 체크 →
+  done. (로컬에 2장만 있음, 4 로케일 아님.)
 - **능동 — native-labels #01 (label-aware manual skip)**: 방어 패치, 소형,
   즉시 착수 가능, 런칭 게이트급(06월 이후 색 만진 사용자 전원이 잠재 피해자).
   spec: `.scratch/native-labels/issues/01-label-aware-manual-skip.md`.
@@ -126,9 +128,9 @@ AGENTS.md ↔ CLAUDE.md canonicalize(AGENTS.md 정본, `@AGENTS.md` 래퍼).
 | # | Issue | Triage | Criteria | State | Blocked by |
 |---|-------|--------|----------|-------|-----------|
 | 01 | Label aware manual skip | `ready-for-agent` | 0/7 | ⬜ todo | — |
-| 02 | Label write migration | `ready-for-agent` | 0/7 | ⬜ todo | — |
-| 03 | Editor a2 rewire | `ready-for-agent` | 0/6 | ⬜ todo | — |
-| 04 | Cutover migration | `needs-triage` | 0/5 | ⬜ todo | — |
+| 02 | Label write migration | `ready-for-agent` | 0/7 | ⛔ blocked | #01 |
+| 03 | Editor a2 rewire | `ready-for-agent` | 0/6 | ⛔ blocked | #02 |
+| 04 | Cutover migration | `needs-triage` | 0/5 | ⛔ blocked | #02, #03 |
 
 ## sync-reliability
 
