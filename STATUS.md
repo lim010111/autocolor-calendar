@@ -6,29 +6,25 @@ outside the narrative block; mechanical sections are regenerated every run._
 <!-- narrative:start -->
 ## Current focus
 
-embedding-classifier (ADR-0004) — Stage 1 = 임베딩 kNN(substring 폐기).
-**#01·#02·#03 done**(모델 eval / name·keyword 씨앗), `rule_seeds` pgvector +
-2등급 `decideStage1`. 잠정 gemma(768)·`T=(0.30,0.55,0.10)` = ADR-0005 provisional
-(config `src/config/embedding.ts`).
+embedding-classifier (ADR-0004) — Stage 1 = 임베딩 kNN. **#01~#03 done**,
+잠정 gemma(768)·`T=(0.30,0.55,0.10)` = ADR-0005 provisional. **#04 rule
+editor — PR #128 머지, 남은 건 4로케일 스크린샷(사람) 5/6.** #05/#06 은
+OAuth 게이트 (#05 는 다크빌드 백엔드만 pre-OAuth 가능).
 
-**#04 rule editor redesign — PR #128 머지됨.** 남은 건 4 로케일 편집기 스크린샷
-첨부(6번째 AC) 하나 — `ready-for-human` 5/6.
+**card-latency — 전 트랙 done (24/24).** Worker + GAS v55 라이브 검증 완료.
 
-**card-latency — 전 트랙 done (#01~#03, 24/24).** Worker + GAS v55 (설치본
-deployment `AKfycbxfHV5…`, /exec URL 불변) 배포·라이브 검증 완료 — mutation
-왕복 1회 tail 실증, data URI 스와치 렌더 육안 확인. 상세는 각 이슈 Resolution.
+**sync-reliability (07-14 진단 완료):** `[llmClassifier] unknown error` ×32
+의 근본 원인 = **Workers Free 서브리퀘스트 50개 캡**(실증). 캡 초과 시 분류
+무성 소실 + 재시도 폭풍 + 쿼터 전소. 런칭 게이트급 — 온보딩 full sync 가
+구조적으로 밟음. 상세: `.scratch/sync-reliability/PRD.md`.
 
-**sync-reliability (신규 트랙, 07-14 진단 완료):** `[llmClassifier] unknown
-error` ×32 의 근본 원인 = **Workers Free 플랜 서브리퀘스트 50개 캡** (실증:
-llm_calls 포렌식 + 동일 계정 재현). 큰 sync 런이 캡을 넘으면 분류 무성
-소실 + PATCH 실패발 재시도 폭풍 + 일일 쿼터 전소(07-02 실측). 런칭 게이트급
-— 온보딩 full sync 가 구조적으로 밟는 코스. 상세: `.scratch/sync-reliability/PRD.md`.
-
-남은 embedding 트랙 (둘 다 OAuth 게이트):
-- **#05 examples + Instant Feedback (19 AC)** — verified 씨앗 + `T_verified` +
-  생애주기 + `consentExample`→`addExample` durable 저장. 백엔드/테스트는 pre-OAuth
-  다크 빌드(저장 0), UI+동의+개인정보처리방침은 검수 통과 후 별도 PR.
-- #06 (history-based suggestions) — #05 로 blocked.
+**native-labels (신규 트랙, 07-15 grilling + ADR-0006):** Google Calendar 색
+체계가 라벨 기반으로 재편됨(07-07 API GA, colorId 는 legacy 브리지). 결정:
+분류 출력을 네이티브 라벨로 전환, **정본 = Google `labelProperties`**,
+깨끗한 컷오버. raw API 실측으로 **현행 파이프라인이 라벨/비클래식 색
+이벤트를 "색 없음"으로 오판해 덮어쓰는 결함 재현** — #01 방어 패치가 런칭
+게이트급. 새 OAuth 스코프 불필요. 상세: `.scratch/native-labels/PRD.md` +
+ADR-0006. **산출물(ADR·PRD·이슈 4) 미커밋.**
 
 운영 posture: main 에 local merge-gate advisory 활성(보고만, 차단 안 함).
 AGENTS.md ↔ CLAUDE.md canonicalize(AGENTS.md 정본, `@AGENTS.md` 래퍼).
@@ -40,14 +36,19 @@ AGENTS.md ↔ CLAUDE.md canonicalize(AGENTS.md 정본, `@AGENTS.md` 래퍼).
   done. (로컬에 2장만 있음, 4 로케일 아님.)
 - **사람 — sync-reliability #01 (Workers Paid 결정)**: Free 플랜 50-fetch 캡이
   원인으로 확정 — $5/월 업그레이드 즉시 vs 트리거 조건부 보류 결정만 하면 됨.
+  **native-labels #04(컷오버)도 이 결정에 게이트됨.**
   spec: `.scratch/sync-reliability/issues/01-workers-paid-plan-decision.md`.
+- **능동 — native-labels 산출물 커밋**: ADR-0006 + PRD + 이슈 4 + CONTEXT.md
+  미커밋 상태 — 커밋(+ 원하면 GitHub 이슈 미러) 승인 대기. (실측은 양방향
+  육안 검증까지 완결 — PRD 실측 절 참조.)
+- **능동 — native-labels #01 (label-aware manual skip)**: 방어 패치, 소형,
+  즉시 착수 가능, 런칭 게이트급(06월 이후 색 만진 사용자 전원이 잠재 피해자).
+  spec: `.scratch/native-labels/issues/01-label-aware-manual-skip.md`.
 - **능동 — sync-reliability #03 (unknown-error 관측성+cap-latch)**: 소형,
   즉시 착수 가능. #02(fetch 예산 가드)는 그 다음.
 - **능동 — embedding-classifier #05 (examples + Instant Feedback)**: harden
-  완료(19 AC). **다크 빌드** 범위(`addExample` 실동작·`decideStage1` verified
-  경로·생애주기·프롬프트)를 pre-OAuth 머지; UI 표면화+동의+개인정보처리방침은
-  OAuth 검수 통과 후 별도 PR. spec:
-  `.scratch/embedding-classifier/issues/05-examples-seeds-instant-feedback.md`.
+  완료(19 AC). 다크 빌드 범위만 pre-OAuth 머지, UI+동의는 검수 후 별도 PR.
+  spec: `.scratch/embedding-classifier/issues/05-examples-seeds-instant-feedback.md`.
 - **병행 — architecture-deepening 후보 (CalendarApiError pair)**: un-grilled,
   grill 선행, 별도 PR. (`watch/core.ts` classify ↔ `googleCalendar.ts` 중복.)
 - **휴면 — #06 (history-based suggestions)**: #05 로 blocked, 동일 OAuth 게이트 —
@@ -57,7 +58,8 @@ AGENTS.md ↔ CLAUDE.md canonicalize(AGENTS.md 정본, `@AGENTS.md` 래퍼).
 
 - **Workers Free → Paid($5/월) 업그레이드** — Free 50-fetch 캡이 sync 를 물어
   뜯는 것 실증됨(sync-reliability #01). 즉시 전환 vs 런칭 임박 트리거 보류 —
-  운영자 결정 대기.
+  운영자 결정 대기. **native-labels #04(컷오버 full resync fan-out) + #02 의
+  런당 +1 fetch 도 이 결정에 걸려 있음.**
 - merge-gate enforcement = advisory (보고만, 차단 안 함). client-side-blocking
   전환은 팀 준비되면 `harness.toml` 에서.
 - **#04 keyword optional ↔ backend `keywords.min(1)`** — 편집기는 keyword 를
@@ -116,6 +118,17 @@ AGENTS.md ↔ CLAUDE.md canonicalize(AGENTS.md 정본, `@AGENTS.md` 래퍼).
 | 04 | Rule editor redesign | `ready-for-human` | 5/6 | 🔵 in-progress | #03 |
 | 05 | Examples seeds instant feedback | `ready-for-agent` | 0/19 | ⬜ todo | #03 |
 | 06 | History based rule suggestions | `ready-for-agent` | 0/8 | ⛔ blocked | #05 |
+
+## native-labels
+
+`░░░░░░░░░░░░░░░░░░░░░░` 0/25 acceptance criteria met (0%)
+
+| # | Issue | Triage | Criteria | State | Blocked by |
+|---|-------|--------|----------|-------|-----------|
+| 01 | Label aware manual skip | `ready-for-agent` | 0/7 | ⬜ todo | — |
+| 02 | Label write migration | `ready-for-agent` | 0/7 | ⬜ todo | — |
+| 03 | Editor a2 rewire | `ready-for-agent` | 0/6 | ⬜ todo | — |
+| 04 | Cutover migration | `needs-triage` | 0/5 | ⬜ todo | — |
 
 ## sync-reliability
 
