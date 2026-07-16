@@ -685,6 +685,161 @@ describe("calendarSync — §5.4 ownership-aware color application", () => {
     expect(result.summary.updated).toBe(0);
     expect(patches).toHaveLength(0);
   });
+
+  // native-labels #01 (ADR-0006) — label-aware manual gate. Google's label
+  // rewrite makes user color picks surface as `eventLabelId`, with an EMPTY
+  // legacy `colorId` for non-classic colors. The four cases below pin the
+  // gate: labelled+empty-colorId is manual (the pre-#01 pipeline painted
+  // over it), app-owned bridge labels stay re-applicable, the best-match
+  // disguise keeps its pre-existing skip, and label-less colorless events
+  // are still painted (covered by "PATCHes empty-color event" above).
+  it("skips labelled event whose colorId reads empty (no marker)", async () => {
+    // THE defect this issue fixes: a non-classic user color used to look
+    // like "no color" and got painted over, silently severing the user's
+    // label connection.
+    const env = makeEnv();
+    const tokenRow = await seedTokenRow(env);
+    const { db } = makeDb({ nextSyncToken: "old", tokenRow });
+    const { patches } = stubSyncWith([
+      {
+        id: "user-labelled",
+        status: "confirmed",
+        summary: "x",
+        colorId: "",
+        eventLabelId: "11111111-2222-3333-4444-555555555555",
+      },
+    ]);
+
+    const result = await runIncrementalSync({
+      db,
+      env,
+      userId: USER_ID,
+      calendarId: CAL,
+      classifyEvent: classifyToBlue,
+    });
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.summary.skipped_manual).toBe(1);
+    expect(result.summary.updated).toBe(0);
+    expect(patches).toHaveLength(0);
+  });
+
+  it("skips labelled event with stale marker even when colorId is empty", async () => {
+    // Marker says we wrote "7" but the user re-painted with a non-classic
+    // color afterwards → colorId reads "" + eventLabelId present. Marker
+    // mismatch + label = manual.
+    const env = makeEnv();
+    const tokenRow = await seedTokenRow(env);
+    const { db } = makeDb({ nextSyncToken: "old", tokenRow });
+    const { patches } = stubSyncWith([
+      {
+        id: "repainted-via-label",
+        status: "confirmed",
+        summary: "x",
+        colorId: "",
+        eventLabelId: "22222222-3333-4444-5555-666666666666",
+        extendedProperties: {
+          private: {
+            autocolor_v: "1",
+            autocolor_color: "7",
+            autocolor_category: "cat-old",
+          },
+        },
+      },
+    ]);
+
+    const result = await runIncrementalSync({
+      db,
+      env,
+      userId: USER_ID,
+      calendarId: CAL,
+      classifyEvent: classifyToBlue,
+    });
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.summary.skipped_manual).toBe(1);
+    expect(result.summary.updated).toBe(0);
+    expect(patches).toHaveLength(0);
+  });
+
+  it("re-applies app-owned event that carries Google's bridge label", async () => {
+    // Our own colorId PATCHes are bridged to a label slot by Google, so an
+    // app-owned event ALSO has eventLabelId. Label presence alone must not
+    // flip it to manual — marker v1 equality still owns it (no false skip).
+    const env = makeEnv();
+    const tokenRow = await seedTokenRow(env);
+    const { db } = makeDb({ nextSyncToken: "old", tokenRow });
+    const { patches } = stubSyncWith([
+      {
+        id: "bridged-owned",
+        status: "confirmed",
+        summary: "x",
+        colorId: "5",
+        eventLabelId: "99999999-8888-7777-6666-555555555555",
+        extendedProperties: {
+          private: {
+            autocolor_v: "1",
+            autocolor_color: "5",
+            autocolor_category: "cat-old",
+          },
+        },
+      },
+    ]);
+
+    const result = await runIncrementalSync({
+      db,
+      env,
+      userId: USER_ID,
+      calendarId: CAL,
+      classifyEvent: classifyToBlue,
+    });
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.summary.updated).toBe(1);
+    expect(result.summary.skipped_manual).toBe(0);
+    expect(patches).toHaveLength(1);
+    expect(patches[0]!.body).toEqual({
+      colorId: "3",
+      extendedProperties: {
+        private: {
+          autocolor_v: "1",
+          autocolor_color: "3",
+          autocolor_category: "cat-1",
+        },
+      },
+    });
+  });
+
+  it("best-match disguise: labelled event with non-empty colorId stays skipped (regression)", async () => {
+    // A named user label reads back as best-match colorId "4" + eventLabelId.
+    // Pre-#01 logic already skipped it via `current !== "" && !appOwned`;
+    // this pins that the label-aware gate did not regress the path.
+    const env = makeEnv();
+    const tokenRow = await seedTokenRow(env);
+    const { db } = makeDb({ nextSyncToken: "old", tokenRow });
+    const { patches } = stubSyncWith([
+      {
+        id: "best-match-disguise",
+        status: "confirmed",
+        summary: "x",
+        colorId: "4",
+        eventLabelId: "33333333-4444-5555-6666-777777777777",
+      },
+    ]);
+
+    const result = await runIncrementalSync({
+      db,
+      env,
+      userId: USER_ID,
+      calendarId: CAL,
+      classifyEvent: classifyToBlue,
+    });
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.summary.skipped_manual).toBe(1);
+    expect(result.summary.updated).toBe(0);
+    expect(patches).toHaveLength(0);
+  });
 });
 
 describe("calendarSync — §5.3 LLM fallback counter wiring", () => {

@@ -53,4 +53,4 @@ Status: ready-for-agent
 
 ## Blocked by
 
-- #01 (판정 로직 기반)
+None — #01 (판정 로직 기반) 해소됨, can start.

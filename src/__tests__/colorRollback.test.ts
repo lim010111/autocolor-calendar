@@ -53,6 +53,9 @@ function ev(overrides: Partial<CalendarEvent>): CalendarEvent {
     id: overrides.id ?? "e-1",
     ...(overrides.status !== undefined ? { status: overrides.status } : {}),
     ...(overrides.colorId !== undefined ? { colorId: overrides.colorId } : {}),
+    ...(overrides.eventLabelId !== undefined
+      ? { eventLabelId: overrides.eventLabelId }
+      : {}),
     ...(overrides.extendedProperties !== undefined
       ? { extendedProperties: overrides.extendedProperties }
       : {}),
@@ -124,6 +127,52 @@ describe("runColorRollback", () => {
     expect(res.summary.skipped_manual_override).toBe(1);
     expect(res.summary.cleared).toBe(0);
     expect(mockedClear).not.toHaveBeenCalled();
+  });
+
+  it("skips labelled events whose colorId reads empty (label-aware manual gate)", async () => {
+    // native-labels #01 — user re-painted via a label after our PATCH:
+    // non-classic colors read back as colorId "" + eventLabelId. Marker
+    // color "9" can't own an empty colorId, and the explicit label clause
+    // pins the gate even if the equality semantics change (marker v2).
+    mockedList.mockResolvedValueOnce({
+      items: [
+        {
+          ...markedEvent("e-labelled", "", "9"),
+          eventLabelId: "11111111-2222-3333-4444-555555555555",
+        },
+      ],
+    });
+
+    const res = await runColorRollback(ctx, CAT);
+
+    expect(res.ok).toBe(true);
+    if (!res.ok) return;
+    expect(res.summary.skipped_manual_override).toBe(1);
+    expect(res.summary.cleared).toBe(0);
+    expect(mockedClear).not.toHaveBeenCalled();
+  });
+
+  it("clears app-owned events that carry Google's bridge label", async () => {
+    // Our own colorId PATCH gets bridged to a label slot by Google, so an
+    // app-owned event (marker color === current) ALSO has eventLabelId.
+    // Label presence must not block the rollback of our own color.
+    mockedList.mockResolvedValueOnce({
+      items: [
+        {
+          ...markedEvent("e-bridged", "9", "9"),
+          eventLabelId: "99999999-8888-7777-6666-555555555555",
+        },
+      ],
+    });
+    mockedClear.mockResolvedValue(undefined);
+
+    const res = await runColorRollback(ctx, CAT);
+
+    expect(res.ok).toBe(true);
+    if (!res.ok) return;
+    expect(res.summary.cleared).toBe(1);
+    expect(res.summary.skipped_manual_override).toBe(0);
+    expect(mockedClear).toHaveBeenCalledWith("acc-token", CAL, "e-bridged");
   });
 
   it("skips events whose marker version is unknown (forward-compat v2+)", async () => {

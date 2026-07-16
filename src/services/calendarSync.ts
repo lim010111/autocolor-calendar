@@ -209,6 +209,20 @@ async function processEvent(
       ? priv?.[AUTOCOLOR_KEYS.color]
       : undefined;
   const appOwned = ownedColor !== undefined && ownedColor === current;
+  // native-labels #01 (ADR-0006) — label-aware manual gate. A user color
+  // pick can surface as `eventLabelId` with an EMPTY legacy `colorId`
+  // (non-classic grid colors; named labels show a best-match colorId), so
+  // "colorId empty" no longer implies "uncolored". Label presence alone is
+  // NOT manual — our own colorId PATCHes carry a Google-bridged label too —
+  // the manual signal is marker mismatch + label presence. appOwned events
+  // (marker v1 colorId equality) stay re-applicable: their bridge label is
+  // ours. Residual v1 blind spot: a user label whose best-match colorId
+  // happens to equal our marker color reads as appOwned; marker v2 (#02,
+  // labelId equality) closes it.
+  if (!appOwned && (event.eventLabelId ?? "") !== "") {
+    summary.skipped_manual += 1;
+    return;
+  }
   if (current !== "" && !appOwned) {
     summary.skipped_manual += 1;
     return;
