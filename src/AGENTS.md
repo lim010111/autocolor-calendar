@@ -136,20 +136,24 @@ RedactedEvent` casts break the invariant and must not be introduced.
 
 ## Color ownership marker (§5.4)
 
-When the sync pipeline PATCHes an event color (`src/services/calendarSync.ts`
-→ `patchEventColor` in `src/services/googleCalendar.ts`), it writes three keys
-under `extendedProperties.private`. Constants live at the top of
+When the sync pipeline PATCHes an event label (`src/services/calendarSync.ts`
+→ `patchEventLabel` in `src/services/googleCalendar.ts`, ADR-0006), it writes
+marker keys under `extendedProperties.private`. Constants live at the top of
 `googleCalendar.ts` as `AUTOCOLOR_KEYS` / `AUTOCOLOR_MARKER_VERSION` —
 **reference the constants, never the literal strings**:
 
-- `autocolor_v` — schema version. Currently `"1"`. Bump only when the
-  meaning of the other keys changes; readers should treat unknown versions
-  as opaque (skip rather than misinterpret).
-- `autocolor_color` — the colorId this code wrote at the time of PATCH.
-  This is the **ownership probe**: on the next sync, if the event's
-  `colorId` no longer equals this value, the user changed it after us and
-  we must treat the event as manual.
-- `autocolor_category` — the categoryId that drove the color choice.
+- `autocolor_v` — schema version. Currently `"2"` (native-labels #02).
+  Readers still accept `"1"` transitionally (see below) and treat any other
+  version as opaque (skip rather than misinterpret).
+- `autocolor_label` — the eventLabelId this code wrote at the time of PATCH
+  (v2). This is the **ownership probe**: on the next sync, if the event's
+  `eventLabelId` no longer equals this value, the user changed it after us
+  and we must treat the event as manual.
+- `autocolor_color` — the v1 legacy probe (colorId written at PATCH time).
+  v1-marked events are still owned by **colorId equality** until the #04
+  cutover's full resync re-stamps them to v2; every v2 write purges this
+  key (`null`). Remove the v1 read path with #04.
+- `autocolor_category` — the categoryId that drove the label choice.
   Read by the rule-deletion rollback (`src/services/colorRollback.ts`):
   `DELETE /api/categories/:id` enqueues one `color_rollback` queue job
   per calendar in `sync_state`, and the consumer filters
@@ -170,10 +174,19 @@ label rewrite surfaces user color picks as `Event.eventLabelId` — with an
 best-match colorId). Both §5.4 readers (`calendarSync.processEvent`,
 `colorRollback`) therefore treat *marker mismatch + `eventLabelId` present* as
 user-manual, even when `colorId` reads empty. Label presence alone is NOT
-manual — our own colorId PATCHes carry a Google-bridged label too, and
-app-owned events (marker colorId equality) stay re-applicable. Residual risk:
-a custom color applied **without** a label (PRD TEST-D, unconfirmed path) is
-invisible to the API and cannot be protected.
+manual — our own writes carry the label (v2) or a Google-bridged one (v1),
+and app-owned events (version-gated probe above) stay re-applicable.
+Residual risks: a custom color applied **without** a label (PRD TEST-D,
+unconfirmed path) is invisible to the API and cannot be protected; a v1
+marker whose colorId best-matches a user label reads as app-owned until the
+#04 re-stamp (ADR-0006 잔여 리스크 ②).
+
+**Label reconciliation fetch budget (native-labels #02).** Each sync run
+issues exactly ONE extra fetch — `calendars.get?fields=labelProperties` in
+`labelReconcile.ts`, before categories load — plus Workers-AI embed calls
+only when a rename/new named label re-seeds. This +1/run must be counted by
+the sync-reliability #02 subrequest budget guard when both land (rebase
+integration point: `runPagedList`'s fetch counter).
 
 ### Concurrent PATCH race
 

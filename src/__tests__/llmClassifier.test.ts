@@ -25,6 +25,8 @@ function cat(partial: Partial<Rule> = {}): Rule {
     colorId: partial.colorId ?? "9",
     keywords,
     priority: partial.priority ?? 100,
+    labelId: partial.labelId ?? null,
+    labelDeletedAt: partial.labelDeletedAt ?? null,
     seeds: partial.seeds ?? synthesizeSeeds({ name, keywords }),
     createdAt: partial.createdAt ?? new Date("2026-04-19T00:00:00Z"),
     updatedAt: partial.updatedAt ?? new Date("2026-04-19T00:00:00Z"),
@@ -269,11 +271,12 @@ describe("buildPrompt", () => {
 describe("mapCategoryNameToRuleRef", () => {
   const cats = [cat({ id: "c-1", name: "회의", colorId: "9" }), cat({ id: "c-2", name: "개인", colorId: "5" })];
 
-  it("maps exact name to a RuleRef (id/name/colorId)", () => {
+  it("maps exact name to a RuleRef (id/name/colorId/labelId)", () => {
     expect(mapCategoryNameToRuleRef("회의", cats)).toEqual({
       id: "c-1",
       name: "회의",
       colorId: "9",
+      labelId: null,
     });
   });
 
@@ -412,7 +415,7 @@ describe("classifyWithLlm", () => {
     );
     expect(out).toEqual({
       kind: "hit",
-      rule: { id: "c-1", name: "회의", colorId: "9" },
+      rule: { id: "c-1", name: "회의", colorId: "9", labelId: null },
       categoryName: "회의",
     });
     expect(fetchSpy).toHaveBeenCalledTimes(1);
@@ -670,7 +673,7 @@ describe("classifyWithLlm", () => {
     );
     expect(out).toEqual({
       kind: "hit",
-      rule: { id: "c-1", name: "Meal", colorId: "9" },
+      rule: { id: "c-1", name: "Meal", colorId: "9", labelId: null },
       categoryName: "Meal",
     });
   });

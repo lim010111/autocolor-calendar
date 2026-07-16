@@ -20,12 +20,12 @@ vi.mock("../services/googleCalendar", async () => {
   return {
     ...actual,
     listEvents: vi.fn(),
-    clearEventColor: vi.fn(),
+    clearEventLabel: vi.fn(),
   };
 });
 
 import {
-  clearEventColor,
+  clearEventLabel,
   listEvents,
   CalendarApiError,
   AUTOCOLOR_KEYS,
@@ -38,7 +38,7 @@ const USER = "00000000-0000-0000-0000-00000000aaaa";
 const CAL = "primary";
 const CAT = "cat-deleted";
 const mockedList = vi.mocked(listEvents);
-const mockedClear = vi.mocked(clearEventColor);
+const mockedClear = vi.mocked(clearEventLabel);
 const mockedToken = vi.mocked(getValidAccessToken);
 
 const ctx: RollbackContext = {
@@ -81,6 +81,26 @@ function markedEvent(
   });
 }
 
+// ADR-0006 marker v2 — ownership probe is the stored labelId vs the event's
+// current eventLabelId (colorId no longer participates).
+function markedEventV2(
+  id: string,
+  currentLabelId: string,
+  markerLabelId: string,
+): CalendarEvent {
+  return ev({
+    id,
+    ...(currentLabelId !== "" ? { eventLabelId: currentLabelId } : {}),
+    extendedProperties: {
+      private: {
+        [AUTOCOLOR_KEYS.version]: "2",
+        [AUTOCOLOR_KEYS.label]: markerLabelId,
+        [AUTOCOLOR_KEYS.category]: CAT,
+      },
+    },
+  });
+}
+
 beforeEach(() => {
   mockedToken.mockResolvedValue({ accessToken: "acc-token", expiresAt: 0 });
   mockedList.mockReset();
@@ -112,6 +132,49 @@ describe("runColorRollback", () => {
     );
     expect(typeof listCall.timeMin).toBe("string");
     expect(typeof listCall.timeMax).toBe("string");
+  });
+
+  it("clears v2-marked events whose stored label matches the current eventLabelId", async () => {
+    mockedList.mockResolvedValueOnce({
+      items: [markedEventV2("e-v2-owned", "label-uuid-9", "label-uuid-9")],
+    });
+    mockedClear.mockResolvedValue(undefined);
+
+    const res = await runColorRollback(ctx, CAT);
+
+    expect(res.ok).toBe(true);
+    if (!res.ok) return;
+    expect(res.summary.cleared).toBe(1);
+    expect(mockedClear).toHaveBeenCalledWith("acc-token", CAL, "e-v2-owned");
+  });
+
+  it("skips v2-marked events where the user re-labelled after our PATCH", async () => {
+    mockedList.mockResolvedValueOnce({
+      items: [markedEventV2("e-v2-manual", "label-user", "label-ours")],
+    });
+
+    const res = await runColorRollback(ctx, CAT);
+
+    expect(res.ok).toBe(true);
+    if (!res.ok) return;
+    expect(res.summary.skipped_manual_override).toBe(1);
+    expect(res.summary.cleared).toBe(0);
+    expect(mockedClear).not.toHaveBeenCalled();
+  });
+
+  it("skips v2-marked events whose label was cleared by the user", async () => {
+    // current eventLabelId absent but marker claims label-ours — the user
+    // detached our label; !appOwned and no label → manual-override skip.
+    mockedList.mockResolvedValueOnce({
+      items: [markedEventV2("e-v2-cleared", "", "label-ours")],
+    });
+
+    const res = await runColorRollback(ctx, CAT);
+
+    expect(res.ok).toBe(true);
+    if (!res.ok) return;
+    expect(res.summary.skipped_manual_override).toBe(1);
+    expect(mockedClear).not.toHaveBeenCalled();
   });
 
   it("skips events where user re-painted after our PATCH (stale marker)", async () => {
@@ -175,9 +238,9 @@ describe("runColorRollback", () => {
     expect(mockedClear).toHaveBeenCalledWith("acc-token", CAL, "e-bridged");
   });
 
-  it("skips events whose marker version is unknown (forward-compat v2+)", async () => {
+  it("skips events whose marker version is unknown (forward-compat v3+)", async () => {
     mockedList.mockResolvedValueOnce({
-      items: [markedEvent("e-v2", "9", "9", "2")],
+      items: [markedEvent("e-v3", "9", "9", "3")],
     });
 
     const res = await runColorRollback(ctx, CAT);

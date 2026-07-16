@@ -4,8 +4,9 @@ import type { Bindings } from "../env";
 import {
   AUTOCOLOR_KEYS,
   AUTOCOLOR_MARKER_VERSION,
+  AUTOCOLOR_MARKER_VERSION_V1,
   CalendarApiError,
-  clearEventColor,
+  clearEventLabel,
   listEvents,
   type CalendarEvent,
 } from "./googleCalendar";
@@ -63,15 +64,19 @@ function makeSummary(): RollbackSummary {
   };
 }
 
-// §5 후속 B — rule-deletion rollback. Iterates events that still bear the
-// `autocolor_category=<id>` marker and clears both the color override and
-// the three autocolor markers, but *only* when the marker still "owns" the
-// current colorId (i.e., the user hasn't re-painted after our last PATCH).
+// §5 후속 B — rule-deletion rollback, label world (ADR-0006). Iterates
+// events that still bear the `autocolor_category=<id>` marker and clears
+// both the label assignment and the autocolor markers, but *only* when the
+// marker still "owns" the event (the user hasn't re-labelled/re-painted
+// after our last PATCH).
 //
-// Ownership gate is intentionally strict and reuses §5.4 semantics:
-//   appOwned := marker.version === "1" && marker.color === event.colorId
-// Anything else (stale marker, manual override, v≠1) is left untouched and
-// recorded in the summary for §6 observability.
+// Ownership gate is intentionally strict and reuses §5.4 semantics,
+// version-gated like calendarSync.processEvent:
+//   v2: appOwned := marker.label === event.eventLabelId
+//   v1 (transitional until the #04 re-stamp): appOwned :=
+//       marker.color === event.colorId
+// Anything else (stale marker, manual override, unknown version) is left
+// untouched and recorded in the summary for §6 observability.
 //
 // Errors are classified the same way calendarSync does so the existing
 // consumer retry/reauth ladder (`applyResult` in syncConsumer.ts) handles
@@ -158,21 +163,28 @@ export async function runColorRollback(
         continue;
       }
       const markerVersion = priv[AUTOCOLOR_KEYS.version];
-      if (markerVersion !== AUTOCOLOR_MARKER_VERSION) {
+      if (
+        markerVersion !== AUTOCOLOR_MARKER_VERSION &&
+        markerVersion !== AUTOCOLOR_MARKER_VERSION_V1
+      ) {
         summary.skipped_version_mismatch += 1;
         continue;
       }
-      const ownedColor = priv[AUTOCOLOR_KEYS.color];
-      const current = event.colorId ?? "";
-      // `!!ownedColor` (not `!== undefined`) preserves the pre-existing
-      // guard's semantics: an empty-string marker color is never ours.
-      const appOwned = !!ownedColor && ownedColor === current;
-      // native-labels #01 — same label-aware gate as calendarSync's §5.4
-      // check. A post-PATCH user repaint via a label reads back as an empty
-      // or best-match `colorId`, so marker-color inequality already skips
-      // it under marker v1; the explicit `eventLabelId` clause keeps the
-      // two §5.4 readers in lockstep (and keeps holding when marker v2/#02
-      // changes what "appOwned" means).
+      // Version-gated ownership probe (mirror of calendarSync §5.4):
+      // v2 compares the stored label to the event's current eventLabelId;
+      // v1 (transitional) compares the stored colorId. `!!` (not
+      // `!== undefined`) keeps the pre-existing guard's semantics: an
+      // empty-string marker value is never ours.
+      const appOwned =
+        markerVersion === AUTOCOLOR_MARKER_VERSION
+          ? !!priv[AUTOCOLOR_KEYS.label] &&
+            priv[AUTOCOLOR_KEYS.label] === (event.eventLabelId ?? "")
+          : !!priv[AUTOCOLOR_KEYS.color] &&
+            priv[AUTOCOLOR_KEYS.color] === (event.colorId ?? "");
+      // native-labels #01 — label-aware manual gate. A post-PATCH user
+      // repaint via a label reads back as a different eventLabelId (v2) or
+      // an empty/best-match colorId (v1); the explicit clause keeps the two
+      // §5.4 readers in lockstep.
       if (!appOwned && (event.eventLabelId ?? "") !== "") {
         summary.skipped_manual_override += 1;
         continue;
@@ -186,7 +198,7 @@ export async function runColorRollback(
       }
 
       try {
-        await clearEventColor(accessToken, ctx.calendarId, event.id);
+        await clearEventLabel(accessToken, ctx.calendarId, event.id);
         summary.cleared += 1;
       } catch (err) {
         if (err instanceof CalendarApiError) {

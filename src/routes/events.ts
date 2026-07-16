@@ -6,27 +6,27 @@ import { getDb } from "../db";
 import { oauthTokens } from "../db/schema";
 import type { HonoEnv } from "../env";
 import { authMiddleware } from "../middleware/auth";
-import { CalendarApiError, patchEventColorManual } from "../services/googleCalendar";
+import { CalendarApiError, patchEventLabelManual } from "../services/googleCalendar";
 import { getValidAccessToken, ReauthRequiredError } from "../services/tokenRefresh";
 
 export const eventsRoutes = new Hono<HonoEnv>();
 
 eventsRoutes.use("*", authMiddleware);
 
-// Per-event manual color override. Sole caller: GAS sidebar's
-// `actionSaveEventOverride`. Synchronous (no queue) so the user gets
-// immediate feedback — speed is the primary requirement here.
+// Per-event manual label override, label world (ADR-0006 / native-labels
+// #02). Sole caller: GAS sidebar's `actionSaveEventOverride` (rewired to
+// send labelId in #03 — co-deployed). Synchronous (no queue) so the user
+// gets immediate feedback — speed is the primary requirement here.
 //
-// §5.4 invariant: `patchEventColorManual` clears the three ownership marker
+// §5.4 invariant: `patchEventLabelManual` clears all four ownership marker
 // keys in the same PATCH, so the next sync sees `appOwned === false` and
-// skips re-coloring (same outcome as if the user edited the color directly
-// in Google Calendar).
-const ColorBody = z.object({
-  // Google's documented event color palette is 1..11 (see
-  // https://developers.google.com/calendar/api/v3/reference/colors). Reject
-  // anything else at the boundary so a malformed UI payload can't slip
-  // through to Google as a 400 we'd have to translate.
-  colorId: z.string().regex(/^([1-9]|1[01])$/),
+// skips re-labelling (same outcome as if the user picked the label chip
+// directly in Google Calendar).
+const LabelBody = z.object({
+  // Google event-label ids are UUIDs (calendars.labelProperties entries).
+  // Reject anything else at the boundary so a malformed UI payload can't
+  // slip through to Google as a 400 we'd have to translate.
+  labelId: z.string().uuid(),
 });
 
 eventsRoutes.post("/:calendarId/:eventId/color", async (c) => {
@@ -38,7 +38,7 @@ eventsRoutes.post("/:calendarId/:eventId/color", async (c) => {
   }
 
   const body = await c.req.json().catch(() => null);
-  const parsed = ColorBody.safeParse(body);
+  const parsed = LabelBody.safeParse(body);
   if (!parsed.success) {
     return c.json(
       { error: "invalid_request", details: parsed.error.flatten() },
@@ -72,11 +72,11 @@ eventsRoutes.post("/:calendarId/:eventId/color", async (c) => {
     }
 
     try {
-      await patchEventColorManual(
+      await patchEventLabelManual(
         accessToken,
         calendarId,
         eventId,
-        parsed.data.colorId,
+        parsed.data.labelId,
       );
     } catch (err) {
       if (err instanceof CalendarApiError) {
@@ -118,7 +118,7 @@ eventsRoutes.post("/:calendarId/:eventId/color", async (c) => {
       throw err;
     }
 
-    return c.json({ ok: true, colorId: parsed.data.colorId }, 200);
+    return c.json({ ok: true, labelId: parsed.data.labelId }, 200);
   } finally {
     c.executionCtx.waitUntil(close());
   }

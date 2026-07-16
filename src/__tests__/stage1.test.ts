@@ -17,6 +17,8 @@ function rule(id: string, name = id, colorId = "9"): Rule {
     userId: "u",
     name,
     colorId,
+    labelId: null,
+    labelDeletedAt: null,
     keywords: [],
     priority: 100,
     seeds: synthesizeSeeds({ name, keywords: [] }),
@@ -69,7 +71,7 @@ describe("decideStage1 — three branches (declared bar)", () => {
     );
     expect(out.kind).toBe("embeddingHit");
     if (out.kind !== "embeddingHit") return;
-    expect(out.rule).toEqual({ id: "c-1", name: "회의", colorId: "5" });
+    expect(out.rule).toEqual({ id: "c-1", name: "회의", colorId: "5", labelId: null });
     expect(out.seed).toEqual({ id: "s-c-1", text: "회의" });
     expect(out.grade).toBe("declared");
     expect(out.score).toBeCloseTo(0.85, 6);

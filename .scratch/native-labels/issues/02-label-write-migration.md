@@ -1,4 +1,4 @@
-Status: ready-for-agent
+Status: ready-for-human
 
 ## What to build
 
@@ -39,17 +39,25 @@ Status: ready-for-agent
 ## Acceptance criteria
 
 - [ ] 분류 적용이 `eventLabelVersion=1` + `eventLabelId` 로 나가고 마커
-      v2 가 각인된다 (라이브 1건 육안 확인 포함)
-- [ ] 마커 v2 소유권 판정 + v1 하위호환 판정이 공존한다 (테스트)
-- [ ] sync 시작 시 labelProperties 대조: 개명→캐시+씨앗 갱신, 삭제→Rule
+      v2 가 각인된다 (라이브 1건 육안 확인 포함) *(코드·테스트 완료 —
+      라이브 육안 확인만 대기, 사람 단계)*
+- [x] 마커 v2 소유권 판정 + v1 하위호환 판정이 공존한다 (테스트)
+- [x] sync 시작 시 labelProperties 대조: 개명→캐시+씨앗 갱신, 삭제→Rule
       비활성(부활 없음), 신규 named→Rule 자동 생성 (각 테스트)
-- [ ] `appendEventLabel` 이 append-only + 재읽기 + 200 캡 검사를 지킨다
+- [x] `appendEventLabel` 이 append-only + 재읽기 + 200 캡 검사를 지킨다
       — 동시 편집 시나리오 테스트(우리 쓰기가 남의 신규 라벨을 지우지
       않음)
-- [ ] 수동 오버라이드·롤백 경로가 라벨 세계에서 동작 (테스트)
-- [ ] 런당 추가 fetch 는 labelProperties 1회뿐 (서브리퀘스트 예산 문서
+- [x] 수동 오버라이드·롤백 경로가 라벨 세계에서 동작 (테스트)
+- [x] 런당 추가 fetch 는 labelProperties 1회뿐 (서브리퀘스트 예산 문서
       갱신)
-- [ ] `pnpm test` / `pnpm typecheck` 통과, drizzle 마이그레이션 생성
+- [x] `pnpm test` / `pnpm typecheck` 통과, drizzle 마이그레이션 생성
+
+> **Resolution:** feat/native-labels-02-label-write-migration (#01 스택).
+> 설계 노트 대비 추가: labelId 없는 pre-cutover 룰 hit 은 `skipped_no_label`
+> 카운터로 스킵(컷오버 전 안전 배포), 신규 named 라벨은 same-name·labelId
+> null 룰에 우선 링크(#04 페어링 선행). appendEventLabel 의 라벨 id 는
+> 클라이언트 mint(UUID) — 라이브 검증 항목. sync-reliability #02 예산
+> 가드와의 rebase 시 reconcile +1 fetch 를 카운터에 계상할 것.
 
 ## Blocked by
 

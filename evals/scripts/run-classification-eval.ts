@@ -625,6 +625,8 @@ function buildCategory(
     colorId: c.colorId,
     keywords: c.keywords,
     priority: 100 + i,
+    labelId: null,
+    labelDeletedAt: null,
     seeds: synthesizeSeeds({ name: c.name, keywords: c.keywords }),
     createdAt: now,
     updatedAt: now,

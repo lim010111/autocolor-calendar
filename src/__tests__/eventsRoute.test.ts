@@ -122,7 +122,7 @@ describe("POST /api/events/:cid/:eid/color — auth gate", () => {
   });
 
   it("returns 401 when bearer is missing", async () => {
-    const res = await postColor({ colorId: "5" }, { headers: {} });
+    const res = await postColor({ labelId: "11111111-2222-3333-4444-555555555555" }, { headers: {} });
     expect(res.status).toBe(401);
   });
 });
@@ -136,29 +136,34 @@ describe("POST /api/events/:cid/:eid/color — input validation", () => {
     globalThis.fetch = originalFetch;
   });
 
-  it.each(["0", "12", "100", "a", "", "1.0"])(
-    "rejects invalid colorId %p with 400",
-    async (colorId) => {
-      const res = await postColor({ colorId });
+  it.each(["5", "not-a-uuid", "", "11111111-2222-3333-4444"])(
+    "rejects invalid labelId %p with 400",
+    async (labelId) => {
+      const res = await postColor({ labelId });
       expect(res.status).toBe(400);
       const body = (await res.json()) as { error?: string };
       expect(body.error).toBe("invalid_request");
     },
   );
 
-  it("rejects missing colorId with 400", async () => {
+  it("rejects missing labelId with 400", async () => {
     const res = await postColor({});
     expect(res.status).toBe(400);
   });
 
-  it.each(["1", "5", "11"])("accepts valid colorId %p", async (colorId) => {
+  it("rejects legacy colorId payloads with 400 (label world — ADR-0006)", async () => {
+    const res = await postColor({ colorId: "5" });
+    expect(res.status).toBe(400);
+  });
+
+  it("accepts a uuid labelId", async () => {
     selectBatches.push([{ needsReauth: false }]);
     getValidAccessTokenMock.mockResolvedValueOnce({
       accessToken: "at-x",
       expiresAt: Date.now() + 60_000,
     });
     mockFetch(async () => new Response("{}", { status: 200 }));
-    const res = await postColor({ colorId });
+    const res = await postColor({ labelId: "11111111-2222-3333-4444-555555555555" });
     expect(res.status).toBe(200);
   });
 });
@@ -176,7 +181,7 @@ describe("POST /api/events/:cid/:eid/color — reauth gate", () => {
     selectBatches.push([]); // no row
     const fetchSpy = vi.fn();
     globalThis.fetch = fetchSpy as unknown as typeof fetch;
-    const res = await postColor({ colorId: "5" });
+    const res = await postColor({ labelId: "11111111-2222-3333-4444-555555555555" });
     expect(res.status).toBe(503);
     const body = (await res.json()) as { error?: string };
     expect(body.error).toBe("reauth_required");
@@ -187,7 +192,7 @@ describe("POST /api/events/:cid/:eid/color — reauth gate", () => {
     selectBatches.push([{ needsReauth: true }]);
     const fetchSpy = vi.fn();
     globalThis.fetch = fetchSpy as unknown as typeof fetch;
-    const res = await postColor({ colorId: "5" });
+    const res = await postColor({ labelId: "11111111-2222-3333-4444-555555555555" });
     expect(res.status).toBe(503);
     const body = (await res.json()) as { error?: string };
     expect(body.error).toBe("reauth_required");
@@ -201,7 +206,7 @@ describe("POST /api/events/:cid/:eid/color — reauth gate", () => {
     );
     const fetchSpy = vi.fn();
     globalThis.fetch = fetchSpy as unknown as typeof fetch;
-    const res = await postColor({ colorId: "5" });
+    const res = await postColor({ labelId: "11111111-2222-3333-4444-555555555555" });
     expect(res.status).toBe(503);
     const body = (await res.json()) as { error?: string };
     expect(body.error).toBe("reauth_required");
@@ -222,7 +227,7 @@ describe("POST /api/events/:cid/:eid/color — Calendar API", () => {
     globalThis.fetch = originalFetch;
   });
 
-  it("PATCH body clears all three §5.4 marker keys (manual override invariant)", async () => {
+  it("PATCH body clears all four §5.4 marker keys (manual override invariant)", async () => {
     selectBatches.push([{ needsReauth: false }]);
     const seen: { url: string; method: string | undefined; body: string }[] = [];
     mockFetch(async (url, init) => {
@@ -233,30 +238,32 @@ describe("POST /api/events/:cid/:eid/color — Calendar API", () => {
       });
       return new Response("{}", { status: 200 });
     });
-    const res = await postColor({ colorId: "7" });
+    const res = await postColor({ labelId: "11111111-2222-3333-4444-555555555555" });
     expect(res.status).toBe(200);
     expect(seen).toHaveLength(1);
     expect(seen[0]!.method).toBe("PATCH");
     expect(seen[0]!.url).toContain("/calendars/primary/events/evt-1");
+    expect(seen[0]!.url).toContain("eventLabelVersion=1");
     const parsed = JSON.parse(seen[0]!.body);
     expect(parsed).toEqual({
-      colorId: "7",
+      eventLabelId: "11111111-2222-3333-4444-555555555555",
       extendedProperties: {
         private: {
           autocolor_v: null,
           autocolor_color: null,
+          autocolor_label: null,
           autocolor_category: null,
         },
       },
     });
   });
 
-  it("returns 200 {ok:true, colorId} on success", async () => {
+  it("returns 200 {ok:true, labelId} on success", async () => {
     selectBatches.push([{ needsReauth: false }]);
     mockFetch(async () => new Response("{}", { status: 200 }));
-    const res = await postColor({ colorId: "5" });
+    const res = await postColor({ labelId: "11111111-2222-3333-4444-555555555555" });
     expect(res.status).toBe(200);
-    expect(await res.json()).toEqual({ ok: true, colorId: "5" });
+    expect(await res.json()).toEqual({ ok: true, labelId: "11111111-2222-3333-4444-555555555555" });
   });
 
   it("encodes calendarId / eventId path params (special chars)", async () => {
@@ -267,7 +274,7 @@ describe("POST /api/events/:cid/:eid/color — Calendar API", () => {
       return new Response("{}", { status: 200 });
     });
     const res = await postColor(
-      { colorId: "5" },
+      { labelId: "11111111-2222-3333-4444-555555555555" },
       { cid: "alice@example.com", eid: "abc_def123" },
     );
     expect(res.status).toBe(200);
@@ -282,8 +289,8 @@ describe("POST /api/events/:cid/:eid/color — Calendar API", () => {
       seen.push(init?.body ? String(init.body) : "");
       return new Response("{}", { status: 200 });
     });
-    const r1 = await postColor({ colorId: "5" });
-    const r2 = await postColor({ colorId: "5" });
+    const r1 = await postColor({ labelId: "11111111-2222-3333-4444-555555555555" });
+    const r2 = await postColor({ labelId: "11111111-2222-3333-4444-555555555555" });
     expect(r1.status).toBe(200);
     expect(r2.status).toBe(200);
     expect(seen).toHaveLength(2);
@@ -292,6 +299,7 @@ describe("POST /api/events/:cid/:eid/color — Calendar API", () => {
       expect(parsed.extendedProperties.private).toEqual({
         autocolor_v: null,
         autocolor_color: null,
+        autocolor_label: null,
         autocolor_category: null,
       });
     }
@@ -302,7 +310,7 @@ describe("POST /api/events/:cid/:eid/color — Calendar API", () => {
     mockFetch(async () =>
       new Response(JSON.stringify({ error: { code: 401 } }), { status: 401 }),
     );
-    const res = await postColor({ colorId: "5" });
+    const res = await postColor({ labelId: "11111111-2222-3333-4444-555555555555" });
     expect(res.status).toBe(503);
     const body = (await res.json()) as { error?: string };
     expect(body.error).toBe("reauth_required");
@@ -313,7 +321,7 @@ describe("POST /api/events/:cid/:eid/color — Calendar API", () => {
     mockFetch(async () =>
       new Response(JSON.stringify({ error: { code: 404 } }), { status: 404 }),
     );
-    const res = await postColor({ colorId: "5" });
+    const res = await postColor({ labelId: "11111111-2222-3333-4444-555555555555" });
     expect(res.status).toBe(404);
     const body = (await res.json()) as { error?: string };
     expect(body.error).toBe("event_not_found");
@@ -329,7 +337,7 @@ describe("POST /api/events/:cid/:eid/color — Calendar API", () => {
         { status: 410 },
       ),
     );
-    const res = await postColor({ colorId: "5" });
+    const res = await postColor({ labelId: "11111111-2222-3333-4444-555555555555" });
     expect(res.status).toBe(404);
     const body = (await res.json()) as { error?: string };
     expect(body.error).toBe("event_not_found");
@@ -345,7 +353,7 @@ describe("POST /api/events/:cid/:eid/color — Calendar API", () => {
         { status: 403 },
       ),
     );
-    const res = await postColor({ colorId: "5" });
+    const res = await postColor({ labelId: "11111111-2222-3333-4444-555555555555" });
     expect(res.status).toBe(403);
     const body = (await res.json()) as { error?: string };
     expect(body.error).toBe("forbidden");
@@ -359,7 +367,7 @@ describe("POST /api/events/:cid/:eid/color — Calendar API", () => {
         headers: { "retry-after": "12" },
       }),
     );
-    const res = await postColor({ colorId: "5" });
+    const res = await postColor({ labelId: "11111111-2222-3333-4444-555555555555" });
     expect(res.status).toBe(429);
     expect(res.headers.get("Retry-After")).toBe("12");
     const body = (await res.json()) as { error?: string; retry_after_sec?: number };
@@ -372,7 +380,7 @@ describe("POST /api/events/:cid/:eid/color — Calendar API", () => {
     mockFetch(async () =>
       new Response(JSON.stringify({ error: { code: 503 } }), { status: 503 }),
     );
-    const res = await postColor({ colorId: "5" });
+    const res = await postColor({ labelId: "11111111-2222-3333-4444-555555555555" });
     expect(res.status).toBe(502);
     const body = (await res.json()) as { error?: string };
     expect(body.error).toBe("upstream_unavailable");
@@ -384,7 +392,7 @@ describe("POST /api/events/:cid/:eid/color — Calendar API", () => {
 
   it("does not log Calendar event payloads (log redaction contract)", async () => {
     // The route is body-blind by construction (it never reads the event
-    // body — only writes colorId + null markers). Pin the contract by
+    // body — only writes eventLabelId + null markers). Pin the contract by
     // spying on console.* and asserting nothing event-shaped lands there
     // even when the upstream returns a payload-rich error body.
     selectBatches.push([{ needsReauth: false }]);
@@ -407,7 +415,7 @@ describe("POST /api/events/:cid/:eid/color — Calendar API", () => {
     const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => undefined);
     const errorSpy = vi.spyOn(console, "error").mockImplementation(() => undefined);
     try {
-      const res = await postColor({ colorId: "5" });
+      const res = await postColor({ labelId: "11111111-2222-3333-4444-555555555555" });
       expect(res.status).toBe(502);
       for (const spy of [logSpy, warnSpy, errorSpy]) {
         for (const call of spy.mock.calls) {
