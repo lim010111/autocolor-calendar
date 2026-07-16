@@ -61,6 +61,12 @@ function toWire(rule: Rule) {
     colorId: rule.colorId,
     keywords: rule.keywords,
     priority: rule.priority,
+    // ADR-0006 (native-labels #02) — label linkage for the #03 editor:
+    // `labelId` (null = pre-cutover rule) and `labelDeletedAt` (non-null =
+    // backing Google label gone; editor renders a "라벨 삭제됨" badge).
+    // Additive fields — the pre-#03 GAS client ignores unknown keys.
+    labelId: rule.labelId,
+    labelDeletedAt: rule.labelDeletedAt,
     createdAt: rule.createdAt,
     updatedAt: rule.updatedAt,
   };
@@ -70,7 +76,7 @@ categoriesRoutes.get("/", async (c) => {
   const userId = c.get("userId");
   const { db, close } = getDb(c.env);
   try {
-    const rules = await listRules(db, userId);
+    const rules = await listRules(db, userId, { includeLabelDeleted: true });
     return c.json({ categories: rules.map(toWire) });
   } finally {
     c.executionCtx.waitUntil(close());
@@ -100,7 +106,7 @@ categoriesRoutes.post("/", async (c) => {
     // GAS rebuilds the card without a follow-up GET (2 roundtrips → 1). The
     // list SELECT is awaited here (plain DB read), NOT the embedding
     // sideEffects — the response must never wait on the name-seed embed.
-    const rules = await listRules(db, userId);
+    const rules = await listRules(db, userId, { includeLabelDeleted: true });
     // close() = client.end(); the name-seed write inside sideEffects awaits an
     // embedding network call before its db.insert, so close() MUST be chained
     // after sideEffects. A separate waitUntil(close()) ends the pool mid-embed
@@ -171,7 +177,7 @@ categoriesRoutes.delete("/:id", async (c) => {
     // card-latency #02 — 204 → 200 with the updated list so GAS skips the
     // follow-up GET. Status change is safe: the GAS client treats any 2xx as
     // success and previously ignored the (empty) DELETE body.
-    const rules = await listRules(db, userId);
+    const rules = await listRules(db, userId, { includeLabelDeleted: true });
     return c.json({ categories: rules.map(toWire) });
   } finally {
     c.executionCtx.waitUntil(close());

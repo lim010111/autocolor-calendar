@@ -1,16 +1,24 @@
 const CALENDAR_BASE = "https://www.googleapis.com/calendar/v3";
 
-// §5.4 ownership marker. Three keys written under `extendedProperties.private`
-// when this app PATCHes a color. `version` lets us evolve the schema without a
-// retroactive backfill; `color` records the value we wrote so the next sync
-// can detect post-write user edits (current colorId !== stored color → user
-// touched it after us → treat as manual); `category` is forward-compat for the
-// deferred rule-deletion rollback (TODO §5 line 95). See src/CLAUDE.md "Color
-// ownership marker" for the full contract.
-export const AUTOCOLOR_MARKER_VERSION = "1";
+// §5.4 ownership marker. Keys written under `extendedProperties.private`
+// when this app PATCHes a label. `version` lets us evolve the schema without
+// a retroactive backfill; v2 (ADR-0006, native-labels #02) stores `label`
+// (the eventLabelId we wrote) as the ownership probe — on the next sync, if
+// the event's `eventLabelId` no longer equals it, the user changed it after
+// us and we treat the event as manual. `category` is read by the
+// rule-deletion rollback. `color` is the v1 legacy probe (colorId we wrote):
+// still READ for v1-marked events until the #04 cutover re-stamps them, and
+// purged (null) on every v2 write. See src/CLAUDE.md "Color ownership
+// marker" for the full contract.
+export const AUTOCOLOR_MARKER_VERSION = "2";
+// v1 read-compat: ownership of v1-marked events is still decided by colorId
+// equality (the bridge keeps colorId stable for classic colors). Remove with
+// the #04 cutover once the full resync has re-stamped v1 events to v2.
+export const AUTOCOLOR_MARKER_VERSION_V1 = "1";
 export const AUTOCOLOR_KEYS = {
   version: "autocolor_v",
   color: "autocolor_color",
+  label: "autocolor_label",
   category: "autocolor_category",
 } as const;
 
@@ -175,22 +183,28 @@ export async function listEvents(
   return (await res.json()) as EventsListResponse;
 }
 
-export async function patchEventColor(
+// ADR-0006 (native-labels #02) — the sync pipeline's color writer, label
+// world. `eventLabelVersion=1` opts the PATCH into label semantics (Google
+// then IGNORES any `colorId` in the body — labels supersede it), and
+// `eventLabelId` assigns the label. Verified live 2026-07-15 (PRD): HTTP 200
+// with the current OAuth scopes, renders in Google UI immediately.
+export async function patchEventLabel(
   accessToken: string,
   calendarId: string,
   eventId: string,
-  colorId: string,
+  labelId: string,
   // Optional ownership marker keys, written under
   // `extendedProperties.private`. Google merges this map per-key with any
-  // existing private properties on the event, so other apps' keys are
-  // preserved. Omit to send `{ colorId }` only (regression-safe for callers
-  // that don't care about ownership tracking).
-  extendedPrivate?: Record<string, string>,
+  // existing private properties on the event (a `null` value deletes that
+  // key), so other apps' keys are preserved. Omit to send `{ eventLabelId }`
+  // only (regression-safe for callers that don't care about ownership
+  // tracking).
+  extendedPrivate?: Record<string, string | null>,
 ): Promise<void> {
   const url = `${CALENDAR_BASE}/calendars/${encodeURIComponent(
     calendarId,
-  )}/events/${encodeURIComponent(eventId)}`;
-  const body: Record<string, unknown> = { colorId };
+  )}/events/${encodeURIComponent(eventId)}?eventLabelVersion=1`;
+  const body: Record<string, unknown> = { eventLabelId: labelId };
   if (extendedPrivate) {
     body.extendedProperties = { private: extendedPrivate };
   }
@@ -205,32 +219,34 @@ export async function patchEventColor(
   if (!res.ok) await throwApiError(res, "events.patch");
 }
 
-// Per-event manual override (sidebar "변경사항 저장"). Sets `colorId` to a
-// concrete value AND deletes the three §5.4 ownership markers in the same
-// PATCH. Result: the event is unambiguously user-manual, so the next
-// incremental sync's §5.4 check (`current !== "" && !appOwned`) lands on
-// `skipped_manual` and leaves the user's choice intact — same outcome as
-// editing the color directly in Google Calendar.
+// Per-event manual override (sidebar "변경사항 저장"), label world
+// (ADR-0006). Sets `eventLabelId` to a concrete value AND deletes all four
+// §5.4 ownership marker keys in the same PATCH. Result: the event is
+// unambiguously user-manual, so the next incremental sync's §5.4 check
+// (label present + !appOwned) lands on `skipped_manual` and leaves the
+// user's choice intact — same outcome as picking the label chip directly in
+// Google Calendar.
 //
-// Separate from `patchEventColor` (sync-pipeline writer) and
-// `clearEventColor` (rule-deletion rollback) to keep each function's
+// Separate from `patchEventLabel` (sync-pipeline writer) and
+// `clearEventLabel` (rule-deletion rollback) to keep each function's
 // payload contract narrow: this is the only call site that combines a
-// non-null `colorId` with explicit marker deletion.
-export async function patchEventColorManual(
+// non-empty `eventLabelId` with explicit marker deletion.
+export async function patchEventLabelManual(
   accessToken: string,
   calendarId: string,
   eventId: string,
-  colorId: string,
+  labelId: string,
 ): Promise<void> {
   const url = `${CALENDAR_BASE}/calendars/${encodeURIComponent(
     calendarId,
-  )}/events/${encodeURIComponent(eventId)}`;
+  )}/events/${encodeURIComponent(eventId)}?eventLabelVersion=1`;
   const body = {
-    colorId,
+    eventLabelId: labelId,
     extendedProperties: {
       private: {
         [AUTOCOLOR_KEYS.version]: null,
         [AUTOCOLOR_KEYS.color]: null,
+        [AUTOCOLOR_KEYS.label]: null,
         [AUTOCOLOR_KEYS.category]: null,
       },
     },
@@ -246,32 +262,34 @@ export async function patchEventColorManual(
   if (!res.ok) await throwApiError(res, "events.patch.manual");
 }
 
-// §5 후속 B — rule-deletion rollback. PATCH an event to clear both the
-// color override AND the three autocolor ownership markers. `null` on a
-// top-level field (`colorId`) resets it to the calendar default; `null`
-// under `extendedProperties.private.<key>` deletes that specific key while
+// §5 후속 B — rule-deletion rollback, label world (ADR-0006). PATCH an
+// event to clear both the label assignment AND all four autocolor ownership
+// markers. `eventLabelId: ""` under `eventLabelVersion=1` detaches the
+// label (spec'd by native-labels #02); `null` under
+// `extendedProperties.private.<key>` deletes that specific key while
 // preserving other apps' private properties (Google merges this map
-// per-key). Separate from `patchEventColor` to keep its `colorId: string`
-// contract tight — a union-typed `colorId: string | null` would force every
-// existing caller to re-narrow.
+// per-key).
 //
-// **Contingency:** if Google rejects `colorId: null` (observed historically
-// for some resource types), swap to an empty string or a two-step PATCH
-// (clear marker → clear color) — callers don't need to change.
-export async function clearEventColor(
+// Bridge assumption: `colorId` is a legacy VIEW of the label (the two are
+// one mechanism — PRD 실측 3), so detaching the label also clears the
+// event's visible color. A label-less legacy `colorId` relic (unobserved in
+// the probe) would keep its color — accepted; the next full resync
+// re-evaluates it.
+export async function clearEventLabel(
   accessToken: string,
   calendarId: string,
   eventId: string,
 ): Promise<void> {
   const url = `${CALENDAR_BASE}/calendars/${encodeURIComponent(
     calendarId,
-  )}/events/${encodeURIComponent(eventId)}`;
+  )}/events/${encodeURIComponent(eventId)}?eventLabelVersion=1`;
   const body = {
-    colorId: null,
+    eventLabelId: "",
     extendedProperties: {
       private: {
         [AUTOCOLOR_KEYS.version]: null,
         [AUTOCOLOR_KEYS.color]: null,
+        [AUTOCOLOR_KEYS.label]: null,
         [AUTOCOLOR_KEYS.category]: null,
       },
     },
@@ -285,4 +303,51 @@ export async function clearEventColor(
     body: JSON.stringify(body),
   });
   if (!res.ok) await throwApiError(res, "events.patch.clear");
+}
+
+// ADR-0006 — calendar-level label definitions (`Calendars.labelProperties`).
+// Entry shape per the 07-15 raw probe: `{ id: UUID, backgroundColor: hex,
+// name?: ≤50 chars }`; the 24 default palette colors are pre-seeded unnamed
+// entries. Definitions are owner-only and FULL-REPLACE on write — which is
+// why raw write access is scoped to `eventLabels.ts`'s append-only
+// `appendEventLabel` (read-modify-write + 200 cap); do not call
+// `patchCalendarLabelProperties` from anywhere else.
+export type CalendarEventLabel = {
+  id: string;
+  backgroundColor?: string;
+  name?: string;
+};
+
+export async function getCalendarLabelProperties(
+  accessToken: string,
+  calendarId: string,
+): Promise<CalendarEventLabel[]> {
+  const url = `${CALENDAR_BASE}/calendars/${encodeURIComponent(
+    calendarId,
+  )}?fields=labelProperties`;
+  const res = await fetch(url, {
+    headers: { authorization: `Bearer ${accessToken}` },
+  });
+  if (!res.ok) await throwApiError(res, "calendars.get");
+  const body = (await res.json()) as {
+    labelProperties?: { eventLabels?: CalendarEventLabel[] };
+  };
+  return body.labelProperties?.eventLabels ?? [];
+}
+
+export async function patchCalendarLabelProperties(
+  accessToken: string,
+  calendarId: string,
+  eventLabels: CalendarEventLabel[],
+): Promise<void> {
+  const url = `${CALENDAR_BASE}/calendars/${encodeURIComponent(calendarId)}`;
+  const res = await fetch(url, {
+    method: "PATCH",
+    headers: {
+      authorization: `Bearer ${accessToken}`,
+      "content-type": "application/json",
+    },
+    body: JSON.stringify({ labelProperties: { eventLabels } }),
+  });
+  if (!res.ok) await throwApiError(res, "calendars.patch");
 }

@@ -60,9 +60,11 @@ function toCandidate(r: RankedSeed): EmbeddingCandidate {
 function lookupRuleRef(
   ruleId: string,
   rules: Rule[],
-): { id: string; name: string; colorId: string } | undefined {
+): { id: string; name: string; colorId: string; labelId: string | null } | undefined {
   const r = rules.find((x) => x.id === ruleId);
-  return r ? { id: r.id, name: r.name, colorId: r.colorId } : undefined;
+  return r
+    ? { id: r.id, name: r.name, colorId: r.colorId, labelId: r.labelId }
+    : undefined;
 }
 
 // Pure decision logic (ADR-0004 #02 AC #7). Grade-aware bar: a verified best

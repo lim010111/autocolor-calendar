@@ -25,6 +25,8 @@ function cat(partial: Partial<Rule> = {}): Rule {
     colorId: partial.colorId ?? "9",
     keywords,
     priority: partial.priority ?? 100,
+    labelId: partial.labelId ?? null,
+    labelDeletedAt: partial.labelDeletedAt ?? null,
     seeds: partial.seeds ?? synthesizeSeeds({ name, keywords }),
     createdAt: partial.createdAt ?? new Date("2026-04-19T00:00:00Z"),
     updatedAt: partial.updatedAt ?? new Date("2026-04-19T00:00:00Z"),
@@ -112,7 +114,7 @@ describe("buildDefaultClassifier — rule → LLM chain", () => {
     const out = await classify(ev({ summary: "주간 회의" }), ctxOf([cat()]));
     expect(out).toEqual({
       kind: "embeddingHit",
-      rule: { id: "c-1", name: "회의", colorId: "9" },
+      rule: { id: "c-1", name: "회의", colorId: "9", labelId: null },
       seed: { id: "s-1", text: "회의" },
       grade: "declared",
       score: 0.99,
@@ -138,7 +140,7 @@ describe("buildDefaultClassifier — rule → LLM chain", () => {
     );
     expect(out.kind).toBe("llmHit");
     if (out.kind !== "llmHit") return;
-    expect(out.rule).toEqual({ id: "c-1", name: "회의", colorId: "9" });
+    expect(out.rule).toEqual({ id: "c-1", name: "회의", colorId: "9", labelId: null });
     expect(out.llmRecord.outcome).toBe("hit");
     expect(rec.outcomes).toHaveLength(1);
     expect(rec.outcomes[0]!.kind).toBe("llmHit");

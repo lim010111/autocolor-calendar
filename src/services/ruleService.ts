@@ -1,4 +1,4 @@
-import { and, asc, eq, inArray } from "drizzle-orm";
+import { and, asc, eq, inArray, isNull } from "drizzle-orm";
 import type { PostgresJsDatabase } from "drizzle-orm/postgres-js";
 
 import { categories, ruleSeeds, syncState } from "../db/schema";
@@ -37,6 +37,13 @@ export type Rule = {
   colorId: string;
   keywords: string[];
   priority: number;
+  // ADR-0006 — Google event-label UUID this Rule writes (null = pre-cutover
+  // rule, not yet attached to a label; sync skips applying it).
+  labelId: string | null;
+  // ADR-0006 — set when the backing Google label was deleted/unnamed. The
+  // rule is excluded from classification (`listRules` default) but still
+  // listed to the editor with a "라벨 삭제됨" badge. Never auto-cleared.
+  labelDeletedAt: Date | null;
   seeds: Seed[];
   createdAt: Date;
   updatedAt: Date;
@@ -85,6 +92,8 @@ const SELECT_FIELDS = {
   colorId: categories.colorId,
   keywords: categories.keywords,
   priority: categories.priority,
+  labelId: categories.labelId,
+  labelDeletedAt: categories.labelDeletedAt,
   createdAt: categories.createdAt,
   updatedAt: categories.updatedAt,
 } as const;
@@ -96,6 +105,8 @@ type CategoriesRow = {
   colorId: string;
   keywords: string[];
   priority: number;
+  labelId: string | null;
+  labelDeletedAt: Date | null;
   createdAt: Date;
   updatedAt: Date;
 };
@@ -127,14 +138,23 @@ function toRule(row: CategoriesRow): Rule {
   };
 }
 
+// Default excludes label-deleted rules (ADR-0006) — the classifier paths
+// (`calendarSync.loadCategories`, preview route) must never assign a rule
+// whose backing Google label is gone. The editor list passes
+// `includeLabelDeleted: true` to render them with a "라벨 삭제됨" badge.
 export async function listRules(
   db: PostgresJsDatabase,
   userId: string,
+  opts?: { includeLabelDeleted?: boolean },
 ): Promise<Rule[]> {
   const rows = await db
     .select(SELECT_FIELDS)
     .from(categories)
-    .where(eq(categories.userId, userId))
+    .where(
+      opts?.includeLabelDeleted
+        ? eq(categories.userId, userId)
+        : and(eq(categories.userId, userId), isNull(categories.labelDeletedAt)),
+    )
     .orderBy(asc(categories.priority), asc(categories.createdAt));
   return rows.map(toRule);
 }
@@ -250,7 +270,9 @@ function fanOutColorRollback(
 // follows the fan-out failure model: warn-only, the user request already
 // succeeded, recovery is the next rule edit or the backfill job. A missing
 // embedder (no `env.AI` binding — unit tests / misconfig) is a silent skip.
-async function writeNameSeed(
+// Exported for `labelReconcile.ts` (ADR-0006): a Google-side label rename /
+// named-label discovery re-seeds through this same single writer.
+export async function writeNameSeed(
   db: PostgresJsDatabase,
   embed: EmbedTexts | undefined,
   args: { ruleId: string; userId: string; name: string },

@@ -263,6 +263,7 @@ export function mapCategoryNameToRuleRef(
     id: match.id,
     name: match.name,
     colorId: match.colorId,
+    labelId: match.labelId,
   };
 }
 

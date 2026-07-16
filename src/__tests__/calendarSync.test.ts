@@ -9,6 +9,9 @@ import type { ClassifyEventFn } from "../services/classifierOutcomes";
 
 const USER_ID = "11111111-1111-1111-1111-111111111111";
 const CAL = "primary";
+// ADR-0006 — the label every test rule writes (classification output is a
+// native label now; colorId on the rule is a legacy cache).
+const TARGET_LABEL = "33333333-3333-3333-3333-333333333333";
 
 function makeEnv(): Bindings {
   const b64 = () => randomBytes(32).toString("base64");
@@ -40,6 +43,8 @@ function makeDb(opts: {
     colorId: string;
     keywords: string[];
     priority: number;
+    labelId?: string | null;
+    labelDeletedAt?: Date | null;
   }>;
   // §5.3: row returned by reserveLlmCall's UPSERT … RETURNING. Present =
   // quota available, omit = over-quota (empty RETURNING → ok: false).
@@ -51,6 +56,9 @@ function makeDb(opts: {
     select: (cols?: Record<string, unknown>) => ({
       from: (_table: unknown) => ({
         where: (_w: unknown) => ({
+          // Awaited directly (no .limit/.orderBy) by labelReconcile's rules
+          // select — resolve to an empty rule set so reconcile no-ops.
+          then: (resolve: (v: never[]) => unknown) => resolve([]),
           limit: async () => {
             if (cols && "nextSyncToken" in cols) {
               return [{ nextSyncToken: opts.nextSyncToken ?? null }];
@@ -101,7 +109,15 @@ async function seedTokenRow(env: Bindings) {
 
 function mockFetchQueue(responses: Response[]) {
   const queue = [...responses];
-  globalThis.fetch = vi.fn(async () => {
+  globalThis.fetch = vi.fn(async (input: RequestInfo | URL) => {
+    const url = typeof input === "string" ? input : input.toString();
+    // ADR-0006 — the default classifier's label reconcile issues one
+    // calendars.get?fields=labelProperties per run. Serve it out-of-band
+    // (empty label set) so queue-based tests keep their token→list→…
+    // ordering regardless of whether the test uses the default classifier.
+    if (url.includes("fields=labelProperties")) {
+      return new Response("{}", { status: 200 });
+    }
     const r = queue.shift();
     if (!r) throw new Error("unexpected fetch");
     return r;
@@ -194,6 +210,10 @@ describe("calendarSync.runIncrementalSync", () => {
           { status: 200 },
         );
       }
+      if (url.includes("fields=labelProperties")) {
+        // ADR-0006 label reconcile probe — empty label set.
+        return new Response("{}", { status: 200 });
+      }
       if (init?.method === "PATCH") {
         // Individual event is gone → Google returns 410.
         return new Response(
@@ -213,7 +233,7 @@ describe("calendarSync.runIncrementalSync", () => {
 
     const classify: ClassifyEventFn = async () => ({
       kind: "embeddingHit",
-      rule: { id: "cat-1", name: "cat-1", colorId: "3" },
+      rule: { id: "cat-1", name: "cat-1", colorId: "3", labelId: TARGET_LABEL },
       seed: { id: "s-1", text: "standup" },
       grade: "declared",
       score: 0.9,
@@ -252,6 +272,10 @@ describe("calendarSync.runIncrementalSync", () => {
           { status: 200 },
         );
       }
+      if (url.includes("fields=labelProperties")) {
+        // ADR-0006 label reconcile probe — empty label set.
+        return new Response("{}", { status: 200 });
+      }
       if (init?.method === "PATCH") {
         // Transient rate limit — Queue must retry the whole sync, not ack-ok.
         return new Response(JSON.stringify({ error: { code: 429 } }), {
@@ -270,7 +294,7 @@ describe("calendarSync.runIncrementalSync", () => {
 
     const classify: ClassifyEventFn = async () => ({
       kind: "embeddingHit",
-      rule: { id: "cat-1", name: "cat-1", colorId: "3" },
+      rule: { id: "cat-1", name: "cat-1", colorId: "3", labelId: TARGET_LABEL },
       seed: { id: "s-1", text: "standup" },
       grade: "declared",
       score: 0.9,
@@ -305,6 +329,10 @@ describe("calendarSync.runIncrementalSync", () => {
           { status: 200 },
         );
       }
+      if (url.includes("fields=labelProperties")) {
+        // ADR-0006 label reconcile probe — empty label set.
+        return new Response("{}", { status: 200 });
+      }
       if (init?.method === "PATCH") {
         return new Response("oops", { status: 502 });
       }
@@ -319,7 +347,7 @@ describe("calendarSync.runIncrementalSync", () => {
 
     const classify: ClassifyEventFn = async () => ({
       kind: "embeddingHit",
-      rule: { id: "cat-1", name: "cat-1", colorId: "3" },
+      rule: { id: "cat-1", name: "cat-1", colorId: "3", labelId: TARGET_LABEL },
       seed: { id: "s-1", text: "standup" },
       grade: "declared",
       score: 0.9,
@@ -353,6 +381,10 @@ describe("calendarSync.runIncrementalSync", () => {
           { status: 200 },
         );
       }
+      if (url.includes("fields=labelProperties")) {
+        // ADR-0006 label reconcile probe — empty label set.
+        return new Response("{}", { status: 200 });
+      }
       if (init?.method === "PATCH") {
         patchUrls.push(url);
         patchResponses.push(new Response("{}", { status: 200 }));
@@ -364,7 +396,7 @@ describe("calendarSync.runIncrementalSync", () => {
           items: [
             { id: "match", status: "confirmed", summary: "standup", colorId: "" },
             { id: "manual", status: "confirmed", summary: "standup", colorId: "7" },
-            { id: "already", status: "confirmed", summary: "standup", colorId: "3" },
+            { id: "already", status: "confirmed", summary: "standup", colorId: "", eventLabelId: TARGET_LABEL },
           ],
           nextSyncToken: "fresh",
         }),
@@ -374,7 +406,7 @@ describe("calendarSync.runIncrementalSync", () => {
 
     const classify: ClassifyEventFn = async () => ({
       kind: "embeddingHit",
-      rule: { id: "cat-1", name: "cat-1", colorId: "3" },
+      rule: { id: "cat-1", name: "cat-1", colorId: "3", labelId: TARGET_LABEL },
       seed: { id: "s-1", text: "standup" },
       grade: "declared",
       score: 0.9,
@@ -413,8 +445,8 @@ describe("calendarSync.runIncrementalSync", () => {
 
 describe("calendarSync — §5.4 ownership-aware color application", () => {
   // INTENT: this block asserts marker payloads using LITERAL strings
-  // ("autocolor_v", "autocolor_color", "autocolor_category", "1") rather
-  // than `AUTOCOLOR_KEYS` constants. That is deliberate — these keys are
+  // ("autocolor_v", "autocolor_label", "autocolor_category", "2", plus the
+  // purged legacy "autocolor_color") rather than `AUTOCOLOR_KEYS` constants. That is deliberate — these keys are
   // the on-the-wire format Google stores against the event, and any rename
   // would silently invalidate every existing event's marker. Do NOT DRY
   // these into the constants; the literals are a wire-format regression
@@ -464,7 +496,7 @@ describe("calendarSync — §5.4 ownership-aware color application", () => {
 
   const classifyToBlue: ClassifyEventFn = async () => ({
     kind: "embeddingHit",
-    rule: { id: "cat-1", name: "cat-1", colorId: "3" },
+    rule: { id: "cat-1", name: "cat-1", colorId: "3", labelId: TARGET_LABEL },
     seed: { id: "s-1", text: "kw" },
     grade: "declared",
     score: 0.9,
@@ -489,21 +521,25 @@ describe("calendarSync — §5.4 ownership-aware color application", () => {
     if (!result.ok) return;
     expect(result.summary.updated).toBe(1);
     expect(patches).toHaveLength(1);
+    expect(patches[0]!.url).toContain("eventLabelVersion=1");
     expect(patches[0]!.body).toEqual({
-      colorId: "3",
+      eventLabelId: TARGET_LABEL,
       extendedProperties: {
         private: {
-          autocolor_v: "1",
-          autocolor_color: "3",
+          autocolor_v: "2",
+          autocolor_label: TARGET_LABEL,
           autocolor_category: "cat-1",
+          autocolor_color: null,
         },
       },
     });
   });
 
-  it("re-applies when app-owned color differs from new target", async () => {
-    // Marker says we last wrote "5" and the event still wears "5" → app-owned.
-    // Rule has since changed to "3" → we may overwrite, stamping a fresh marker.
+  it("re-applies v1-app-owned event (colorId equality) and re-stamps marker v2", async () => {
+    // Marker v1 says we last wrote "5" and the event still wears "5" →
+    // app-owned via the transitional colorId probe. The rule now writes a
+    // label → PATCH goes out as eventLabelId + a fresh v2 marker (this is
+    // the #04 re-stamp path), purging the legacy autocolor_color key.
     const env = makeEnv();
     const tokenRow = await seedTokenRow(env);
     const { db } = makeDb({ nextSyncToken: "old", tokenRow });
@@ -536,12 +572,13 @@ describe("calendarSync — §5.4 ownership-aware color application", () => {
     expect(result.summary.skipped_manual).toBe(0);
     expect(patches).toHaveLength(1);
     expect(patches[0]!.body).toEqual({
-      colorId: "3",
+      eventLabelId: TARGET_LABEL,
       extendedProperties: {
         private: {
-          autocolor_v: "1",
-          autocolor_color: "3",
+          autocolor_v: "2",
+          autocolor_label: TARGET_LABEL,
           autocolor_category: "cat-1",
+          autocolor_color: null,
         },
       },
     });
@@ -584,11 +621,11 @@ describe("calendarSync — §5.4 ownership-aware color application", () => {
   });
 
   it("skipped_equal short-circuits even when valid marker matches current", async () => {
-    // current === target AND a valid app-owned marker is present. The
-    // `current === target` short-circuit must fire FIRST and bump
-    // `skipped_equal` — never PATCH (idempotent no-op). Regression guard
-    // against a future check-order rearrangement that could re-PATCH the
-    // same color and burn the API quota.
+    // current label === target AND a valid app-owned v2 marker is present.
+    // The equality short-circuit must fire FIRST and bump `skipped_equal` —
+    // never PATCH (idempotent no-op). Regression guard against a future
+    // check-order rearrangement that could re-PATCH the same label and burn
+    // the API quota.
     const env = makeEnv();
     const tokenRow = await seedTokenRow(env);
     const { db } = makeDb({ nextSyncToken: "old", tokenRow });
@@ -597,11 +634,12 @@ describe("calendarSync — §5.4 ownership-aware color application", () => {
         id: "stable",
         status: "confirmed",
         summary: "x",
-        colorId: "3",
+        colorId: "",
+        eventLabelId: TARGET_LABEL,
         extendedProperties: {
           private: {
-            autocolor_v: "1",
-            autocolor_color: "3",
+            autocolor_v: "2",
+            autocolor_label: TARGET_LABEL,
             autocolor_category: "cat-1",
           },
         },
@@ -623,22 +661,22 @@ describe("calendarSync — §5.4 ownership-aware color application", () => {
     expect(patches).toHaveLength(0);
   });
 
-  it("treats unknown autocolor_v as opaque (skips even on color match)", async () => {
-    // Forward-compat / rollback safety: a v1-aware deploy seeing a v2
-    // marker must NOT trust the v2 schema. The marker is opaque, so the
+  it("treats unknown autocolor_v as opaque (skips even on value match)", async () => {
+    // Forward-compat / rollback safety: a v2-aware deploy seeing a v3
+    // marker must NOT trust the v3 schema. The marker is opaque, so the
     // event is treated as user-manual (no app-owned re-apply).
     const env = makeEnv();
     const tokenRow = await seedTokenRow(env);
     const { db } = makeDb({ nextSyncToken: "old", tokenRow });
     const { patches } = stubSyncWith([
       {
-        id: "v2-marker",
+        id: "v3-marker",
         status: "confirmed",
         summary: "x",
         colorId: "5",
         extendedProperties: {
           private: {
-            autocolor_v: "2",
+            autocolor_v: "3",
             autocolor_color: "5",
             autocolor_category: "cat-future",
           },
@@ -660,16 +698,23 @@ describe("calendarSync — §5.4 ownership-aware color application", () => {
     expect(patches).toHaveLength(0);
   });
 
-  it("does not retro-claim user-set color matching target (no marker)", async () => {
-    // current === target but no marker → skipped_equal (not updated). Critical
-    // invariant: we never PATCH, so we never stamp a marker on a color we
-    // didn't write. Otherwise we'd silently transfer ownership and the next
-    // rule change would re-color what is, semantically, a user-set event.
+  it("does not retro-claim user-set label matching target (no marker)", async () => {
+    // current label === target but no marker → skipped_equal (not updated).
+    // Critical invariant: we never PATCH, so we never stamp a marker on a
+    // label we didn't write. Otherwise we'd silently transfer ownership and
+    // the next rule change would re-label what is, semantically, a user-set
+    // event.
     const env = makeEnv();
     const tokenRow = await seedTokenRow(env);
     const { db } = makeDb({ nextSyncToken: "old", tokenRow });
     const { patches } = stubSyncWith([
-      { id: "coincidence", status: "confirmed", summary: "x", colorId: "3" },
+      {
+        id: "coincidence",
+        status: "confirmed",
+        summary: "x",
+        colorId: "",
+        eventLabelId: TARGET_LABEL,
+      },
     ]);
 
     const result = await runIncrementalSync({
@@ -799,12 +844,13 @@ describe("calendarSync — §5.4 ownership-aware color application", () => {
     expect(result.summary.skipped_manual).toBe(0);
     expect(patches).toHaveLength(1);
     expect(patches[0]!.body).toEqual({
-      colorId: "3",
+      eventLabelId: TARGET_LABEL,
       extendedProperties: {
         private: {
-          autocolor_v: "1",
-          autocolor_color: "3",
+          autocolor_v: "2",
+          autocolor_label: TARGET_LABEL,
           autocolor_category: "cat-1",
+          autocolor_color: null,
         },
       },
     });
@@ -824,6 +870,124 @@ describe("calendarSync — §5.4 ownership-aware color application", () => {
         summary: "x",
         colorId: "4",
         eventLabelId: "33333333-4444-5555-6666-777777777777",
+      },
+    ]);
+
+    const result = await runIncrementalSync({
+      db,
+      env,
+      userId: USER_ID,
+      calendarId: CAL,
+      classifyEvent: classifyToBlue,
+    });
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.summary.skipped_manual).toBe(1);
+    expect(result.summary.updated).toBe(0);
+    expect(patches).toHaveLength(0);
+  });
+
+  it("hit on a rule without labelId → skipped_no_label, no PATCH (pre-cutover)", async () => {
+    // ADR-0006 — a rule that predates the #04 cutover has labelId NULL.
+    // Classification output is a label, so there is nothing to write; the
+    // event is counted, not guessed.
+    const env = makeEnv();
+    const tokenRow = await seedTokenRow(env);
+    const { db } = makeDb({ nextSyncToken: "old", tokenRow });
+    const { patches } = stubSyncWith([
+      { id: "fresh", status: "confirmed", summary: "x", colorId: "" },
+    ]);
+
+    const noLabelClassify: ClassifyEventFn = async () => ({
+      kind: "embeddingHit",
+      rule: { id: "cat-1", name: "cat-1", colorId: "3", labelId: null },
+      seed: { id: "s-1", text: "kw" },
+      grade: "declared",
+      score: 0.9,
+    });
+    const result = await runIncrementalSync({
+      db,
+      env,
+      userId: USER_ID,
+      calendarId: CAL,
+      classifyEvent: noLabelClassify,
+    });
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.summary.skipped_no_label).toBe(1);
+    expect(result.summary.updated).toBe(0);
+    expect(result.summary.skipped_manual).toBe(0);
+    expect(patches).toHaveLength(0);
+  });
+
+  it("re-applies v2-app-owned event when the rule's label changed", async () => {
+    // Marker v2 label === current eventLabelId → app-owned. A different
+    // classification target may overwrite, stamping a fresh v2 marker.
+    const env = makeEnv();
+    const tokenRow = await seedTokenRow(env);
+    const { db } = makeDb({ nextSyncToken: "old", tokenRow });
+    const { patches } = stubSyncWith([
+      {
+        id: "v2-owned",
+        status: "confirmed",
+        summary: "x",
+        colorId: "",
+        eventLabelId: "44444444-4444-4444-4444-444444444444",
+        extendedProperties: {
+          private: {
+            autocolor_v: "2",
+            autocolor_label: "44444444-4444-4444-4444-444444444444",
+            autocolor_category: "cat-old",
+          },
+        },
+      },
+    ]);
+
+    const result = await runIncrementalSync({
+      db,
+      env,
+      userId: USER_ID,
+      calendarId: CAL,
+      classifyEvent: classifyToBlue,
+    });
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.summary.updated).toBe(1);
+    expect(result.summary.skipped_manual).toBe(0);
+    expect(patches).toHaveLength(1);
+    expect(patches[0]!.body).toEqual({
+      eventLabelId: TARGET_LABEL,
+      extendedProperties: {
+        private: {
+          autocolor_v: "2",
+          autocolor_label: TARGET_LABEL,
+          autocolor_category: "cat-1",
+          autocolor_color: null,
+        },
+      },
+    });
+  });
+
+  it("skips v2-marked event when the user re-labelled after our PATCH", async () => {
+    // Marker v2 label ≠ current eventLabelId → the user picked another
+    // label chip after us. Manual — never overwrite.
+    const env = makeEnv();
+    const tokenRow = await seedTokenRow(env);
+    const { db } = makeDb({ nextSyncToken: "old", tokenRow });
+    const { patches } = stubSyncWith([
+      {
+        id: "v2-relabelled",
+        status: "confirmed",
+        summary: "x",
+        colorId: "",
+        eventLabelId: "55555555-5555-5555-5555-555555555555",
+        extendedProperties: {
+          private: {
+            autocolor_v: "2",
+            autocolor_label: "44444444-4444-4444-4444-444444444444",
+            autocolor_category: "cat-old",
+          },
+        },
       },
     ]);
 
@@ -900,7 +1064,15 @@ describe("calendarSync — §5.3 LLM fallback counter wiring", () => {
       nextSyncToken: "t",
       tokenRow,
       categories: [
-        { id: "c-1", name: "회의", colorId: "9", keywords: ["회의"], priority: 100 },
+        {
+          id: "c-1",
+          name: "회의",
+          colorId: "9",
+          keywords: ["회의"],
+          priority: 100,
+          labelId: "99999999-9999-9999-9999-999999999999",
+          labelDeletedAt: null,
+        },
       ],
       reserveRow: { callCount: 1 },
     });
@@ -996,6 +1168,10 @@ describe("calendarSync.runFullResync chunking", () => {
           { status: 200 },
         );
       }
+      if (url.includes("fields=labelProperties")) {
+        // ADR-0006 label reconcile probe — empty label set.
+        return new Response("{}", { status: 200 });
+      }
       listUrls.push(url);
       // Every page hands back a pageToken so we exceed the 5-page chunk cap.
       const page = listUrls.length;
@@ -1065,6 +1241,10 @@ describe("calendarSync.runFullResync chunking", () => {
           { status: 200 },
         );
       }
+      if (url.includes("fields=labelProperties")) {
+        // ADR-0006 label reconcile probe — empty label set.
+        return new Response("{}", { status: 200 });
+      }
       listUrls.push(url);
       return new Response(
         JSON.stringify({ items: [], nextSyncToken: "done" }),
@@ -1125,6 +1305,10 @@ describe("calendarSync — §6 Wave A observability hooks", () => {
           JSON.stringify({ access_token: "at", expires_in: 3600, scope: "openid", token_type: "Bearer" }),
           { status: 200 },
         );
+      }
+      if (url.includes("fields=labelProperties")) {
+        // ADR-0006 label reconcile probe — empty label set.
+        return new Response("{}", { status: 200 });
       }
       page += 1;
       // Every page hands back nextPageToken but never nextSyncToken, so
@@ -1229,7 +1413,7 @@ describe("calendarSync — #02 subrequest budget guard", () => {
     (attempts: number): ClassifyEventFn =>
     async (event) => ({
       kind: "llmHit",
-      rule: { id: "cat-1", name: "cat-1", colorId: "3" },
+      rule: { id: "cat-1", name: "cat-1", colorId: "3", labelId: TARGET_LABEL },
       llmRecord: {
         outcome: "hit",
         latencyMs: 1,
@@ -1255,16 +1439,21 @@ describe("calendarSync — #02 subrequest budget guard", () => {
     globalThis.fetch = vi.fn(async (input: RequestInfo | URL) => {
       const url = typeof input === "string" ? input : input.toString();
       if (url.includes("oauth2.googleapis.com/token")) return tokenResponse();
+      // ADR-0006 label reconcile — the run's fixed extra fetch, not events.list.
+      if (url.includes("fields=labelProperties")) {
+        return new Response("{}", { status: 200 });
+      }
       listUrls.push(url);
       return new Response(JSON.stringify({ items: [], nextSyncToken: "fresh" }), { status: 200 });
     }) as typeof fetch;
 
-    // Default budget 40 → floor((40-2)/3) = 12.
+    // Default budget 40 → floor((40-1-2)/3) = 12 (run-fixed reconcile fetch
+    // pre-paid by the derivation).
     let res = await runIncrementalSync({ db, env, userId: USER_ID, calendarId: CAL });
     expect(res.ok).toBe(true);
     expect(listUrls[0]).toContain("maxResults=12");
 
-    // Custom budget 100 → floor((100-2)/3) = 32.
+    // Custom budget 100 → floor((100-1-2)/3) = 32.
     listUrls.length = 0;
     res = await runIncrementalSync({
       db,
@@ -1417,7 +1606,14 @@ describe("calendarSync — #02 subrequest budget guard", () => {
       nextSyncToken: null,
       tokenRow,
       categories: [
-        { id: "c-1", name: "회의", colorId: "9", keywords: ["회의"], priority: 100 },
+        {
+          id: "c-1",
+          name: "회의",
+          colorId: "9",
+          keywords: ["회의"],
+          priority: 100,
+          labelId: TARGET_LABEL,
+        },
       ],
       reserveRow: { callCount: 1 },
     });
@@ -1438,6 +1634,11 @@ describe("calendarSync — #02 subrequest budget guard", () => {
       }
       const url = typeof input === "string" ? input : input.toString();
       if (url.includes("oauth2.googleapis.com/token")) return tokenResponse();
+      // ADR-0006 label reconcile — one calendars.get per invocation; counts
+      // toward the simulated cap exactly like it does in prod.
+      if (url.includes("fields=labelProperties")) {
+        return new Response("{}", { status: 200 });
+      }
       if (url.includes("api.openai.com")) {
         return new Response(
           JSON.stringify({
@@ -1447,7 +1648,8 @@ describe("calendarSync — #02 subrequest budget guard", () => {
         );
       }
       if (init?.method === "PATCH") {
-        const id = decodeURIComponent(url.split("/events/")[1]!);
+        // patchEventLabel appends ?eventLabelVersion=1 — strip the query.
+        const id = decodeURIComponent(url.split("/events/")[1]!.split("?")[0]!);
         patchedIds.add(id);
         return new Response("{}", { status: 200 });
       }

@@ -15,11 +15,13 @@ import type { LlmCallRecord } from "./llmClassifier";
 import {
   AUTOCOLOR_KEYS,
   AUTOCOLOR_MARKER_VERSION,
+  AUTOCOLOR_MARKER_VERSION_V1,
   CalendarApiError,
   listEvents,
-  patchEventColor,
+  patchEventLabel,
   type CalendarEvent,
 } from "./googleCalendar";
+import { reconcileLabels } from "./labelReconcile";
 import { listRules } from "./ruleService";
 import { ReauthRequiredError, getValidAccessToken } from "./tokenRefresh";
 
@@ -30,6 +32,11 @@ export type SyncSummary = {
   updated: number;
   skipped_manual: number;
   skipped_equal: number;
+  // ADR-0006 — hit on a rule with no `labelId` yet (pre-cutover row). The
+  // write is skipped rather than guessed; the #04 cutover backfills labels
+  // and re-syncs. Counter lives in the summary/`lastRunSummary` jsonb only —
+  // deliberately NOT a `sync_runs` column (transient until #04).
+  skipped_no_label: number;
   cancelled: number;
   no_match: number;
   // §5.3 LLM fallback counters. `llm_attempted` fires whenever the chain
@@ -130,6 +137,11 @@ const FULL_RESYNC_FUTURE_MS = 365 * 24 * 3600 * 1000;
 const DEFAULT_SUBREQUEST_BUDGET = 40;
 // Fixed per-page fetches: 1 events.list + 1 Workers-AI title-embed batch.
 const PAGE_FIXED_FETCH_COST = 2;
+// Fixed per-run fetches: 1 calendars.get labelProperties (ADR-0006 label
+// reconcile, before the first page). Reconcile's Workers-AI re-seed embeds
+// (rename/new label only) are deliberately NOT budgeted — rare, and covered
+// by the 50-cap margin the default budget leaves.
+const RUN_FIXED_FETCH_COST = 1;
 // Worst-case per-event fetches: ≤2 OpenAI attempts (llmClassifier
 // MAX_ATTEMPTS) + 1 events.patch.
 const PER_EVENT_FETCH_COST = 3;
@@ -142,7 +154,9 @@ function parseSubrequestBudget(raw: string | undefined): number {
 }
 
 // events.list page size is DERIVED from the budget so that one full page can
-// never overrun a fresh invocation's budget (fixed + perEvent×P ≤ budget).
+// never overrun a fresh invocation's budget (run-fixed + page-fixed +
+// perEvent×P ≤ budget — the run-fixed reconcile fetch is included because
+// every resumed chunk pays it again before its first page).
 // That is what makes same-pageToken resume convergent: a page interrupted
 // mid-way (entered with budget already partially spent) completes on the next
 // invocation, which starts from used=0 and re-processes the page's prefix
@@ -150,7 +164,9 @@ function parseSubrequestBudget(raw: string | undefined): number {
 // a 40-fetch budget would strand large LLM-heavy pages forever — every redo
 // re-burns one OpenAI fetch per rule-miss event before reaching fresh work.
 function deriveSyncPageSize(budget: number): number {
-  const p = Math.floor((budget - PAGE_FIXED_FETCH_COST) / PER_EVENT_FETCH_COST);
+  const p = Math.floor(
+    (budget - RUN_FIXED_FETCH_COST - PAGE_FIXED_FETCH_COST) / PER_EVENT_FETCH_COST,
+  );
   return Math.min(2500, Math.max(1, p));
 }
 
@@ -162,6 +178,7 @@ function makeSummary(): SyncSummary {
     updated: 0,
     skipped_manual: 0,
     skipped_equal: 0,
+    skipped_no_label: 0,
     cancelled: 0,
     no_match: 0,
     llm_attempted: 0,
@@ -248,55 +265,64 @@ async function processEvent(
   const hit = outcomeToRuleHit(outcome);
   if (hit === null) return;
 
-  const current = event.colorId ?? "";
-  const target = hit.colorId;
-  // Invariant: the marker is stamped only on colors *this code actually
-  // wrote*. We never retro-claim ownership of a color that happens to match
-  // our target, even if the colorId equality lets us short-circuit the
-  // PATCH below.
-  if (current === target) {
+  // ADR-0006 (native-labels #02) — classification output is a native label.
+  // A hit on a rule that has no label yet (pre-cutover row, labelId NULL)
+  // is skipped rather than guessed; the #04 cutover backfills `labelId` and
+  // re-syncs.
+  const target = hit.labelId ?? null;
+  if (target === null) {
+    summary.skipped_no_label += 1;
+    return;
+  }
+  const currentLabel = event.eventLabelId ?? "";
+  // Invariant: the marker is stamped only on labels *this code actually
+  // wrote*. We never retro-claim ownership of a label that happens to match
+  // our target, even if the equality lets us short-circuit the PATCH below.
+  if (currentLabel === target) {
     summary.skipped_equal += 1;
     return;
   }
-  // §5.4 ownership-aware skip. Treat the event as user-manual unless our
-  // marker color matches the current colorId — i.e., the event still wears
-  // the exact color we last wrote. If the user changed the color after our
-  // PATCH (or never let us touch it), the marker color won't match `current`
-  // and we leave the event alone. Version gating: if `autocolor_v` does not
-  // match the version this code understands, treat the marker as opaque
-  // (skip rather than misinterpret), so a v1-aware deploy that briefly sees
-  // a v2 marker during a rollback window won't re-color v2-owned events.
+  // §5.4 ownership-aware skip, label world. Version-gated probes:
+  // - marker v2: ownership = stored `autocolor_label` still equals the
+  //   event's current `eventLabelId` (the user hasn't re-labelled after us).
+  // - marker v1 (transitional, until the #04 re-stamp): ownership = stored
+  //   `autocolor_color` still equals the legacy `colorId` — the bridge keeps
+  //   colorId stable for classic colors we wrote. Residual v1 blind spot
+  //   (user label best-matching our marker color) is ADR-0006 잔여 리스크 ②,
+  //   closed by the v2 re-stamp.
+  // - unknown versions are opaque: skip rather than misinterpret.
+  // Manual signal (native-labels #01): any label/color present without
+  // ownership = user-manual — label presence alone is NOT manual (our own
+  // writes carry the label / a bridged one).
   const priv = event.extendedProperties?.private;
   const markerVersion = priv?.[AUTOCOLOR_KEYS.version];
-  const ownedColor =
-    markerVersion === AUTOCOLOR_MARKER_VERSION
-      ? priv?.[AUTOCOLOR_KEYS.color]
-      : undefined;
-  const appOwned = ownedColor !== undefined && ownedColor === current;
-  // native-labels #01 (ADR-0006) — label-aware manual gate. A user color
-  // pick can surface as `eventLabelId` with an EMPTY legacy `colorId`
-  // (non-classic grid colors; named labels show a best-match colorId), so
-  // "colorId empty" no longer implies "uncolored". Label presence alone is
-  // NOT manual — our own colorId PATCHes carry a Google-bridged label too —
-  // the manual signal is marker mismatch + label presence. appOwned events
-  // (marker v1 colorId equality) stay re-applicable: their bridge label is
-  // ours. Residual v1 blind spot: a user label whose best-match colorId
-  // happens to equal our marker color reads as appOwned; marker v2 (#02,
-  // labelId equality) closes it.
-  if (!appOwned && (event.eventLabelId ?? "") !== "") {
+  let appOwned = false;
+  if (markerVersion === AUTOCOLOR_MARKER_VERSION) {
+    const ownedLabel = priv?.[AUTOCOLOR_KEYS.label];
+    appOwned = ownedLabel !== undefined && ownedLabel === currentLabel;
+  } else if (markerVersion === AUTOCOLOR_MARKER_VERSION_V1) {
+    const ownedColor = priv?.[AUTOCOLOR_KEYS.color];
+    appOwned = ownedColor !== undefined && ownedColor === (event.colorId ?? "");
+  }
+  if (currentLabel !== "" && !appOwned) {
     summary.skipped_manual += 1;
     return;
   }
-  if (current !== "" && !appOwned) {
+  // Label-less but legacy-colored (pre-bridge relic / cleared-label event
+  // keeping a colorId): still user-manual unless owned.
+  if ((event.colorId ?? "") !== "" && !appOwned) {
     summary.skipped_manual += 1;
     return;
   }
   // Counted before issuing — a PATCH that throws still consumed budget.
   fetches.used += 1;
-  await patchEventColor(accessToken, ctx.calendarId, event.id, target, {
+  await patchEventLabel(accessToken, ctx.calendarId, event.id, target, {
     [AUTOCOLOR_KEYS.version]: AUTOCOLOR_MARKER_VERSION,
-    [AUTOCOLOR_KEYS.color]: target,
+    [AUTOCOLOR_KEYS.label]: target,
     [AUTOCOLOR_KEYS.category]: hit.id,
+    // Purge the v1 legacy probe on re-stamp so an event never carries a
+    // stale colorId marker alongside a v2 marker.
+    [AUTOCOLOR_KEYS.color]: null,
   });
   summary.updated += 1;
 }
@@ -307,7 +333,7 @@ async function processEvent(
 // a hit-vs-miss decision at the lifecycle layer.
 function outcomeToRuleHit(
   outcome: ClassificationOutcome,
-): { id: string; name: string; colorId: string } | null {
+): { id: string; name: string; colorId: string; labelId?: string | null } | null {
   switch (outcome.kind) {
     case "llmHit":
     case "embeddingHit":
@@ -489,6 +515,26 @@ async function runPagedList(
       return finalize({ ok: false, reason: "reauth_required", error: err, summary });
     }
     return finalize({ ok: false, reason: "retryable", error: err as Error, summary });
+  }
+
+  // ADR-0006 (native-labels #02) — fold Google-side label edits into the
+  // rule cache BEFORE loading categories, so this very run classifies with
+  // renamed/created rules and never assigns a deleted-label rule. Warn-only
+  // inside; a reconcile failure degrades to the cached rules. Runs only with
+  // the default classifier — a test-injected `ctx.classifyEvent` bypasses
+  // rules entirely, so the extra `calendars.get` fetch would be pure waste.
+  // Subrequest budget: this is the run's single extra fetch (+ AI embed
+  // calls only when a rename/new label needs re-seeding) — pre-paid by
+  // RUN_FIXED_FETCH_COST in the page-size derivation.
+  if (usingDefaultClassifier) {
+    fetches.used += 1; // calendars.get labelProperties
+    await reconcileLabels({
+      db: ctx.db,
+      userId: ctx.userId,
+      calendarId: ctx.calendarId,
+      accessToken,
+      embed: embedTitles,
+    });
   }
 
   const cats = await loadCategories(ctx.db, ctx.userId);

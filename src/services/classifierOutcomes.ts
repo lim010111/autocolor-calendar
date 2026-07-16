@@ -2,7 +2,17 @@ import type { CalendarEvent } from "./googleCalendar";
 import type { LlmCallRecord } from "./llmClassifier";
 import type { Rule } from "./ruleService";
 
-export type RuleRef = { id: string; name: string; colorId: string };
+// `labelId` (ADR-0006, native-labels #02) is the Google event-label UUID the
+// sync pipeline writes for a hit. Optional-nullable: `null`/absent marks a
+// pre-cutover rule (no label attached yet) — `processEvent` skips the write
+// for those instead of guessing. `colorId` stays as the legacy cache until
+// the #04 cutover removes it.
+export type RuleRef = {
+  id: string;
+  name: string;
+  colorId: string;
+  labelId?: string | null;
+};
 
 // Classifier input context. Relocated here from the deleted substring
 // `classifier.ts` (ADR-0004 #02). `categories` is assumed pre-sorted by

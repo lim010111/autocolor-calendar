@@ -12,6 +12,7 @@ import {
   text,
   timestamp,
   unique,
+  uniqueIndex,
   uuid,
 } from "drizzle-orm/pg-core";
 
@@ -109,16 +110,36 @@ export const categories = pgTable(
     userId: uuid("user_id")
       .notNull()
       .references(() => users.id, { onDelete: "cascade" }),
+    // ADR-0006 (native-labels #02): `name` and `colorId` are demoted to
+    // read-only caches of the Google label definition — the canonical
+    // name/color lives in `Calendars.labelProperties` and is reconciled at
+    // sync start (`labelReconcile.ts`). `colorId` remains the legacy classic
+    // approximation until #04 removes it.
     name: text("name").notNull(),
     colorId: text("color_id").notNull(),
     keywords: text("keywords").array().notNull().default(sql`'{}'::text[]`),
     priority: integer("priority").notNull().default(100),
+    // ADR-0006 — Google event-label UUID this Rule is attached to
+    // (calendar-scoped; sync targets the primary calendar only, so one
+    // column suffices — multi-calendar splits into a mapping table when
+    // that lands). NULL = pre-cutover rule; the #04 migration backfills.
+    labelId: text("label_id"),
+    // Stamped when the backing Google label was deleted (or lost its name).
+    // A stamped rule is excluded from classification and shown as "라벨
+    // 삭제됨" in the editor. Never auto-cleared — deleted rules do not
+    // revive (ADR-0006 Decision 4: 사용자 편집이 이긴다).
+    labelDeletedAt: timestamp("label_deleted_at", { withTimezone: true }),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [
     index("categories_user_priority_idx").on(t.userId, t.priority),
     unique("categories_user_id_name_unique").on(t.userId, t.name),
+    // One Rule per Google label per user — reconcile's create/link paths
+    // race-guard (partial: pre-cutover rows all have NULL labelId).
+    uniqueIndex("categories_user_label_unique")
+      .on(t.userId, t.labelId)
+      .where(sql`${t.labelId} IS NOT NULL`),
     // Google Calendar event color IDs are the string keys "1".."11" per
     // https://developers.google.com/calendar/api/v3/reference/colors.
     check(
