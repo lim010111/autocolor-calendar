@@ -62,6 +62,15 @@ export type Bindings = {
   // default. Defined as a `vars` value (not a secret) so operators can
   // adjust per environment without re-deploying.
   LLM_GLOBAL_DAILY_LIMIT?: string;
+
+  // sync-reliability #02 — per-invocation external-fetch budget for the sync
+  // pipeline (`calendarSync.runPagedList`). Workers Free caps subrequests at
+  // 50/invocation; the default (40) keeps a margin for the fetches the guard
+  // does not count (token refresh / DB connection / queue send). Same parse
+  // rules as `LLM_DAILY_LIMIT` — NaN / ≤ 0 / unset fall back to the default.
+  // Bump toward ~900 if #01 moves the account to Workers Paid (1000-cap) —
+  // the guard logic is plan-agnostic.
+  SYNC_SUBREQUEST_BUDGET?: string;
 };
 
 export type Variables = {

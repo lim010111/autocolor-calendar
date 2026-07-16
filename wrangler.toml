@@ -19,6 +19,12 @@ GOOGLE_OAUTH_REDIRECT_URI = "https://autocolor-dev.autocolor-lim.workers.dev/oau
 # Adjust per environment without redeploying — value is parsed at request
 # time inside `parseGlobalDailyLimit`.
 LLM_GLOBAL_DAILY_LIMIT = "10000"
+# sync-reliability #02 — per-invocation external-fetch budget for the sync
+# pipeline. Workers Free allows 50 subrequests per invocation; 40 leaves
+# margin for token refresh / DB / queue traffic the guard does not count.
+# Parsed at run time in calendarSync's `parseSubrequestBudget`; bump toward
+# ~900 if #01 moves the account to Workers Paid.
+SYNC_SUBREQUEST_BUDGET = "40"
 
 # Cron triggers — scoped to `[env.dev.triggers]` deliberately.
 # TOML doesn't nest tables by indentation: `[triggers]` at any offset is a
@@ -88,6 +94,9 @@ GOOGLE_OAUTH_REDIRECT_URI = "https://autocolorcal.app/oauth/google/callback"
 # Cost guardrail (§5/§6 후속) — see dev block above. Same default for the
 # initial Marketplace launch; bump (or split per-env) once we have signal.
 LLM_GLOBAL_DAILY_LIMIT = "10000"
+# sync-reliability #02 — see dev block above. Free-plan default; bump toward
+# ~900 if #01 moves the account to Workers Paid.
+SYNC_SUBREQUEST_BUDGET = "40"
 # ↑ G1 verified 도메인. GCP prod Web Client의 Authorized redirect URIs 등록은
 # G2 runbook Step 4에서 client 생성 시 같이 처리된다.
 # WEBHOOK_BASE_URL은 G2 runbook Step 14에서 시크릿으로 주입한다

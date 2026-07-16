@@ -80,13 +80,26 @@ export type SyncRunOutcome =
 
 export type SyncRunRecord = SyncSummary & { outcome: SyncRunOutcome };
 
+// Chunk-continuation coordinates the consumer (`applyResult`) re-enqueues as
+// a fresh queue job. Two shapes, discriminated by `syncToken` presence:
+// - full_resync (window-paged): `timeMin`/`timeMax` — Google couples the
+//   pageToken to the original window, so it must survive the hop unchanged.
+// - incremental (syncToken-paged, #02 budget guard): `syncToken` — carried in
+//   the job rather than re-read from sync_state so the (syncToken, pageToken)
+//   pair Google sees stays consistent even if another incremental sync
+//   interleaves between the stop and the resume.
+export type SyncContinuation = {
+  pageToken: string;
+  timeMin?: string | undefined;
+  timeMax?: string | undefined;
+  syncToken?: string | undefined;
+};
+
 export type RunResult =
   | {
       ok: true;
       summary: SyncSummary;
-      continuation?:
-        | { pageToken: string; timeMin: string; timeMax: string }
-        | undefined;
+      continuation?: SyncContinuation | undefined;
     }
   | {
       ok: false;
@@ -99,6 +112,47 @@ export type RunResult =
 const MAX_PAGES_PER_FULL_RESYNC_RUN = 5;
 const FULL_RESYNC_PAST_MS = 30 * 24 * 3600 * 1000;
 const FULL_RESYNC_FUTURE_MS = 365 * 24 * 3600 * 1000;
+
+// sync-reliability #02 — per-invocation subrequest budget guard. Workers Free
+// caps external fetches at 50 per invocation; past the cap EVERY subsequent
+// fetch() rejects with "Too many subrequests", which silently drops LLM
+// classifications (bad_response → no_match) and turns PATCH failures into
+// queue retry storms that burn the daily LLM quota (see
+// .scratch/sync-reliability/PRD.md). `runPagedList` therefore counts the
+// external fetches it issues — events.list, events.patch, per-page title
+// embedding, and the LLM leg's OpenAI calls — and stops at a safe point,
+// re-enqueueing a continuation chunk instead of running into the cap.
+//
+// The default (40) leaves the 50-cap margin for the fetches the guard does
+// NOT count: token refresh, the Hyperdrive DB connection, and the queue
+// producer send. Plan changes (#01 Workers Paid, 1000-subrequest cap) only
+// change the env value — the guard logic is plan-agnostic.
+const DEFAULT_SUBREQUEST_BUDGET = 40;
+// Fixed per-page fetches: 1 events.list + 1 Workers-AI title-embed batch.
+const PAGE_FIXED_FETCH_COST = 2;
+// Worst-case per-event fetches: ≤2 OpenAI attempts (llmClassifier
+// MAX_ATTEMPTS) + 1 events.patch.
+const PER_EVENT_FETCH_COST = 3;
+
+// Same parse rules as `parseDailyLimit` (llmClassifier.ts): NaN / ≤0 / unset
+// all fall back to the default.
+function parseSubrequestBudget(raw: string | undefined): number {
+  const n = raw ? Number.parseInt(raw, 10) : Number.NaN;
+  return Number.isFinite(n) && n > 0 ? n : DEFAULT_SUBREQUEST_BUDGET;
+}
+
+// events.list page size is DERIVED from the budget so that one full page can
+// never overrun a fresh invocation's budget (fixed + perEvent×P ≤ budget).
+// That is what makes same-pageToken resume convergent: a page interrupted
+// mid-way (entered with budget already partially spent) completes on the next
+// invocation, which starts from used=0 and re-processes the page's prefix
+// idempotently (same color → skipped_equal). Keeping maxResults at 2500 with
+// a 40-fetch budget would strand large LLM-heavy pages forever — every redo
+// re-burns one OpenAI fetch per rule-miss event before reaching fresh work.
+function deriveSyncPageSize(budget: number): number {
+  const p = Math.floor((budget - PAGE_FIXED_FETCH_COST) / PER_EVENT_FETCH_COST);
+  return Math.min(2500, Math.max(1, p));
+}
 
 function makeSummary(): SyncSummary {
   return {
@@ -168,6 +222,10 @@ async function processEvent(
   classifyCtx: ClassifyContext,
   classify: ClassifyEventFn,
   summary: SyncSummary,
+  // #02 budget guard — shared per-invocation fetch counter owned by
+  // `runPagedList`. processEvent adds the LLM leg's OpenAI attempts and the
+  // events.patch it issues.
+  fetches: { used: number },
 ): Promise<void> {
   summary.seen += 1;
   if (event.status === "cancelled") {
@@ -181,6 +239,12 @@ async function processEvent(
   // lifecycle counters (seen / cancelled / evaluated / skipped_* / updated)
   // that derive from §5.4 ownership marker checks + `patchEventColor`.
   const outcome: ClassificationOutcome = await classify(event, classifyCtx);
+  // #02 budget guard — OpenAI fetches are counted post-hoc from the record
+  // every llm* outcome carries (`attempts` = actual fetch count; 0 for the
+  // quota-latched / disabled short-circuits that never fetched). Reading the
+  // record here keeps the counter wiring entirely out of classifierChain /
+  // llmClassifier.
+  if ("llmRecord" in outcome) fetches.used += outcome.llmRecord.attempts;
   const hit = outcomeToRuleHit(outcome);
   if (hit === null) return;
 
@@ -213,6 +277,8 @@ async function processEvent(
     summary.skipped_manual += 1;
     return;
   }
+  // Counted before issuing — a PATCH that throws still consumed budget.
+  fetches.used += 1;
   await patchEventColor(accessToken, ctx.calendarId, event.id, target, {
     [AUTOCOLOR_KEYS.version]: AUTOCOLOR_MARKER_VERSION,
     [AUTOCOLOR_KEYS.color]: target,
@@ -242,7 +308,22 @@ function outcomeToRuleHit(
   }
 }
 
-export async function runIncrementalSync(ctx: SyncContext): Promise<RunResult> {
+export async function runIncrementalSync(
+  ctx: SyncContext,
+  // #02 budget guard — continuation resume. Carries the exact
+  // (syncToken, pageToken) pair the interrupted run was paging with, so the
+  // pair Google sees stays consistent even if another incremental sync
+  // interleaved and stored a fresh token in sync_state meanwhile. A stale
+  // pair is self-healing: Google answers 410 → full_sync_required recovery.
+  opts?: { syncToken: string; pageToken: string },
+): Promise<RunResult> {
+  if (opts) {
+    return runPagedList(
+      ctx,
+      { syncToken: opts.syncToken, pageToken: opts.pageToken },
+      false,
+    );
+  }
   const rows = await ctx.db
     .select({ nextSyncToken: syncState.nextSyncToken })
     .from(syncState)
@@ -291,6 +372,43 @@ async function runPagedList(
   chunked: boolean,
 ): Promise<RunResult> {
   const summary = makeSummary();
+  // #02 subrequest budget guard state. `fetches.used` counts the external
+  // fetches this invocation issued (events.list / title-embed batch /
+  // events.patch / OpenAI attempts). Two stop points, both re-enqueued as a
+  // continuation chunk via the consumer:
+  // - mid-page: before each event, when even a worst-case event (3 fetches)
+  //   no longer fits, resume from the CURRENT page's token — re-processing
+  //   the already-handled prefix is idempotent (same color → skipped_equal).
+  // - page boundary: only start the next page when fetching it plus at least
+  //   one event still fits.
+  // Budget stops are observable as sync_runs rows with outcome='ok' AND
+  // stored_next_sync_token=false (for full_resync additionally
+  // pages < MAX_PAGES_PER_FULL_RESYNC_RUN), plus the warn line below.
+  const budget = parseSubrequestBudget(ctx.env.SYNC_SUBREQUEST_BUDGET);
+  const pageSize = deriveSyncPageSize(budget);
+  const fetches = { used: 0 };
+  // Counters only — no event content (log redaction contract). calendarId is
+  // deliberately excluded: a primary calendar id is the user's email.
+  const warnBudgetStop = (): void => {
+    console.warn(
+      JSON.stringify({
+        level: "warn",
+        msg: "subrequest budget reached — stopping run, re-enqueueing continuation chunk",
+        used: fetches.used,
+        budget,
+        pages: summary.pages,
+        seen: summary.seen,
+        userId: ctx.userId,
+      }),
+    );
+  };
+  // Continuation coordinates for a budget stop. `chunked` runs are always
+  // full_resync (window present); non-chunked runs are always syncToken-paged
+  // (runIncrementalSync is the only caller) — hence the non-null assertions.
+  const budgetContinuation = (resumeToken: string): SyncContinuation =>
+    chunked
+      ? { pageToken: resumeToken, timeMin: start.timeMin!, timeMax: start.timeMax! }
+      : { pageToken: resumeToken, syncToken: start.syncToken! };
   // §6 Wave A buffer — every LLM call during this run (including quota-
   // latched skips) pushes a record. Flushed via `flushLlmCalls()` before
   // every return, so retryable failures still record the work done before
@@ -364,27 +482,42 @@ async function runPagedList(
 
   let pageToken: string | undefined = start.pageToken;
   let finalSyncToken: string | undefined;
-  let continuation:
-    | { pageToken: string; timeMin: string; timeMax: string }
-    | undefined;
+  let continuation: SyncContinuation | undefined;
 
   do {
+    // Token that fetched the page currently being processed — the mid-page
+    // budget stop's resume point. Undefined only on the very first page of a
+    // fresh arc, where the mid-page guard can never trip: page size is
+    // derived so a full page fits a fresh invocation's budget.
+    const thisPageToken = pageToken;
     try {
+      fetches.used += 1; // events.list
       const res = await listEvents(accessToken, ctx.calendarId, {
         syncToken: start.syncToken,
         pageToken,
         timeMin: start.timeMin,
         timeMax: start.timeMax,
+        maxResults: pageSize,
       });
       summary.pages += 1;
       // Refresh the per-page title vectors before classifying this page's
       // events. Only when the default (embedding) classifier is in use.
       if (usingDefaultClassifier && embedTitles) {
+        fetches.used += 1; // Workers-AI title-embed batch
         pageVectors = await embedPageTitles(embedTitles, res.items ?? []);
       }
       for (const ev of res.items ?? []) {
+        // #02 mid-page budget stop — see the guard-state comment above.
+        if (
+          thisPageToken !== undefined &&
+          fetches.used + PER_EVENT_FETCH_COST > budget
+        ) {
+          continuation = budgetContinuation(thisPageToken);
+          warnBudgetStop();
+          break;
+        }
         try {
-          await processEvent(ctx, accessToken, ev, classifyCtx, classify, summary);
+          await processEvent(ctx, accessToken, ev, classifyCtx, classify, summary, fetches);
         } catch (err) {
           if (err instanceof CalendarApiError) {
             // Session-wide / transient signals must abort the page loop so
@@ -407,6 +540,10 @@ async function runPagedList(
           }
         }
       }
+      // Mid-page budget stop: leave this page's nextPageToken/nextSyncToken
+      // untouched — the continuation re-fetches the same page, so advancing
+      // either would skip its unprocessed tail.
+      if (continuation) break;
       pageToken = res.nextPageToken;
       if (res.nextSyncToken) finalSyncToken = res.nextSyncToken;
 
@@ -417,6 +554,16 @@ async function runPagedList(
           timeMin: start.timeMin!,
           timeMax: start.timeMax!,
         };
+        break;
+      }
+      // #02 page-boundary budget stop: start the next page only when fetching
+      // + embedding it plus at least one worst-case event still fits.
+      if (
+        pageToken &&
+        fetches.used + PAGE_FIXED_FETCH_COST + PER_EVENT_FETCH_COST > budget
+      ) {
+        continuation = budgetContinuation(pageToken);
+        warnBudgetStop();
         break;
       }
     } catch (err) {
