@@ -291,8 +291,11 @@ NULL policy summary by outcome:
 \* `fetch_failed` (sync-reliability #03) = the fetch itself threw, no HTTP
 response received — distinct from `bad_response`, which is model-borne (a
 body arrived but was unusable). `prompt_summary` is ✓ on an actual thrown
-fetch (`attempts >= 1`, prompt built pre-fetch) and NULL on the chain's
-cap-latched skip rows (`attempts: 0`, no prompt built).
+fetch (`attempts >= 1`, prompt built pre-fetch) and NULL on the two
+`attempts: 0` shapes where no prompt was built: the chain's cap-latched
+skip rows, and rows where `reserveLlmCall` itself threw (its DB writes are
+subrequests too, so the Workers Free cap can fire at the reservation point
+— folded to `fetch_failed` instead of escaping `classifyWithLlm`).
 
 PII discipline:
 - **DB columns are NOT logs.** The "Calendar event payloads must never be

@@ -488,7 +488,34 @@ export async function classifyWithLlm(
   const perUserLimit = parseDailyLimit(deps.env.LLM_DAILY_LIMIT);
   const globalLimit = parseGlobalDailyLimit(deps.env.LLM_GLOBAL_DAILY_LIMIT);
   const reserve = deps.reserve ?? reserveLlmCall;
-  const reservation = await reserve(deps.db, deps.userId, perUserLimit, globalLimit);
+  let reservation: Awaited<ReturnType<ReserveLlmCallFn>>;
+  try {
+    reservation = await reserve(deps.db, deps.userId, perUserLimit, globalLimit);
+  } catch (err) {
+    // `reserveLlmCall` performs DB writes (TCP subrequests on Workers)
+    // BEFORE the OpenAI fetch, so the Workers Free subrequest cap can fire
+    // HERE, not just inside the fetch loop below. Letting the throw escape
+    // would skip finish() (no llm_calls row), bypass the chain's cap-latch,
+    // and bubble up as a retryable sync failure. Fold it into the same
+    // fetch_failed shape the fetch-loop catch arm produces: a reserve
+    // *failure* must never masquerade as a granted reservation or a quota
+    // denial — no fetch was attempted, quota state is unknown. No retry
+    // either: re-running reserve would double-increment the daily counters.
+    // SECURITY CONTRACT: log err.name + allowlist classification only,
+    // never err.message.
+    const errName = err instanceof Error ? err.name : typeof err;
+    const classification = classifyInfraError(err);
+    console.warn(
+      classification !== undefined
+        ? `[llmClassifier] reserve error: ${errName} (${classification})`
+        : `[llmClassifier] reserve error: ${errName}`,
+    );
+    return finish(
+      classification !== undefined
+        ? { kind: "fetch_failed", classification }
+        : { kind: "fetch_failed" },
+    );
+  }
   if (!reservation.ok) return finish({ kind: "quota_exceeded" });
 
   const messages = buildPrompt(event, categories);
@@ -548,8 +575,15 @@ export async function classifyWithLlm(
         if (attempt < MAX_ATTEMPTS) continue;
         return finish(lastOutcome);
       }
-      if (err instanceof TypeError) {
-        // Workers runtime wraps network failures as TypeError.
+      // Allowlist matching runs BEFORE the TypeError branch: the Workers
+      // runtime throws "Network connection lost." (and can surface "Too
+      // many subrequests.") AS TypeError, so an `instanceof TypeError`
+      // check taken first would fold both into http_error(0) and dead-code
+      // the allowlist below.
+      const classification = classifyInfraError(err);
+      if (classification === undefined && err instanceof TypeError) {
+        // Non-allowlisted TypeError — Workers runtime wraps other network
+        // failures as TypeError; keep the http_error(0) convention.
         lastOutcome = { kind: "http_error", status: 0 };
         if (attempt < MAX_ATTEMPTS) continue;
         return finish(lastOutcome);
@@ -560,7 +594,6 @@ export async function classifyWithLlm(
       // message). Name-only logging hid "Too many subrequests" for 12 days
       // (PRD sync-reliability); the classification is the diagnosis signal.
       const errName = err instanceof Error ? err.name : typeof err;
-      const classification = classifyInfraError(err);
       console.warn(
         classification !== undefined
           ? `[llmClassifier] unknown error: ${errName} (${classification})`
