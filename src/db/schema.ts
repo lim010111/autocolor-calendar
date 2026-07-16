@@ -358,7 +358,7 @@ export const llmCalls = pgTable(
     // Raw OpenAI chat/completions response body (text, pre-parse). Populated
     // when an HTTP response was actually received: `hit`, `miss`,
     // `bad_response`, and `http_error` (4xx/5xx body). NULL when no body
-    // exists: `timeout`, `quota_exceeded`, `disabled`.
+    // exists: `timeout`, `quota_exceeded`, `fetch_failed`, `disabled`.
     rawResponse: text("raw_response"),
     // Category names sent to the model (post-slice — what the model actually
     // saw). NULL only for `disabled` outcomes since no slicing occurred.
@@ -368,7 +368,9 @@ export const llmCalls = pgTable(
     index("llm_calls_user_occurred_at_idx").on(t.userId, t.occurredAt),
     check(
       "llm_calls_outcome_check",
-      sql`${t.outcome} IN ('hit','miss','timeout','quota_exceeded','http_error','bad_response','disabled')`,
+      // `fetch_failed` (sync-reliability #03) = thrown fetch, no HTTP
+      // response received — distinct from `bad_response` (model-borne).
+      sql`${t.outcome} IN ('hit','miss','timeout','quota_exceeded','http_error','bad_response','fetch_failed','disabled')`,
     ),
   ],
 );

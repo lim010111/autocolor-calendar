@@ -101,7 +101,40 @@ export type LlmOutcome =
   | { kind: "quota_exceeded" }
   | { kind: "http_error"; status: number }
   | { kind: "bad_response" }
+  // Thrown fetch (no HTTP response at all) — distinct from `bad_response`,
+  // which is now purely model-borne (an HTTP body was received but could not
+  // be used). `classification` is set when the error message matched the
+  // infra allowlist below; it travels to the chain (cap-latch signal) but is
+  // NOT persisted in `llm_calls` — only the kind is.
+  | { kind: "fetch_failed"; classification?: InfraErrorClassification }
   | { kind: "disabled" };
+
+// Known Workers-runtime infrastructure error messages, matched by substring
+// against a closed allowlist. ONLY the classification name is ever logged —
+// `err.message` itself must never reach the log stream (SECURITY CONTRACT:
+// some runtimes embed request bodies or PII in the message). "Too many
+// subrequests" is the Workers Free 50-subrequest cap (PRD sync-reliability);
+// once it fires, every further fetch in this invocation fails instantly, so
+// the chain latches and skips the run's remaining LLM calls.
+const INFRA_ERROR_ALLOWLIST = [
+  { needle: "Too many subrequests", classification: "subrequest_cap" },
+  { needle: "Network connection lost", classification: "network_lost" },
+] as const;
+
+export type InfraErrorClassification =
+  (typeof INFRA_ERROR_ALLOWLIST)[number]["classification"];
+
+// Pure, exported for testing. Reads `err.message` for matching only — the
+// message text never leaves this function.
+export function classifyInfraError(
+  err: unknown,
+): InfraErrorClassification | undefined {
+  if (!(err instanceof Error)) return undefined;
+  for (const entry of INFRA_ERROR_ALLOWLIST) {
+    if (err.message.includes(entry.needle)) return entry.classification;
+  }
+  return undefined;
+}
 
 // §6 Wave A — per-call log record emitted via `LlmClassifyDeps.onCall`.
 // Persisted into the `llm_calls` table by `calendarSync.runPagedList` at
@@ -137,7 +170,7 @@ export type LlmCallRecord = {
   // Raw OpenAI chat/completions response body (text, pre-parse). Set on any
   // outcome where an HTTP body was actually received: `hit`, `miss`,
   // `bad_response`, and `http_error` (4xx/5xx body). undefined when no body
-  // exists: `timeout`, `quota_exceeded`, `disabled`.
+  // exists: `timeout`, `quota_exceeded`, `fetch_failed`, `disabled`.
   rawResponse?: string;
   // Category names sent to the model (post-slice — what the model actually
   // saw). undefined only for `disabled` outcomes.
@@ -521,12 +554,34 @@ export async function classifyWithLlm(
         if (attempt < MAX_ATTEMPTS) continue;
         return finish(lastOutcome);
       }
-      // Unknown error: do not retry, do not log content. Emit the error
-      // name only (never `.message` — some runtimes embed request bodies or
-      // PII in the message) so operators have a signal when this path trips.
+      // Unknown thrown-fetch error. Log the error name plus the allowlist
+      // classification when the message matches a known infra error — never
+      // `.message` itself (some runtimes embed request bodies or PII in the
+      // message). Name-only logging hid "Too many subrequests" for 12 days
+      // (PRD sync-reliability); the classification is the diagnosis signal.
       const errName = err instanceof Error ? err.name : typeof err;
-      console.warn(`[llmClassifier] unknown error: ${errName}`);
-      return finish({ kind: "bad_response" });
+      const classification = classifyInfraError(err);
+      console.warn(
+        classification !== undefined
+          ? `[llmClassifier] unknown error: ${errName} (${classification})`
+          : `[llmClassifier] unknown error: ${errName}`,
+      );
+      if (classification === "subrequest_cap") {
+        // The invocation's subrequest budget is exhausted — a retry fails
+        // instantly and burns nothing but latency. Return immediately; the
+        // chain latches on this classification and skips the run's
+        // remaining LLM calls (mirror of quotaLatched).
+        return finish({ kind: "fetch_failed", classification });
+      }
+      // Anything else is treated as connection-level transient (PRD "Mode
+      // B" — the next call typically succeeds), so retry once within the
+      // same MAX_ATTEMPTS contract as timeout / transient http.
+      lastOutcome =
+        classification !== undefined
+          ? { kind: "fetch_failed", classification }
+          : { kind: "fetch_failed" };
+      if (attempt < MAX_ATTEMPTS) continue;
+      return finish(lastOutcome);
     }
   }
 
