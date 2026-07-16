@@ -38,6 +38,11 @@ import { classifyStage1, type Stage1Deps } from "./stage1";
 //   current closure, every subsequent Stage-1-miss event skips the LLM leg
 //   (including `reserveLlmCall`) for the rest of this sync run. A new sync run
 //   mints a fresh closure, so the next run re-probes quota once.
+// - Per-run cap latch (sync-reliability #03): once `classifyWithLlm` reports a
+//   `fetch_failed` classified as `subrequest_cap` (Workers Free 50-subrequest
+//   cap), every subsequent Stage-1-miss event skips the LLM leg — including
+//   `reserveLlmCall`, so exhausted-budget calls stop burning daily quota.
+//   Mirror of the quota latch above; a new invocation re-probes.
 
 export type ChainDeps = {
   db: PostgresJsDatabase;
@@ -57,6 +62,7 @@ export type ChainDeps = {
 
 export function buildDefaultClassifier(deps: ChainDeps): ClassifyEventFn {
   let quotaLatched = false;
+  let capLatched = false;
 
   return async (event, ctx) => {
     // Stage 1: embedding kNN. An `embeddingHit` short-circuits. When no
@@ -101,6 +107,31 @@ export function buildDefaultClassifier(deps: ChainDeps): ClassifyEventFn {
       return outcome;
     }
 
+    // Cap-latched short-circuit — the subrequest budget is exhausted for the
+    // whole invocation, so a fetch cannot succeed. Skip the LLM leg entirely,
+    // including `reserveLlmCall` (quota must not be burned on calls that
+    // cannot fire). Synthetic record mirrors the quota-latched path:
+    // attempts:0 / latencyMs:0 distinguishes the skip from an actual thrown
+    // fetch (attempts >= 1) in `llm_calls`.
+    if (capLatched) {
+      const record: LlmCallRecord = {
+        outcome: "fetch_failed",
+        latencyMs: 0,
+        categoryCount: Math.min(LLM_PROMPT_MAX_CATEGORIES, ctx.categories.length),
+        attempts: 0,
+        eventId: event.id,
+        availableCategories: ctx.categories
+          .slice(0, LLM_PROMPT_MAX_CATEGORIES)
+          .map((c) => c.name),
+      };
+      const outcome: ClassificationOutcome = {
+        kind: "llmBadResponse",
+        llmRecord: record,
+      };
+      await runSinks(outcome, deps.sinks);
+      return outcome;
+    }
+
     // LLM leg. §5.2 branded contract — redact before crossing into the LLM
     // module. `classifyWithLlm` accepts only `RedactedEvent`; the redactor is
     // idempotent so output bytes are unchanged.
@@ -127,6 +158,15 @@ export function buildDefaultClassifier(deps: ChainDeps): ClassifyEventFn {
       case "quota_exceeded":
         quotaLatched = true;
         outcome = { kind: "llmQuotaExceeded", llmRecord: record };
+        break;
+      // Thrown-fetch failure. A `subrequest_cap` classification engages the
+      // cap latch (see short-circuit above); the ClassificationOutcome fold
+      // stays `llmBadResponse` — same silent-no_match behavior as before,
+      // the per-call `llm_calls.outcome='fetch_failed'` row carries the
+      // telemetry distinction.
+      case "fetch_failed":
+        if (llmOut.classification === "subrequest_cap") capLatched = true;
+        outcome = { kind: "llmBadResponse", llmRecord: record };
         break;
       // `disabled` is unreachable here because the explicit
       // `!OPENAI_API_KEY || ctx.categories.length === 0` guard above already

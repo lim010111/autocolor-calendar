@@ -131,8 +131,15 @@
     {
       "idx": 18,
       "version": "7",
-      "when": 1784209757689,
-      "tag": "0018_bizarre_doctor_spectrum",
+      "when": 1784197276438,
+      "tag": "0018_sad_demogoblin",
+      "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "7",
+      "when": 1784215089734,
+      "tag": "0019_colossal_deathbird",
       "breakpoints": true
     }
   ]

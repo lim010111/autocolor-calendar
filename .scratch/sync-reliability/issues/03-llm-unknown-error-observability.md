@@ -1,4 +1,4 @@
-Status: ready-for-agent
+Status: done
 GitHub: #138
 
 ## What to build
@@ -28,19 +28,19 @@ name-only 로깅이 "Too many subrequests"를 12일간 `unknown error: Error`로
 
 ## Acceptance criteria
 
-- [ ] unknown-error warn이 allowlist 분류를 포함한다 (예:
+- [x] unknown-error warn이 allowlist 분류를 포함한다 (예:
       `[llmClassifier] unknown error: Error (subrequest_cap)`) — 비매칭
       메시지는 기존처럼 name만
-- [ ] "Too many subrequests" 감지 시 같은 런의 잔여 LLM 콜이 스킵되고
+- [x] "Too many subrequests" 감지 시 같은 런의 잔여 LLM 콜이 스킵되고
       `reserveLlmCall`이 호출되지 않는다 (quota 낭비 0)
-- [ ] allowlist 비매칭 unknown 에러는 1회 재시도 후 기존 폴백 (기존
+- [x] allowlist 비매칭 unknown 에러는 1회 재시도 후 기존 폴백 (기존
       `MAX_ATTEMPTS=2` 계약 내)
-- [ ] thrown-fetch 실패가 `llm_calls`에서 모델발 bad_response와 구분 가능
-- [ ] `llmClassifier.test.ts` unknown-error 케이스 갱신 + cap-latch / 재시도
+- [x] thrown-fetch 실패가 `llm_calls`에서 모델발 bad_response와 구분 가능
+- [x] `llmClassifier.test.ts` unknown-error 케이스 갱신 + cap-latch / 재시도
       신규 테스트
-- [ ] SECURITY CONTRACT 회귀 없음 — `err.message` 원문이 로그에 나가는 경로
+- [x] SECURITY CONTRACT 회귀 없음 — `err.message` 원문이 로그에 나가는 경로
       없음 (테스트로 고정)
-- [ ] `python3 scripts/check-context-paths.py` 통과
+- [x] `python3 scripts/check-context-paths.py` 통과
 
 ## Blocked by
 

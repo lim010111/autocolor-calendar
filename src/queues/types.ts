@@ -7,6 +7,14 @@ export type SyncJob =
       calendarId: string;
       reason: "webhook" | "cron" | "manual" | "onboarding";
       enqueuedAt: number;
+      // sync-reliability #02 — budget-stop continuation resume (both present
+      // or both absent): the interrupted run's syncToken plus the pageToken
+      // to resume from. The syncToken is carried in the job — not re-read
+      // from sync_state — so the (syncToken, pageToken) pair Google sees
+      // stays consistent even if another incremental sync interleaved. See
+      // `calendarSync.runIncrementalSync`.
+      syncToken?: string;
+      pageToken?: string;
     }
   | {
       type: "full_resync";

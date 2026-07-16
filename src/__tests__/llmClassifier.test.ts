@@ -598,29 +598,171 @@ describe("classifyWithLlm", () => {
     expect(reserveSpy).not.toHaveBeenCalled();
   });
 
-  it("unknown error (non-TypeError, non-TimeoutError) → bad_response, warn logs err.name only", async () => {
-    // §5.3 review M7: operators need a signal when this path trips, but
-    // err.message may embed request bodies or PII, so only err.name is logged.
+  it("unknown error (non-TypeError, non-TimeoutError, allowlist-unmatched) → 1 retry then fetch_failed, warn logs err.name only", async () => {
+    // §5.3 review M7 + sync-reliability #03: operators need a signal when
+    // this path trips, but err.message may embed request bodies or PII, so
+    // only err.name is logged (no allowlist classification for unmatched
+    // messages). Unmatched unknowns are treated as connection-level
+    // transients (PRD "Mode B") — retried once within MAX_ATTEMPTS=2.
     // consoleSpies index 2 is the `warn` spy (see beforeEach ordering).
     const warnSpy = consoleSpies[2]!;
     class WeirdError extends Error {
       override name = "WeirdError";
     }
-    globalThis.fetch = vi.fn(async () => {
+    const fetchSpy = vi.fn(async () => {
       throw new WeirdError("request body leak: 매우비밀회의 password=hunter2");
-    }) as unknown as typeof fetch;
+    });
+    globalThis.fetch = fetchSpy as unknown as typeof fetch;
     const { outcome: out } = await classifyWithLlm(
       ev({ summary: "매우비밀회의", description: "password=hunter2" }),
       [cat()],
       { db: {} as never, env: makeEnv(), userId: USER, reserve: mkReserve(true) },
     );
-    expect(out).toEqual({ kind: "bad_response" });
-    const hasNameLog = warnSpy.mock.calls.some((call) =>
+    expect(out).toEqual({ kind: "fetch_failed" });
+    expect(fetchSpy).toHaveBeenCalledTimes(2);
+    const nameLogs = warnSpy.mock.calls.filter((call) =>
       call.some((arg) => typeof arg === "string" && arg.includes("WeirdError")),
     );
-    expect(hasNameLog).toBe(true);
-    // … but never with the message content or event PII.
+    expect(nameLogs.length).toBeGreaterThanOrEqual(1);
+    // Unmatched message → no allowlist classification parenthetical.
+    for (const call of warnSpy.mock.calls) {
+      for (const arg of call) {
+        if (typeof arg === "string") {
+          expect(arg).not.toContain("subrequest_cap");
+          expect(arg).not.toContain("network_lost");
+        }
+      }
+    }
+    // … and never the message content or event PII.
     assertNoPiiLogged(["매우비밀회의", "password=hunter2", "hunter2", "request body leak"]);
+  });
+
+  it("unknown error then success on retry → hit (Mode B transient rescued)", async () => {
+    let n = 0;
+    const fetchSpy = vi.fn(async () => {
+      n += 1;
+      if (n === 1) throw new Error("connection reset mid-flight");
+      return openAiJson("회의");
+    });
+    globalThis.fetch = fetchSpy as unknown as typeof fetch;
+    const { outcome: out, record: r } = await classifyWithLlm(
+      ev({ summary: "x" }),
+      [cat()],
+      { db: {} as never, env: makeEnv(), userId: USER, reserve: mkReserve(true) },
+    );
+    expect(out.kind).toBe("hit");
+    expect(fetchSpy).toHaveBeenCalledTimes(2);
+    expect(r.attempts).toBe(2);
+  });
+
+  it("'Too many subrequests' → fetch_failed(subrequest_cap), NO retry, warn carries classification not the message", async () => {
+    // Workers Free subrequest cap (PRD sync-reliability): the budget is
+    // exhausted for the entire invocation, so a retry fails instantly —
+    // fetch fires exactly once. The warn line carries the allowlist
+    // classification name so operators can diagnose from `wrangler tail`,
+    // but never the raw err.message.
+    const warnSpy = consoleSpies[2]!;
+    const fetchSpy = vi.fn(async () => {
+      throw new Error("Too many subrequests by single Worker invocation.");
+    });
+    globalThis.fetch = fetchSpy as unknown as typeof fetch;
+    const { outcome: out, record: r } = await classifyWithLlm(
+      ev({ summary: "x" }),
+      [cat()],
+      { db: {} as never, env: makeEnv(), userId: USER, reserve: mkReserve(true) },
+    );
+    expect(out).toEqual({ kind: "fetch_failed", classification: "subrequest_cap" });
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+    expect(r.outcome).toBe("fetch_failed");
+    expect(r.attempts).toBe(1);
+    const capLogs = warnSpy.mock.calls.filter((call) =>
+      call.some(
+        (arg) =>
+          typeof arg === "string" &&
+          arg.includes("unknown error: Error (subrequest_cap)"),
+      ),
+    );
+    expect(capLogs).toHaveLength(1);
+    // The raw runtime message must not reach the log stream.
+    assertNoPiiLogged(["Too many subrequests by single Worker invocation."]);
+  });
+
+  it("'Network connection lost' → fetch_failed(network_lost), 1 retry, warn carries classification", async () => {
+    const warnSpy = consoleSpies[2]!;
+    const fetchSpy = vi.fn(async () => {
+      throw new Error("Network connection lost.");
+    });
+    globalThis.fetch = fetchSpy as unknown as typeof fetch;
+    const { outcome: out } = await classifyWithLlm(ev({ summary: "x" }), [cat()], {
+      db: {} as never,
+      env: makeEnv(),
+      userId: USER,
+      reserve: mkReserve(true),
+    });
+    expect(out).toEqual({ kind: "fetch_failed", classification: "network_lost" });
+    // Connection-level transient → retried once (MAX_ATTEMPTS=2).
+    expect(fetchSpy).toHaveBeenCalledTimes(2);
+    const lostLogs = warnSpy.mock.calls.filter((call) =>
+      call.some(
+        (arg) => typeof arg === "string" && arg.includes("(network_lost)"),
+      ),
+    );
+    expect(lostLogs.length).toBeGreaterThanOrEqual(1);
+    assertNoPiiLogged(["Network connection lost."]);
+  });
+
+  it("SECURITY CONTRACT — err.message never reaches the log stream, matched or not", async () => {
+    // Pin for sync-reliability #03 AC: the allowlist matcher reads
+    // err.message for matching only; no code path may emit the message
+    // text itself. Exercise both a matched (allowlist) and an unmatched
+    // message carrying PII-looking payloads.
+    let n = 0;
+    globalThis.fetch = vi.fn(async () => {
+      n += 1;
+      throw new Error(
+        n === 1
+          ? "Too many subrequests by single Worker invocation. secret=매우비밀 token=abc123"
+          : "totally novel failure secret=매우비밀 token=abc123",
+      );
+    }) as unknown as typeof fetch;
+    await classifyWithLlm(ev({ summary: "x" }), [cat()], {
+      db: {} as never,
+      env: makeEnv(),
+      userId: USER,
+      reserve: mkReserve(true),
+    });
+    // Second run hits the unmatched branch (fresh call, budget mock differs).
+    await classifyWithLlm(ev({ summary: "y" }), [cat()], {
+      db: {} as never,
+      env: makeEnv(),
+      userId: USER,
+      reserve: mkReserve(true),
+    });
+    assertNoPiiLogged([
+      "secret=매우비밀",
+      "token=abc123",
+      "totally novel failure",
+      "Too many subrequests by single Worker invocation. secret",
+    ]);
+  });
+
+  it("fetch_failed record: rawResponse undefined, promptSummary captured pre-fetch", async () => {
+    globalThis.fetch = vi.fn(async () => {
+      throw new Error("some thrown fetch failure");
+    }) as unknown as typeof fetch;
+    const { record: r } = await classifyWithLlm(
+      ev({ id: "e-ff", summary: "x" }),
+      [cat()],
+      { db: {} as never, env: makeEnv(), userId: USER, reserve: mkReserve(true) },
+    );
+    expect(r.outcome).toBe("fetch_failed");
+    // No HTTP body was ever received — this is what separates fetch_failed
+    // from bad_response in `llm_calls` (raw_response IS NULL by shape).
+    expect(r.rawResponse).toBeUndefined();
+    expect(r.promptSummary).toBeDefined();
+    expect(r.eventId).toBe("e-ff");
+    expect(r.availableCategories).toEqual(["회의"]);
+    expect(r.attempts).toBe(2);
   });
 
   it("request body sets max_completion_tokens: 64 (response-side cost cap)", async () => {

@@ -1208,8 +1208,10 @@ describe("calendarSync.runFullResync chunking", () => {
       { db, env, userId: USER_ID, calendarId: CAL },
       {
         pageToken: first.continuation!.pageToken,
-        timeMin: first.continuation!.timeMin,
-        timeMax: first.continuation!.timeMax,
+        // full_resync continuations always carry the window (the union's
+        // syncToken shape belongs to incremental budget stops — #02).
+        timeMin: first.continuation!.timeMin!,
+        timeMax: first.continuation!.timeMax!,
       },
     );
     expect(second.ok).toBe(true);
@@ -1392,6 +1394,308 @@ describe("calendarSync — §6 Wave A observability hooks", () => {
     ]);
     const res = await runIncrementalSync({ db, env, userId: USER_ID, calendarId: CAL });
     expect(res.ok).toBe(true);
+  });
+});
+
+describe("calendarSync — #02 subrequest budget guard", () => {
+  const original = globalThis.fetch;
+  afterEach(() => {
+    globalThis.fetch = original;
+    vi.restoreAllMocks();
+  });
+
+  const FIXED_MIN = "2024-01-01T00:00:00.000Z";
+  const FIXED_MAX = "2030-01-01T00:00:00.000Z";
+
+  // Injected classifier that mimics the LLM leg's fetch cost: `attempts` is
+  // what the budget counter reads off the llmRecord (`processEvent`).
+  const llmHitClassify =
+    (attempts: number): ClassifyEventFn =>
+    async (event) => ({
+      kind: "llmHit",
+      rule: { id: "cat-1", name: "cat-1", colorId: "3" },
+      llmRecord: {
+        outcome: "hit",
+        latencyMs: 1,
+        categoryCount: 1,
+        attempts,
+        eventId: event.id,
+      },
+    });
+
+  function tokenResponse(): Response {
+    return new Response(
+      JSON.stringify({ access_token: "at", expires_in: 3600, scope: "openid", token_type: "Bearer" }),
+      { status: 200 },
+    );
+  }
+
+  it("derives events.list maxResults from the budget env var", async () => {
+    const env = makeEnv();
+    const tokenRow = await seedTokenRow(env);
+    const { db } = makeDb({ nextSyncToken: "tok", tokenRow });
+
+    const listUrls: string[] = [];
+    globalThis.fetch = vi.fn(async (input: RequestInfo | URL) => {
+      const url = typeof input === "string" ? input : input.toString();
+      if (url.includes("oauth2.googleapis.com/token")) return tokenResponse();
+      listUrls.push(url);
+      return new Response(JSON.stringify({ items: [], nextSyncToken: "fresh" }), { status: 200 });
+    }) as typeof fetch;
+
+    // Default budget 40 → floor((40-2)/3) = 12.
+    let res = await runIncrementalSync({ db, env, userId: USER_ID, calendarId: CAL });
+    expect(res.ok).toBe(true);
+    expect(listUrls[0]).toContain("maxResults=12");
+
+    // Custom budget 100 → floor((100-2)/3) = 32.
+    listUrls.length = 0;
+    res = await runIncrementalSync({
+      db,
+      env: { ...env, SYNC_SUBREQUEST_BUDGET: "100" },
+      userId: USER_ID,
+      calendarId: CAL,
+    });
+    expect(res.ok).toBe(true);
+    expect(listUrls[0]).toContain("maxResults=32");
+  });
+
+  it("mid-page budget stop → continuation resumes from the CURRENT page token; warn logs counters only", async () => {
+    const env = makeEnv();
+    const tokenRow = await seedTokenRow(env);
+    const { db } = makeDb({ nextSyncToken: null, tokenRow });
+
+    // Two pages. Page pt-1: 11 events (cost 1 list + 11×3 = 34 → next page
+    // still fits: 34+5 ≤ 40). Page pt-2: 12 events — the guard trips before
+    // event 2 (used 38 → 38+3 > 40), so the continuation must point at pt-2
+    // itself (redo the partially-processed page), not at a later token.
+    const items = (page: string, n: number) =>
+      Array.from({ length: n }, (_, i) => ({
+        id: `${page}-e${i}`,
+        status: "confirmed",
+        summary: "SECRET-EVENT-TITLE",
+        colorId: "",
+      }));
+    globalThis.fetch = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = typeof input === "string" ? input : input.toString();
+      if (url.includes("oauth2.googleapis.com/token")) return tokenResponse();
+      if (init?.method === "PATCH") return new Response("{}", { status: 200 });
+      const pageToken = new URL(url).searchParams.get("pageToken");
+      if (pageToken === "pt-1") {
+        return new Response(
+          JSON.stringify({ items: items("p1", 11), nextPageToken: "pt-2" }),
+          { status: 200 },
+        );
+      }
+      return new Response(
+        JSON.stringify({ items: items("p2", 12), nextPageToken: "pt-3" }),
+        { status: 200 },
+      );
+    }) as typeof fetch;
+
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    const result = await runFullResync(
+      { db, env, userId: USER_ID, calendarId: CAL, classifyEvent: llmHitClassify(2) },
+      { pageToken: "pt-1", timeMin: FIXED_MIN, timeMax: FIXED_MAX },
+    );
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.continuation).toBeTruthy();
+    expect(result.continuation!.pageToken).toBe("pt-2");
+    expect(result.continuation!.timeMin).toBe(FIXED_MIN);
+    expect(result.continuation!.timeMax).toBe(FIXED_MAX);
+    // 11 events of pt-1 + 1 event of pt-2 processed before the stop.
+    expect(result.summary.seen).toBe(12);
+
+    // AC #3 — exactly one warn line, counters only, no event content.
+    const budgetWarns = warnSpy.mock.calls
+      .map((c) => String(c[0]))
+      .filter((s) => s.includes("subrequest budget"));
+    expect(budgetWarns).toHaveLength(1);
+    const payload = JSON.parse(budgetWarns[0]!) as Record<string, unknown>;
+    expect(payload.level).toBe("warn");
+    expect(payload.used).toBe(38);
+    expect(payload.budget).toBe(40);
+    expect(typeof payload.pages).toBe("number");
+    expect(typeof payload.seen).toBe("number");
+    expect(budgetWarns[0]).not.toContain("SECRET-EVENT-TITLE");
+    warnSpy.mockRestore();
+  });
+
+  it("incremental budget stop → continuation carries the (syncToken, pageToken) pair; resume completes", async () => {
+    const env = makeEnv();
+    const tokenRow = await seedTokenRow(env);
+    const { db, updates } = makeDb({ nextSyncToken: "sync-tok-1", tokenRow });
+
+    const items = (page: string, n: number) =>
+      Array.from({ length: n }, (_, i) => ({
+        id: `${page}-e${i}`,
+        status: "confirmed",
+        summary: "x",
+        colorId: "",
+      }));
+    const listUrls: string[] = [];
+    globalThis.fetch = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = typeof input === "string" ? input : input.toString();
+      if (url.includes("oauth2.googleapis.com/token")) return tokenResponse();
+      if (init?.method === "PATCH") return new Response("{}", { status: 200 });
+      listUrls.push(url);
+      const pageToken = new URL(url).searchParams.get("pageToken");
+      if (pageToken === null) {
+        return new Response(
+          JSON.stringify({ items: items("p1", 11), nextPageToken: "pt-2" }),
+          { status: 200 },
+        );
+      }
+      // Resume page — final page of the delta.
+      return new Response(
+        JSON.stringify({ items: items("p2", 12), nextSyncToken: "fresh-2" }),
+        { status: 200 },
+      );
+    }) as typeof fetch;
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+
+    // First invocation: page 1 (11 events, used 34) → boundary allows page 2
+    // → mid-page stop on page 2 → syncToken-shaped continuation.
+    const first = await runIncrementalSync({
+      db,
+      env,
+      userId: USER_ID,
+      calendarId: CAL,
+      classifyEvent: llmHitClassify(2),
+    });
+    expect(first.ok).toBe(true);
+    if (!first.ok) return;
+    expect(first.continuation).toEqual({ pageToken: "pt-2", syncToken: "sync-tok-1" });
+    // Interrupted run must NOT store a new nextSyncToken.
+    expect(first.summary.stored_next_sync_token).toBe(false);
+    expect(updates.some((u) => "nextSyncToken" in u && u.nextSyncToken !== null)).toBe(false);
+
+    // Second invocation (fresh budget): resume with the carried pair — the
+    // list call must include BOTH tokens, and the run completes and stores
+    // the fresh nextSyncToken.
+    listUrls.length = 0;
+    const second = await runIncrementalSync(
+      { db, env, userId: USER_ID, calendarId: CAL, classifyEvent: llmHitClassify(2) },
+      { syncToken: "sync-tok-1", pageToken: "pt-2" },
+    );
+    expect(second.ok).toBe(true);
+    if (!second.ok) return;
+    expect(listUrls[0]).toContain("syncToken=sync-tok-1");
+    expect(listUrls[0]).toContain("pageToken=pt-2");
+    expect(second.continuation).toBeUndefined();
+    expect(second.summary.stored_next_sync_token).toBe(true);
+    expect(updates.some((u) => u.nextSyncToken === "fresh-2")).toBe(true);
+    warnSpy.mockRestore();
+  });
+
+  it("large-calendar simulation (AC #4): a 50-fetch cap never trips; the arc completes via chunk resume", async () => {
+    // End-to-end arc through the REAL classifier chain (OpenAI fetch counted
+    // per event) against a simulated Workers-Free subrequest cap: every fetch
+    // past 50 within one invocation throws "Too many subrequests" — exactly
+    // the prod failure mode. The guard must stop each invocation before the
+    // cap and finish the whole 60-event calendar via continuations.
+    const env: Bindings = { ...makeEnv(), OPENAI_API_KEY: "sk-test" };
+    const tokenRow = await seedTokenRow(env);
+    const { db } = makeDb({
+      nextSyncToken: null,
+      tokenRow,
+      categories: [
+        { id: "c-1", name: "회의", colorId: "9", keywords: ["회의"], priority: 100 },
+      ],
+      reserveRow: { callCount: 1 },
+    });
+
+    const TOTAL = 60;
+    const allIds = Array.from({ length: TOTAL }, (_, i) => `e-${i}`);
+    const patchedIds = new Set<string>();
+    let invocationFetches = 0;
+    let maxInvocationFetches = 0;
+    let capTrips = 0;
+
+    globalThis.fetch = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      invocationFetches += 1;
+      maxInvocationFetches = Math.max(maxInvocationFetches, invocationFetches);
+      if (invocationFetches > 50) {
+        capTrips += 1;
+        throw new Error("Too many subrequests.");
+      }
+      const url = typeof input === "string" ? input : input.toString();
+      if (url.includes("oauth2.googleapis.com/token")) return tokenResponse();
+      if (url.includes("api.openai.com")) {
+        return new Response(
+          JSON.stringify({
+            choices: [{ message: { content: JSON.stringify({ category_name: "회의" }) } }],
+          }),
+          { status: 200 },
+        );
+      }
+      if (init?.method === "PATCH") {
+        const id = decodeURIComponent(url.split("/events/")[1]!);
+        patchedIds.add(id);
+        return new Response("{}", { status: 200 });
+      }
+      // events.list — page the 60-event dataset by the REQUESTED maxResults
+      // (derived page size), offset encoded in the pageToken.
+      const params = new URL(url).searchParams;
+      const offset = Number(params.get("pageToken")?.replace("off-", "") ?? "0");
+      const max = Number(params.get("maxResults"));
+      const slice = allIds.slice(offset, offset + max).map((id) => ({
+        id,
+        status: "confirmed",
+        summary: `unrelated-${id}`,
+        colorId: "",
+      }));
+      const nextOffset = offset + max;
+      return new Response(
+        JSON.stringify({
+          items: slice,
+          ...(nextOffset < TOTAL
+            ? { nextPageToken: `off-${nextOffset}` }
+            : { nextSyncToken: "done" }),
+        }),
+        { status: 200 },
+      );
+    }) as typeof fetch;
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+
+    // Consumer loop: each hop is a fresh Worker invocation (fetch cap resets),
+    // re-enqueueing the continuation like applyResult does.
+    let opts: { pageToken?: string; timeMin: string; timeMax: string } = {
+      timeMin: FIXED_MIN,
+      timeMax: FIXED_MAX,
+    };
+    let hops = 0;
+    let completed = false;
+    while (hops < 30) {
+      hops += 1;
+      invocationFetches = 0; // fresh invocation
+      const res = await runFullResync(
+        { db, env, userId: USER_ID, calendarId: CAL },
+        opts,
+      );
+      // A cap trip would surface as ok:false (retryable) — must never happen.
+      expect(res.ok).toBe(true);
+      if (!res.ok) return;
+      if (!res.continuation) {
+        completed = true;
+        break;
+      }
+      opts = {
+        pageToken: res.continuation.pageToken,
+        timeMin: res.continuation.timeMin!,
+        timeMax: res.continuation.timeMax!,
+      };
+    }
+
+    expect(completed).toBe(true);
+    expect(capTrips).toBe(0);
+    expect(maxInvocationFetches).toBeLessThanOrEqual(50);
+    // No event lost: every event was classified and patched at least once.
+    expect(patchedIds.size).toBe(TOTAL);
+    // The budget actually forced chunking (multiple invocations).
+    expect(hops).toBeGreaterThan(1);
+    warnSpy.mockRestore();
   });
 });
 

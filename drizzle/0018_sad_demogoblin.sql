@@ -1,0 +1,2 @@
+ALTER TABLE "llm_calls" DROP CONSTRAINT "llm_calls_outcome_check";--> statement-breakpoint
+ALTER TABLE "llm_calls" ADD CONSTRAINT "llm_calls_outcome_check" CHECK ("llm_calls"."outcome" IN ('hit','miss','timeout','quota_exceeded','http_error','bad_response','fetch_failed','disabled'));
