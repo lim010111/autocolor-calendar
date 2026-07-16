@@ -1413,7 +1413,7 @@ describe("calendarSync — #02 subrequest budget guard", () => {
     (attempts: number): ClassifyEventFn =>
     async (event) => ({
       kind: "llmHit",
-      rule: { id: "cat-1", name: "cat-1", colorId: "3" },
+      rule: { id: "cat-1", name: "cat-1", colorId: "3", labelId: TARGET_LABEL },
       llmRecord: {
         outcome: "hit",
         latencyMs: 1,
@@ -1439,16 +1439,21 @@ describe("calendarSync — #02 subrequest budget guard", () => {
     globalThis.fetch = vi.fn(async (input: RequestInfo | URL) => {
       const url = typeof input === "string" ? input : input.toString();
       if (url.includes("oauth2.googleapis.com/token")) return tokenResponse();
+      // ADR-0006 label reconcile — the run's fixed extra fetch, not events.list.
+      if (url.includes("fields=labelProperties")) {
+        return new Response("{}", { status: 200 });
+      }
       listUrls.push(url);
       return new Response(JSON.stringify({ items: [], nextSyncToken: "fresh" }), { status: 200 });
     }) as typeof fetch;
 
-    // Default budget 40 → floor((40-2)/3) = 12.
+    // Default budget 40 → floor((40-1-2)/3) = 12 (run-fixed reconcile fetch
+    // pre-paid by the derivation).
     let res = await runIncrementalSync({ db, env, userId: USER_ID, calendarId: CAL });
     expect(res.ok).toBe(true);
     expect(listUrls[0]).toContain("maxResults=12");
 
-    // Custom budget 100 → floor((100-2)/3) = 32.
+    // Custom budget 100 → floor((100-1-2)/3) = 32.
     listUrls.length = 0;
     res = await runIncrementalSync({
       db,
@@ -1601,7 +1606,14 @@ describe("calendarSync — #02 subrequest budget guard", () => {
       nextSyncToken: null,
       tokenRow,
       categories: [
-        { id: "c-1", name: "회의", colorId: "9", keywords: ["회의"], priority: 100 },
+        {
+          id: "c-1",
+          name: "회의",
+          colorId: "9",
+          keywords: ["회의"],
+          priority: 100,
+          labelId: TARGET_LABEL,
+        },
       ],
       reserveRow: { callCount: 1 },
     });
@@ -1622,6 +1634,11 @@ describe("calendarSync — #02 subrequest budget guard", () => {
       }
       const url = typeof input === "string" ? input : input.toString();
       if (url.includes("oauth2.googleapis.com/token")) return tokenResponse();
+      // ADR-0006 label reconcile — one calendars.get per invocation; counts
+      // toward the simulated cap exactly like it does in prod.
+      if (url.includes("fields=labelProperties")) {
+        return new Response("{}", { status: 200 });
+      }
       if (url.includes("api.openai.com")) {
         return new Response(
           JSON.stringify({
@@ -1631,7 +1648,8 @@ describe("calendarSync — #02 subrequest budget guard", () => {
         );
       }
       if (init?.method === "PATCH") {
-        const id = decodeURIComponent(url.split("/events/")[1]!);
+        // patchEventLabel appends ?eventLabelVersion=1 — strip the query.
+        const id = decodeURIComponent(url.split("/events/")[1]!.split("?")[0]!);
         patchedIds.add(id);
         return new Response("{}", { status: 200 });
       }
