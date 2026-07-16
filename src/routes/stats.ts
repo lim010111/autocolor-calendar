@@ -102,6 +102,9 @@ statsRoutes.get("/", async (c) => {
             badResponse: sql<number>`count(*) filter (where ${llmCalls.outcome} = 'bad_response')::int`.as(
               "bad_response",
             ),
+            fetchFailed: sql<number>`count(*) filter (where ${llmCalls.outcome} = 'fetch_failed')::int`.as(
+              "fetch_failed",
+            ),
             disabled: sql<number>`count(*) filter (where ${llmCalls.outcome} = 'disabled')::int`.as(
               "disabled",
             ),
@@ -218,6 +221,7 @@ statsRoutes.get("/", async (c) => {
           quota_exceeded: la?.quotaExceeded ?? 0,
           http_error: la?.httpError ?? 0,
           bad_response: la?.badResponse ?? 0,
+          fetch_failed: la?.fetchFailed ?? 0,
           disabled: la?.disabled ?? 0,
         },
         avgLatencyMs: roundOrNull(la?.avgLatencyMs),

@@ -345,6 +345,120 @@ describe("buildDefaultClassifier — rule → LLM chain", () => {
     expect(out.llmRecord.rawResponse).toBeUndefined();
   });
 
+  it("cap latch — 'Too many subrequests' skips remaining LLM calls AND reserveLlmCall (quota waste 0)", async () => {
+    // sync-reliability #03: once the Workers Free subrequest cap trips,
+    // every further fetch in this invocation fails instantly. Pre-latch
+    // behavior burned one reserveLlmCall (daily quota) per remaining event
+    // (07-14 run: 21 wasted reservations). The latch mirrors quotaLatched:
+    // no reserve, no fetch for the rest of the run.
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    const fetchSpy = vi.fn(async () => {
+      throw new Error("Too many subrequests by single Worker invocation.");
+    });
+    globalThis.fetch = fetchSpy as unknown as typeof fetch;
+    const reserveSpy = vi.fn(async () => ({ ok: true, count: 1 }));
+    const rec = recordingSink();
+    const classify = buildDefaultClassifier({
+      db: {} as never,
+      env: makeEnv(),
+      userId: USER,
+      reserve: reserveSpy,
+      sinks: [rec.sink],
+    });
+
+    // First rule-miss → reserve + fetch fire, cap detected → latch engages.
+    const first = await classify(ev({ summary: "x" }), ctxOf([cat()]));
+    expect(first.kind).toBe("llmBadResponse");
+    if (first.kind !== "llmBadResponse") return;
+    expect(first.llmRecord.outcome).toBe("fetch_failed");
+    expect(first.llmRecord.attempts).toBe(1); // cap → no retry
+
+    // Next three rule-misses must NOT re-invoke reserve or fetch.
+    expect((await classify(ev({ summary: "y" }), ctxOf([cat()]))).kind).toBe(
+      "llmBadResponse",
+    );
+    expect((await classify(ev({ summary: "z" }), ctxOf([cat()]))).kind).toBe(
+      "llmBadResponse",
+    );
+    expect((await classify(ev({ summary: "w" }), ctxOf([cat()]))).kind).toBe(
+      "llmBadResponse",
+    );
+
+    expect(reserveSpy).toHaveBeenCalledTimes(1);
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+    // Sink saw every event (summary accuracy parity with the quota latch).
+    expect(rec.outcomes).toHaveLength(4);
+    expect(rec.outcomes.every((o) => o.kind === "llmBadResponse")).toBe(true);
+  });
+
+  it("cap-latched synthetic record carries attempts:0 / latencyMs:0 / eventId / availableCategories (NOT promptSummary / rawResponse)", async () => {
+    // Same NULL-policy shape as the quota-latched skip: no prompt was built
+    // and no body received, so promptSummary / rawResponse stay undefined;
+    // attempts:0 distinguishes the skip from the actual thrown fetch.
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    globalThis.fetch = vi.fn(async () => {
+      throw new Error("Too many subrequests by single Worker invocation.");
+    }) as unknown as typeof fetch;
+    const rec = recordingSink();
+    const classify = buildDefaultClassifier({
+      db: {} as never,
+      env: makeEnv(),
+      userId: USER,
+      reserve: okReserve,
+      sinks: [rec.sink],
+    });
+
+    // First call latches via classifyWithLlm.
+    await classify(ev({ id: "evt-A", summary: "x" }), ctxOf([cat()]));
+    // Second call is the chain's synthetic skip.
+    const out = await classify(
+      ev({ id: "evt-B", summary: "y" }),
+      ctxOf([cat({ name: "회의" }), cat({ id: "c-2", name: "개인" })]),
+    );
+
+    expect(out.kind).toBe("llmBadResponse");
+    if (out.kind !== "llmBadResponse") return;
+    expect(out.llmRecord.outcome).toBe("fetch_failed");
+    expect(out.llmRecord.attempts).toBe(0);
+    expect(out.llmRecord.latencyMs).toBe(0);
+    expect(out.llmRecord.eventId).toBe("evt-B");
+    expect(out.llmRecord.availableCategories).toEqual(["회의", "개인"]);
+    expect(out.llmRecord.promptSummary).toBeUndefined();
+    expect(out.llmRecord.rawResponse).toBeUndefined();
+  });
+
+  it("allowlist-unmatched fetch_failed does NOT latch — next event still probes the LLM leg", async () => {
+    // Only the subrequest-cap classification is proof that the rest of the
+    // invocation cannot fetch. A generic unknown error (PRD "Mode B") is
+    // transient — latching on it would silently drop classification
+    // coverage for the remainder of every run that sees one blip.
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    const fetchSpy = vi.fn(async () => {
+      throw new Error("some novel transient failure");
+    });
+    globalThis.fetch = fetchSpy as unknown as typeof fetch;
+    const reserveSpy = vi.fn(async () => ({ ok: true, count: 1 }));
+    const rec = recordingSink();
+    const classify = buildDefaultClassifier({
+      db: {} as never,
+      env: makeEnv(),
+      userId: USER,
+      reserve: reserveSpy,
+      sinks: [rec.sink],
+    });
+
+    const first = await classify(ev({ summary: "x" }), ctxOf([cat()]));
+    expect(first.kind).toBe("llmBadResponse");
+    if (first.kind !== "llmBadResponse") return;
+    expect(first.llmRecord.outcome).toBe("fetch_failed");
+    expect(first.llmRecord.attempts).toBe(2); // unmatched → 1 retry
+
+    // Second event: NOT latched — reserve and fetch fire again.
+    await classify(ev({ summary: "y" }), ctxOf([cat()]));
+    expect(reserveSpy).toHaveBeenCalledTimes(2);
+    expect(fetchSpy).toHaveBeenCalledTimes(4);
+  });
+
   it("empty categories → emits noMatch, no LLM leg engagement", async () => {
     const fetchSpy = vi.fn();
     globalThis.fetch = fetchSpy as unknown as typeof fetch;

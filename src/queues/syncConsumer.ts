@@ -177,14 +177,20 @@ async function handleOne(
     try {
       result =
         job.type === "incremental"
-          ? await runIncrementalSync({
-              db,
-              env,
-              userId: job.userId,
-              calendarId: job.calendarId,
-              recordLlmCalls,
-              recordSyncRun,
-            })
+          ? await runIncrementalSync(
+              {
+                db,
+                env,
+                userId: job.userId,
+                calendarId: job.calendarId,
+                recordLlmCalls,
+                recordSyncRun,
+              },
+              // #02 budget-stop continuation resume — see queues/types.ts.
+              job.syncToken !== undefined && job.pageToken !== undefined
+                ? { syncToken: job.syncToken, pageToken: job.pageToken }
+                : undefined,
+            )
           : await runFullResync(
               {
                 db,
@@ -315,23 +321,42 @@ async function applyResult(
 ): Promise<void> {
   if (result.ok) {
     if (result.continuation) {
-      // Chunked full_resync: enqueue next page as a fresh job (attempt counter
-      // resets). timeMin/timeMax must survive the hop so the same pageToken
-      // keeps seeing the same query window — see types.ts comment.
-      // Incremental → full_resync fallthrough (empty token) is a first-time
-      // bootstrap, so label the continuation accordingly rather than "manual".
-      const continuationReason =
-        job.type === "full_resync" ? job.reason : "bootstrap";
-      await enqueueSync(env, {
-        type: "full_resync",
-        userId: job.userId,
-        calendarId: job.calendarId,
-        reason: continuationReason,
-        enqueuedAt: Date.now(),
-        pageToken: result.continuation.pageToken,
-        timeMin: result.continuation.timeMin,
-        timeMax: result.continuation.timeMax,
-      });
+      if (result.continuation.syncToken !== undefined) {
+        // #02 budget-stop continuation of a syncToken-paged (incremental)
+        // run: fresh job (attempt counter resets) carrying the same
+        // (syncToken, pageToken) pair — see queues/types.ts comment.
+        await enqueueSync(env, {
+          type: "incremental",
+          userId: job.userId,
+          calendarId: job.calendarId,
+          // Only incremental runs produce syncToken-shaped continuations,
+          // so the fallback is unreachable — it exists for type narrowing.
+          reason: job.type === "incremental" ? job.reason : "webhook",
+          enqueuedAt: Date.now(),
+          syncToken: result.continuation.syncToken,
+          pageToken: result.continuation.pageToken,
+        });
+      } else {
+        // Chunked full_resync: enqueue next page as a fresh job (attempt
+        // counter resets). timeMin/timeMax always accompany a window-paged
+        // continuation and must survive the hop so the same pageToken keeps
+        // seeing the same query window — see types.ts comment.
+        // Incremental → full_resync fallthrough (empty token) is a first-time
+        // bootstrap, so label the continuation accordingly rather than
+        // "manual".
+        const continuationReason =
+          job.type === "full_resync" ? job.reason : "bootstrap";
+        await enqueueSync(env, {
+          type: "full_resync",
+          userId: job.userId,
+          calendarId: job.calendarId,
+          reason: continuationReason,
+          enqueuedAt: Date.now(),
+          pageToken: result.continuation.pageToken,
+          timeMin: result.continuation.timeMin!,
+          timeMax: result.continuation.timeMax!,
+        });
+      }
     }
     msg.ack();
     return;

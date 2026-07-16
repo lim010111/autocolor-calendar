@@ -573,6 +573,76 @@ describe("syncConsumer.handleSyncBatch", () => {
     });
   });
 
+  describe("#02 subrequest budget guard — incremental continuation", () => {
+    it("syncToken-shaped continuation → enqueues an incremental job carrying the pair", async () => {
+      const { enqueueSync } = await import("../queues/syncProducer");
+      vi.mocked(enqueueSync).mockClear();
+      mocks.incrementalResult = {
+        ok: true,
+        summary: makeSummary(),
+        continuation: { pageToken: "pt-7", syncToken: "st-1" },
+      };
+      const msg = makeMessage({
+        type: "incremental",
+        userId: "u1",
+        calendarId: "primary",
+        reason: "webhook",
+        enqueuedAt: Date.now(),
+      });
+      await handleSyncBatch(makeBatch(msg), {} as never, makeCtx());
+
+      expect(enqueueSync).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.objectContaining({
+          type: "incremental",
+          userId: "u1",
+          calendarId: "primary",
+          reason: "webhook",
+          syncToken: "st-1",
+          pageToken: "pt-7",
+        }),
+      );
+      expect(msg.ack).toHaveBeenCalled();
+    });
+
+    it("resume job forwards { syncToken, pageToken } opts into runIncrementalSync", async () => {
+      const { runIncrementalSync } = await import("../services/calendarSync");
+      const mockFn = vi.mocked(runIncrementalSync);
+      mockFn.mockClear();
+      const msg = makeMessage({
+        type: "incremental",
+        userId: "u1",
+        calendarId: "primary",
+        reason: "webhook",
+        enqueuedAt: Date.now(),
+        syncToken: "st-1",
+        pageToken: "pt-7",
+      });
+      await handleSyncBatch(makeBatch(msg), {} as never, makeCtx());
+      expect(mockFn).toHaveBeenCalledTimes(1);
+      expect(mockFn.mock.calls[0]![1]).toEqual({
+        syncToken: "st-1",
+        pageToken: "pt-7",
+      });
+    });
+
+    it("plain incremental job passes no resume opts", async () => {
+      const { runIncrementalSync } = await import("../services/calendarSync");
+      const mockFn = vi.mocked(runIncrementalSync);
+      mockFn.mockClear();
+      const msg = makeMessage({
+        type: "incremental",
+        userId: "u1",
+        calendarId: "primary",
+        reason: "webhook",
+        enqueuedAt: Date.now(),
+      });
+      await handleSyncBatch(makeBatch(msg), {} as never, makeCtx());
+      expect(mockFn).toHaveBeenCalledTimes(1);
+      expect(mockFn.mock.calls[0]![1]).toBeUndefined();
+    });
+  });
+
   describe("§6 Wave B — sync_runs writer", () => {
     it("injects recordSyncRun into runIncrementalSync SyncContext", async () => {
       // Source-level check complements this: verifies the callback-shape is

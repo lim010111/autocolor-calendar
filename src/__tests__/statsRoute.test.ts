@@ -38,6 +38,7 @@ type Fixtures = {
     quotaExceeded: number;
     httpError: number;
     badResponse: number;
+    fetchFailed: number;
     disabled: number;
     avgLatencyMs: number | null;
     p95LatencyMs: number | null;
@@ -74,6 +75,7 @@ function emptyFixtures(): Fixtures {
       quotaExceeded: 0,
       httpError: 0,
       badResponse: 0,
+      fetchFailed: 0,
       disabled: 0,
       avgLatencyMs: null,
       p95LatencyMs: null,
@@ -296,6 +298,7 @@ describe("/api/stats — aggregation shape", () => {
       quotaExceeded: 1,
       httpError: 0,
       badResponse: 0,
+      fetchFailed: 0,
       disabled: 0,
       avgLatencyMs: 387.42,
       p95LatencyMs: 612.8,
@@ -319,6 +322,7 @@ describe("/api/stats — aggregation shape", () => {
       quota_exceeded: 1,
       http_error: 0,
       bad_response: 0,
+      fetch_failed: 0,
       disabled: 0,
     });
     // Math.round drops fractional ms — telemetry precision is ms, not μs.

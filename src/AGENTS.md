@@ -250,7 +250,10 @@ Written as a single bulk INSERT at sync-run end, not per event:
 - `classifierChain` forwards the record to its own `onLlmCall` callback and
   synthesizes a record for the quota-latched short-circuit path
   (`latencyMs: 0`, `attempts: 0`) so "we wanted to call the model" is still
-  observable.
+  observable. The cap-latched short-circuit (sync-reliability #03 — a
+  `fetch_failed` classified `subrequest_cap` latches the run) synthesizes
+  the same shape with `outcome: "fetch_failed"`; `attempts: 0` is what
+  distinguishes a latched skip from an actual thrown fetch (`attempts >= 1`).
 - `runPagedList` buffers records into a per-run array; on the way out — via
   a `try { ... } finally { flushLlmCalls() }` that wraps the entire body —
   it calls `ctx.recordLlmCalls?.(buffer)` exactly once. Every return path
@@ -289,7 +292,7 @@ Four nullable columns added to `llm_calls`, populated by `classifyWithLlm`'s
   deliberate scope expansion past the original "success-only" plan).
   Overwritten on each retry so the column reflects the FINAL attempt's
   body, matching the row's reported outcome. NULL on `timeout`,
-  `quota_exceeded`, `disabled`.
+  `quota_exceeded`, `fetch_failed`, `disabled`.
 - **`available_categories`** — `categories.slice(0, LLM_MAX_CATEGORIES).map(c => c.name)`
   (post-slice, what the model actually saw). Captured before the quota
   reservation so a `quota_exceeded` row still tells us which categories
@@ -306,7 +309,17 @@ NULL policy summary by outcome:
 | `http_error`      |    ✓     |       ✓        |      ✓       |          ✓           |
 | `timeout`         |    ✓     |       ✓        |     NULL     |          ✓           |
 | `quota_exceeded`  |    ✓     |      NULL      |     NULL     |          ✓           |
+| `fetch_failed`    |    ✓     |    ✓ / NULL*   |     NULL     |          ✓           |
 | `disabled`        |    ✓     |      NULL      |     NULL     |         NULL         |
+
+\* `fetch_failed` (sync-reliability #03) = the fetch itself threw, no HTTP
+response received — distinct from `bad_response`, which is model-borne (a
+body arrived but was unusable). `prompt_summary` is ✓ on an actual thrown
+fetch (`attempts >= 1`, prompt built pre-fetch) and NULL on the two
+`attempts: 0` shapes where no prompt was built: the chain's cap-latched
+skip rows, and rows where `reserveLlmCall` itself threw (its DB writes are
+subrequests too, so the Workers Free cap can fire at the reservation point
+— folded to `fetch_failed` instead of escaping `classifyWithLlm`).
 
 PII discipline:
 - **DB columns are NOT logs.** The "Calendar event payloads must never be
