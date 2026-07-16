@@ -1,9 +1,15 @@
-// `getCalendarColors(locale)` and `COLOR_PALETTE` live in gas/i18n.js — both
-// are exposed as global functions/vars in Apps Script's flat scope.
+// `getLabelSwatches()` / `getSwatchForHex(hex)` / `getSwatchForClassicColorId`
+// and the LABEL_SWATCH_PALETTE / CLASSIC_COLOR_ID_HEX data live in gas/i18n.js
+// — all exposed as global functions/vars in Apps Script's flat scope.
 
-function getColorOrderIndex(colorId) {
-  for (var i = 0; i < COLOR_PALETTE.length; i++) {
-    if (COLOR_PALETTE[i].id === colorId) return i;
+// Palette-order index for a rule's cached classic colorId (native-labels #03:
+// the editor list still sorts by color; the cache maps to a 24-grid hex).
+function getRuleColorOrderIndex(colorId) {
+  var hex = CLASSIC_COLOR_ID_HEX[String(colorId)];
+  if (!hex) return Number.MAX_SAFE_INTEGER;
+  var swatches = getLabelSwatches();
+  for (var i = 0; i < swatches.length; i++) {
+    if (swatches[i].hex === hex) return i;
   }
   return Number.MAX_SAFE_INTEGER;
 }
@@ -200,6 +206,9 @@ function buildHomeCard(L) {
   if (inFirstHomeWindow) {
     infoText = infoText + "\n\n" + t('home.info.firstEventDelay', null, L);
   }
+  // native-labels #03 (ADR-0006) — unnamed label slots never become rules;
+  // naming a color in Google Calendar is what creates one.
+  infoText = infoText + "\n\n" + t('home.hint.nameLabel', null, L);
 
   var infoSection = CardService.newCardSection();
   infoSection.addWidget(CardService.newDecoratedText()
@@ -416,9 +425,10 @@ function fetchCategoriesOrError() {
 }
 
 /**
- * Maps the backend wire shape (`{ id, name, colorId, keywords, ... }`) to the
- * trimmed `{ id, keyword, colorId }` rule rows the card builders consume.
- * Shared by fetchCategoriesOrError and the mutation-response fast path below.
+ * Maps the backend wire shape (`{ id, name, colorId, labelId, ... }`) to the
+ * trimmed `{ id, keyword, colorId, labelId, labelDeleted }` rule rows the
+ * card builders consume. Shared by fetchCategoriesOrError and the
+ * mutation-response fast path below.
  */
 function mapWireCategoriesToRules(categories) {
   return categories.map(function (c) {
@@ -428,6 +438,10 @@ function mapWireCategoriesToRules(categories) {
       // 과거에는 keywords[0]만 사용해서 "프로젝트, 개발" 입력이 "프로젝트"로만 표시됐음.
       keyword: c.name || (c.keywords && c.keywords[0]) || "",
       colorId: c.colorId,
+      // native-labels #03 (ADR-0006) — labelId drives the sidebar chip POST;
+      // labelDeleted renders the editor's "라벨 삭제됨" badge.
+      labelId: c.labelId || null,
+      labelDeleted: !!c.labelDeletedAt,
     };
   });
 }
@@ -462,7 +476,8 @@ function readCategoriesFromMutationResponse(res) {
 function onEventOpen(e) {
   var L = pickLocale(e);
   var title = t('event.empty', null, L);
-  var appliedColorLabel = t('colors.default', null, L);
+  var eventLabelId = null; // the event's currently applied Google label
+  var rules = null; // backend label cache rows (trimmed, see mapWire...)
   var previewResult = null; // { source, category?, matchedSeed?, score?, llmAvailable?, llmTried?, error? }
 
   // §5 후속 — if actionClassifyWithLlm stashed an on-demand LLM preview in
@@ -483,15 +498,20 @@ function onEventOpen(e) {
     }
 
     if (event) {
-      var rawColorId = event.colorId;
-      if (rawColorId) {
-        var colors = getCalendarColors(L);
-        for (var ci = 0; ci < colors.length; ci++) {
-          if (colors[ci].id === rawColorId) {
-            appliedColorLabel = colors[ci].label;
-            break;
-          }
+      // ADR-0006 — labels supersede colorId; events.get returns
+      // `eventLabelId` without opt-in (native-labels PRD 실측 1).
+      eventLabelId = event.eventLabelId || null;
+
+      // Label cache for the chip picker + applied-label line. A chip-pick
+      // re-render carries the list in the action parameters (card-latency
+      // #01 pattern), so pure-UI re-renders stay fetch-free.
+      rules = readCategoriesSnapshot(e);
+      if (!rules) {
+        var fetchedCats = fetchCategoriesOrError();
+        if (fetchedCats.error === 'AUTH_EXPIRED') {
+          return buildReconnectCard(null, L);
         }
+        rules = fetchedCats.rules || null;
       }
 
       if (!previewResult) {
@@ -516,8 +536,28 @@ function onEventOpen(e) {
   var statusSection = CardService.newCardSection()
     .setHeader(t('event.section.status', null, L));
 
+  // Applied-label line: resolve the event's eventLabelId against the label
+  // cache. A label that matches no rule (unnamed slot pick / not yet
+  // reconciled) renders the "unknown" variant rather than pretending bare.
+  var appliedLine;
+  if (!eventLabelId) {
+    appliedLine = t('event.appliedLabel.none', null, L);
+  } else {
+    var appliedRule = null;
+    if (rules) {
+      for (var ai = 0; ai < rules.length; ai++) {
+        if (rules[ai].labelId === eventLabelId) {
+          appliedRule = rules[ai];
+          break;
+        }
+      }
+    }
+    appliedLine = appliedRule
+      ? t('event.appliedLabel', { name: appliedRule.keyword }, L)
+      : t('event.appliedLabel.unknown', null, L);
+  }
   statusSection.addWidget(CardService.newDecoratedText()
-    .setText(t('event.appliedColor', { label: appliedColorLabel }, L)));
+    .setText(appliedLine));
 
   statusSection.addWidget(CardService.newDecoratedText()
     .setText(formatMatchLine(previewResult, L))
@@ -544,32 +584,58 @@ function onEventOpen(e) {
   var overrideSection = CardService.newCardSection()
     .setHeader(t('event.section.override', null, L));
 
-  // Use Grid widget for visualizing colors
-  var colorGrid = CardService.newGrid()
-    .setTitle(t('event.colorPicker', null, L))
-    .setNumColumns(6)
-    .setOnClickAction(CardService.newAction().setFunctionName("actionSelectColor"));
-
-  // Inline data-URI swatches — no external image host (card-latency #03)
-  var colors = getCalendarColors(L);
-
-  var selectedColorId = null;
-  if (e && e.parameters && e.parameters.selectedColorId) {
-    selectedColorId = e.parameters.selectedColorId;
-  } else if (e && e.commonEventObject && e.commonEventObject.parameters && e.commonEventObject.parameters.selectedColorId) {
-    selectedColorId = e.commonEventObject.parameters.selectedColorId;
+  // native-labels #03 (ADR-0006) — the picker lists the user's named labels
+  // (backend label cache = rules with a live labelId), replacing the retired
+  // 11-color palette. Deleted-label rules can't be applied → filtered out.
+  var chips = [];
+  if (rules) {
+    for (var ci = 0; ci < rules.length; ci++) {
+      if (rules[ci].labelId && !rules[ci].labelDeleted) chips.push(rules[ci]);
+    }
   }
 
-  colors.forEach(function(c) {
-    var url = (c.id === selectedColorId) ? c.selectedUrl : c.url;
-    colorGrid.addItem(CardService.newGridItem()
-      .setIdentifier(c.id)
-      .setImage(CardService.newImageComponent()
-        .setImageUrl(url)
-        .setCropStyle(CardService.newImageCropStyle().setImageCropType(CardService.ImageCropType.CIRCLE))));
-  });
+  var selectedLabelId = null;
+  if (e && e.parameters && e.parameters.selectedLabelId) {
+    selectedLabelId = e.parameters.selectedLabelId;
+  } else if (e && e.commonEventObject && e.commonEventObject.parameters && e.commonEventObject.parameters.selectedLabelId) {
+    selectedLabelId = e.commonEventObject.parameters.selectedLabelId;
+  }
 
-  overrideSection.addWidget(colorGrid);
+  var chipSnapshotJson = serializeCategoriesSnapshot(rules);
+
+  if (chips.length === 0) {
+    overrideSection.addWidget(CardService.newTextParagraph()
+      .setText(t('event.labels.empty', null, L)));
+  } else {
+    // Chip-pick re-render carries the label cache so it stays fetch-free
+    // (card-latency #01 pattern; null → the re-render fetches instead).
+    var chipAction = CardService.newAction()
+      .setFunctionName("actionSelectColor");
+    if (chipSnapshotJson) {
+      chipAction.setParameters({ categoriesSnapshotJson: chipSnapshotJson });
+    }
+
+    var labelGrid = CardService.newGrid()
+      .setTitle(t('event.labelPicker', null, L))
+      .setNumColumns(2)
+      .setOnClickAction(chipAction);
+
+    // Inline data-URI swatches — no external image host (card-latency #03).
+    // The chip icon renders the rule's cached nearest-classic color; the
+    // label's true hex lives in Google (name is what identifies the chip).
+    chips.forEach(function(chip) {
+      var sw = getSwatchForClassicColorId(chip.colorId);
+      var url = (chip.labelId === selectedLabelId) ? sw.selectedUrl : sw.url;
+      labelGrid.addItem(CardService.newGridItem()
+        .setIdentifier(chip.labelId)
+        .setTitle(chip.keyword)
+        .setImage(CardService.newImageComponent()
+          .setImageUrl(url)
+          .setCropStyle(CardService.newImageCropStyle().setImageCropType(CardService.ImageCropType.CIRCLE))));
+    });
+
+    overrideSection.addWidget(labelGrid);
+  }
 
   overrideSection.addWidget(CardService.newTextButton()
     .setText(t('event.btn.exclude', null, L))
@@ -577,11 +643,21 @@ function onEventOpen(e) {
 
   builder.addSection(overrideSection);
 
+  // The save action carries the current selection (and the label cache for
+  // the success-toast name lookup) — CardService rebuilds cards per action,
+  // so state must ride the action parameters, not module vars.
+  var saveAction = CardService.newAction()
+    .setFunctionName("actionSaveEventOverride");
+  var saveParams = {};
+  if (selectedLabelId) saveParams.selectedLabelId = selectedLabelId;
+  if (chipSnapshotJson) saveParams.categoriesSnapshotJson = chipSnapshotJson;
+  if (selectedLabelId || chipSnapshotJson) saveAction.setParameters(saveParams);
+
   var fixedFooter = CardService.newFixedFooter()
     .setPrimaryButton(CardService.newTextButton()
       .setText(t('event.btn.save', null, L))
       .setTextButtonStyle(CardService.TextButtonStyle.FILLED)
-      .setOnClickAction(CardService.newAction().setFunctionName("actionSaveEventOverride")));
+      .setOnClickAction(saveAction));
 
   builder.setFixedFooter(fixedFooter);
 
@@ -595,28 +671,32 @@ function actionSelectColor(e) {
   var p1 = (e && e.parameters) || {};
   var p2 = (e && e.commonEventObject && e.commonEventObject.parameters) || {};
 
-  var selectedColorId =
+  var selectedLabelId =
     p1.grid_item_identifier || p2.grid_item_identifier ||
-    p1.selectedColorId || p2.selectedColorId ||
+    p1.selectedLabelId || p2.selectedLabelId ||
     null;
 
-  if (!selectedColorId) {
+  if (!selectedLabelId) {
     return CardService.newActionResponseBuilder()
       .setNotification(CardService.newNotification().setText(t('color.toast.unrecognized', null, L)))
       .build();
   }
 
-  var colors = getCalendarColors(L);
-  var selectedLabel = t('colors.fallback', null, L);
-  for (var i = 0; i < colors.length; i++) {
-    if (colors[i].id === selectedColorId) {
-      selectedLabel = colors[i].label;
-      break;
+  // Resolve the chip's display name from the carried snapshot (fetch-free;
+  // falls back to the generic word when the snapshot was over budget).
+  var rules = readCategoriesSnapshot(e);
+  var selectedLabel = t('label.fallback', null, L);
+  if (rules) {
+    for (var i = 0; i < rules.length; i++) {
+      if (rules[i].labelId === selectedLabelId) {
+        selectedLabel = rules[i].keyword || selectedLabel;
+        break;
+      }
     }
   }
 
   if (!e.parameters) e.parameters = {};
-  e.parameters.selectedColorId = selectedColorId;
+  e.parameters.selectedLabelId = selectedLabelId;
 
   return CardService.newActionResponseBuilder()
     .setNavigation(CardService.newNavigation().updateCard(onEventOpen(e)))
@@ -735,12 +815,12 @@ function actionRetryAnalysis(e) {
 }
 
 /**
- * Per-event manual color override. Posts the user's grid pick to
- * `POST /api/events/:calendarId/:eventId/color`, which PATCHes the
- * event's `colorId` AND clears the §5.4 ownership marker so the next
- * sync respects the user's choice as `skipped_manual`.
+ * Per-event manual label override. Posts the user's chip pick to
+ * `POST /api/events/:calendarId/:eventId/color`, which PATCHes the event's
+ * `eventLabelId` (native-labels #02 contract) AND clears the §5.4 ownership
+ * marker so the next sync respects the user's choice as `skipped_manual`.
  *
- * Pre-fetch guards: bail with a toast if the user hasn't picked a color
+ * Pre-fetch guards: bail with a toast if the user hasn't picked a label
  * or the event context is missing. Success toast fires only AFTER the
  * 200 response — never before — so the user is never told the apply
  * succeeded when it didn't.
@@ -749,9 +829,9 @@ function actionSaveEventOverride(e) {
   var L = pickLocale(e);
   var p1 = (e && e.parameters) || {};
   var p2 = (e && e.commonEventObject && e.commonEventObject.parameters) || {};
-  var selectedColorId = p1.selectedColorId || p2.selectedColorId || null;
+  var selectedLabelId = p1.selectedLabelId || p2.selectedLabelId || null;
 
-  if (!selectedColorId) {
+  if (!selectedLabelId) {
     return CardService.newActionResponseBuilder()
       .setNotification(CardService.newNotification().setText(t('override.toast.pickFirst', null, L)))
       .build();
@@ -776,7 +856,7 @@ function actionSaveEventOverride(e) {
     AutoColorAPI.fetchBackend(endpoint, {
       method: 'post',
       contentType: 'application/json',
-      payload: JSON.stringify({ colorId: selectedColorId }),
+      payload: JSON.stringify({ labelId: selectedLabelId }),
     });
   } catch (err) {
     var msg = (err && err.message) || '';
@@ -802,14 +882,16 @@ function actionSaveEventOverride(e) {
       .build();
   }
 
-  // 200 응답 이후에만 success toast 출력. 색상 라벨 포함해서 어떤 색이
-  // 적용됐는지 사용자에게 명확히 표시.
-  var colors = getCalendarColors(L);
-  var label = t('colors.fallback', null, L);
-  for (var i = 0; i < colors.length; i++) {
-    if (colors[i].id === selectedColorId) {
-      label = colors[i].label;
-      break;
+  // 200 응답 이후에만 success toast 출력. 어떤 라벨이 적용됐는지 이름으로
+  // 명확히 표시 (스냅샷이 없으면 일반 명칭으로 대체).
+  var rules = readCategoriesSnapshot(e);
+  var label = t('label.fallback', null, L);
+  if (rules) {
+    for (var i = 0; i < rules.length; i++) {
+      if (rules[i].labelId === selectedLabelId) {
+        label = rules[i].keyword || label;
+        break;
+      }
     }
   }
   return CardService.newActionResponseBuilder()
@@ -848,17 +930,24 @@ function readRuleFormValue(e, fieldName) {
 var CATEGORIES_SNAPSHOT_PARAM_MAX_CHARS = 8192;
 
 /**
- * card-latency #01 — serializes the trimmed `{id, keyword, colorId}` rules
- * list for the color-grid pass-through parameter. Returns null when the
- * list is unavailable (fetch error) or the JSON exceeds the parameter
- * budget, so callers omit the parameter and the re-render fetches instead.
+ * card-latency #01 — serializes the trimmed `{id, keyword, colorId,
+ * labelId, labelDeleted}` rules list for the grid pass-through parameter.
+ * Returns null when the list is unavailable (fetch error) or the JSON
+ * exceeds the parameter budget, so callers omit the parameter and the
+ * re-render fetches instead.
  */
 function serializeCategoriesSnapshot(rules) {
   if (!Array.isArray(rules)) return null;
   var json;
   try {
     json = JSON.stringify(rules.map(function (r) {
-      return { id: r.id, keyword: r.keyword, colorId: r.colorId };
+      return {
+        id: r.id,
+        keyword: r.keyword,
+        colorId: r.colorId,
+        labelId: r.labelId || null,
+        labelDeleted: !!r.labelDeleted,
+      };
     }));
   } catch (_err) {
     return null;
@@ -896,8 +985,9 @@ function readCategoriesSnapshot(e) {
 /**
  * Screen 4: Rule Management Card.
  *
- * `categoriesSnapshot` (optional) — a trimmed `[{id, keyword, colorId}]`
- * list already fetched earlier in the same render cycle (card-latency #01).
+ * `categoriesSnapshot` (optional) — a trimmed `[{id, keyword, colorId,
+ * labelId, labelDeleted}]` list already fetched earlier in the same render
+ * cycle (card-latency #01).
  * When present, the builder reuses it instead of re-fetching
  * `/api/categories` — a pure-UI re-render (color pick) must not cost a
  * backend roundtrip. Consecutive color picks re-carry it on purpose:
@@ -996,19 +1086,23 @@ function buildRuleManagementCard(e, categoriesSnapshot) {
     .setNumColumns(6)
     .setOnClickAction(colorPickAction);
 
-  var colors = getCalendarColors(L);
+  // native-labels #03 (ADR-0006) — 24 default label-slot hex swatches
+  // (inline data URIs, no external image host). The grid identifier is the
+  // hex itself; actionAddRule sends it as `backgroundColor` so the backend
+  // creates the Google label + Rule in one step.
+  var swatches = getLabelSwatches();
 
-  var selectedColorId = null;
-  if (e && e.parameters && e.parameters.selectedColorIdForRule) {
-    selectedColorId = e.parameters.selectedColorIdForRule;
-  } else if (e && e.commonEventObject && e.commonEventObject.parameters && e.commonEventObject.parameters.selectedColorIdForRule) {
-    selectedColorId = e.commonEventObject.parameters.selectedColorIdForRule;
+  var selectedHex = null;
+  if (e && e.parameters && e.parameters.selectedHexForRule) {
+    selectedHex = e.parameters.selectedHexForRule;
+  } else if (e && e.commonEventObject && e.commonEventObject.parameters && e.commonEventObject.parameters.selectedHexForRule) {
+    selectedHex = e.commonEventObject.parameters.selectedHexForRule;
   }
 
-  colors.forEach(function(c) {
-    var url = (c.id === selectedColorId) ? c.selectedUrl : c.url;
+  swatches.forEach(function(c) {
+    var url = (c.hex === selectedHex) ? c.selectedUrl : c.url;
     colorGrid.addItem(CardService.newGridItem()
-      .setIdentifier(c.id)
+      .setIdentifier(c.hex)
       .setImage(CardService.newImageComponent()
         .setImageUrl(url)
         .setCropStyle(CardService.newImageCropStyle().setImageCropType(CardService.ImageCropType.CIRCLE))));
@@ -1017,8 +1111,8 @@ function buildRuleManagementCard(e, categoriesSnapshot) {
   colorSection.addWidget(colorGrid);
 
   var addAction = CardService.newAction().setFunctionName("actionAddRule");
-  if (selectedColorId) {
-    addAction = addAction.setParameters({ selectedColorIdForRule: selectedColorId });
+  if (selectedHex) {
+    addAction = addAction.setParameters({ selectedHexForRule: selectedHex });
   }
   colorSection.addWidget(CardService.newTextButton()
     .setText(t('rules.btn.add', null, L))
@@ -1042,17 +1136,12 @@ function buildRuleManagementCard(e, categoriesSnapshot) {
       .setWrapText(true));
   } else {
     rules.sort(function(a, b) {
-      return getColorOrderIndex(a.colorId) - getColorOrderIndex(b.colorId);
+      return getRuleColorOrderIndex(a.colorId) - getRuleColorOrderIndex(b.colorId);
     });
     rules.forEach(function(rule) {
-      var colorObj = null;
-      for (var i = 0; i < colors.length; i++) {
-        if (colors[i].id === rule.colorId) {
-          colorObj = colors[i];
-          break;
-        }
-      }
-      var colorUrl = colorObj ? colorObj.url : "";
+      // Row icon renders the cached nearest-classic color (read-only under
+      // ADR-0006 — the label's canonical color lives in Google Calendar).
+      var colorUrl = getSwatchForClassicColorId(rule.colorId).url;
 
       var deleteButton = CardService.newTextButton()
         .setText(t('rules.btn.delete', null, L))
@@ -1060,16 +1149,27 @@ function buildRuleManagementCard(e, categoriesSnapshot) {
           .setFunctionName("actionDeleteRule")
           .setParameters({id: rule.id}));
 
-      listSection.addWidget(CardService.newDecoratedText()
+      var rowText = CardService.newDecoratedText()
         .setStartIcon(CardService.newIconImage().setIconUrl(colorUrl).setImageCropType(CardService.ImageCropType.CIRCLE))
         .setText(rule.keyword)
-        .setButton(deleteButton));
+        .setButton(deleteButton);
+      // native-labels #03 — the backing Google label is gone; the rule is
+      // excluded from classification and shown with a badge (부활 금지).
+      if (rule.labelDeleted) {
+        rowText.setBottomLabel(t('rules.badge.labelDeleted', null, L));
+      }
+      listSection.addWidget(rowText);
     });
   }
 
   listSection.addWidget(CardService.newDivider());
   listSection.addWidget(CardService.newDecoratedText()
     .setText(t('rules.list.note', null, L))
+    .setWrapText(true));
+  // ADR-0006 관리 비대칭 — rename/recolor/delete of labels happens in
+  // Google Calendar (no deep link exists for the label dialog; text only).
+  listSection.addWidget(CardService.newDecoratedText()
+    .setText(t('rules.manageInGoogle', null, L))
     .setWrapText(true));
 
   builder.addSection(listSection);
@@ -1081,41 +1181,33 @@ function actionSelectColorForRule(e) {
   var L = pickLocale(e);
   // GAS CardService Grid clicks deliver the GridItem.setIdentifier() value
   // under the key `grid_item_identifier` (verified empirically — the docs
-  // do not name the key). `selectedColorIdForRule` is also accepted for
+  // do not name the key). `selectedHexForRule` is also accepted for
   // forward-compat with any future setParameters-based path.
   var p1 = (e && e.parameters) || {};
   var p2 = (e && e.commonEventObject && e.commonEventObject.parameters) || {};
 
-  var selectedColorId =
+  var selectedHex =
     p1.grid_item_identifier || p2.grid_item_identifier ||
-    p1.selectedColorIdForRule || p2.selectedColorIdForRule ||
+    p1.selectedHexForRule || p2.selectedHexForRule ||
     null;
 
-  if (!selectedColorId) {
+  if (!selectedHex) {
     return CardService.newActionResponseBuilder()
       .setNotification(CardService.newNotification().setText(t('color.toast.unrecognized', null, L)))
       .build();
   }
 
-  var colors = getCalendarColors(L);
-  var selectedLabel = t('colors.fallback', null, L);
-  for (var i = 0; i < colors.length; i++) {
-    if (colors[i].id === selectedColorId) {
-      selectedLabel = colors[i].label;
-      break;
-    }
-  }
-
   if (!e.parameters) e.parameters = {};
-  e.parameters.selectedColorIdForRule = selectedColorId;
+  e.parameters.selectedHexForRule = selectedHex;
 
   // card-latency #01 — reuse the list this render already carries; null
   // (absent / over budget / unparsable) falls back to the builder's fetch.
   var categoriesSnapshot = readCategoriesSnapshot(e);
 
+  // Labels have no color names (ADR-0006) — the toast is generic.
   return CardService.newActionResponseBuilder()
     .setNavigation(CardService.newNavigation().updateCard(buildRuleManagementCard(e, categoriesSnapshot)))
-    .setNotification(CardService.newNotification().setText(t('color.toast.selected', { label: selectedLabel }, L)))
+    .setNotification(CardService.newNotification().setText(t('rules.toast.colorPicked', null, L)))
     .build();
 }
 
@@ -1142,23 +1234,26 @@ function actionAddRule(e) {
     keywords = [name];
   }
 
-  var selectedColorId = (e.parameters && e.parameters.selectedColorIdForRule)
+  var selectedHex = (e.parameters && e.parameters.selectedHexForRule)
     || (e.commonEventObject && e.commonEventObject.parameters
-        ? e.commonEventObject.parameters.selectedColorIdForRule
+        ? e.commonEventObject.parameters.selectedHexForRule
         : null);
-  if (!selectedColorId) {
+  if (!selectedHex) {
     return CardService.newActionResponseBuilder()
       .setNotification(CardService.newNotification().setText(t('rules.toast.colorFirst', null, L)))
       .build();
   }
 
   try {
+    // native-labels #03 — `backgroundColor` (hex) makes the backend create
+    // the Google label AND the Rule in one step (labelId linked; colorId
+    // cache filled server-side). Label-create failure → no Rule (에러 반환).
     var res = AutoColorAPI.fetchBackend('/api/categories', {
       method: 'post',
       contentType: 'application/json',
       payload: JSON.stringify({
         name: name,
-        colorId: selectedColorId,
+        backgroundColor: selectedHex,
         keywords: keywords
       })
     });

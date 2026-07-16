@@ -22,6 +22,10 @@ export type Row = {
   colorId: string;
   keywords: string[];
   priority: number;
+  // ADR-0006 (native-labels) — optional so pre-label tests keep their
+  // literal rows; `fillRowDefaults` normalizes inserts to null.
+  labelId?: string | null;
+  labelDeletedAt?: Date | null;
   createdAt: Date;
   updatedAt: Date;
 };
@@ -213,6 +217,8 @@ function fillRowDefaults(v: Partial<Row>): Row {
     colorId: v.colorId ?? "1",
     keywords: v.keywords ?? [],
     priority: v.priority ?? 100,
+    labelId: v.labelId ?? null,
+    labelDeletedAt: v.labelDeletedAt ?? null,
     createdAt: v.createdAt ?? now,
     updatedAt: v.updatedAt ?? now,
   };

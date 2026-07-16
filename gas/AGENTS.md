@@ -15,7 +15,8 @@ or fallbacks** — the backend is the source of truth (see
 - `config.js` — Script Property keys + frozen Add-on URL constants.
 - `storage.js` — `PropertiesService` per-user wrappers.
 - `i18n.js` — `pickLocale` / `t` / `MESSAGES` (en, ko, zh-CN, zh-TW) +
-  `COLOR_PALETTE` / `getCalendarColors(locale)` / `getAuthErrorBundle`.
+  `LABEL_SWATCH_PALETTE` / `getLabelSwatches()` / `getSwatchForHex(hex)` /
+  `getSwatchForClassicColorId(colorId)` / `getAuthErrorBundle`.
 - `appsscript.json` — manifest (scopes / triggers / runtime; already
   declares `useLocaleFromApp: true` + `script.locale` scope).
 
