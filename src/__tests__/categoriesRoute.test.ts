@@ -1,9 +1,15 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import type * as EventLabelsModule from "../services/eventLabels";
+import type * as TokenRefreshModule from "../services/tokenRefresh";
+
 // Hoisted mocks must be declared before the tested module is imported.
 // - `getDb` is replaced so the route + authMiddleware never hit real Postgres.
 // - `verifySession` returns a canned session keyed by bearer token so tests
 //   can simulate "user A" vs "user B" without exercising the real HMAC path.
+// - `appendEventLabel` / `getValidAccessToken` are replaced (real error
+//   classes kept via importActual so the route's instanceof mapping runs)
+//   for the native-labels #03 label-creating POST path.
 vi.mock("../db", () => ({ getDb: vi.fn() }));
 vi.mock("../services/sessionService", () => ({
   verifySession: vi.fn(),
@@ -12,11 +18,36 @@ vi.mock("../queues/syncProducer", () => ({
   enqueueSync: vi.fn(async () => undefined),
   SyncQueueUnavailableError: class extends Error {},
 }));
+const appendEventLabelMock = vi.fn();
+vi.mock("../services/eventLabels", async () => {
+  const actual = await vi.importActual<typeof EventLabelsModule>(
+    "../services/eventLabels",
+  );
+  return {
+    ...actual,
+    appendEventLabel: (...args: unknown[]) => appendEventLabelMock(...args),
+  };
+});
+const getValidAccessTokenMock = vi.fn();
+vi.mock("../services/tokenRefresh", async () => {
+  const actual = await vi.importActual<typeof TokenRefreshModule>(
+    "../services/tokenRefresh",
+  );
+  return {
+    ...actual,
+    getValidAccessToken: (...args: unknown[]) =>
+      getValidAccessTokenMock(...args),
+  };
+});
 
 import { app } from "../index";
 import { getDb } from "../db";
 import { enqueueSync } from "../queues/syncProducer";
+import { EventLabelCapError } from "../services/eventLabels";
+import { CalendarApiError } from "../services/googleCalendar";
+import { nearestClassicColorId } from "../services/labelReconcile";
 import { verifySession } from "../services/sessionService";
+import { ReauthRequiredError } from "../services/tokenRefresh";
 
 import {
   type FakeDbHandle,
@@ -28,6 +59,7 @@ const USER_A = "00000000-0000-0000-0000-00000000000a";
 const USER_B = "00000000-0000-0000-0000-00000000000b";
 const CAT_A_ID = "11111111-1111-1111-1111-11111111111a";
 const CAT_B_ID = "22222222-2222-2222-2222-22222222222b";
+const LABEL_ID = "33333333-3333-3333-3333-33333333333c";
 
 function row(overrides: Partial<Row>): Row {
   return {
@@ -86,6 +118,8 @@ beforeEach(() => {
     if (token === "token-b") return { userId: USER_B, email: "b@test" };
     return null;
   });
+  getValidAccessTokenMock.mockResolvedValue({ accessToken: "at-test" });
+  appendEventLabelMock.mockResolvedValue({ id: LABEL_ID });
 });
 
 afterEach(() => {
@@ -319,6 +353,129 @@ describe("/api/categories — create (POST)", () => {
     });
     expect(res.status).toBe(409);
     expect(vi.mocked(enqueueSync)).not.toHaveBeenCalled();
+  });
+});
+
+describe("/api/categories — create with backgroundColor (native-labels #03)", () => {
+  function post(body: unknown, token = "token-a") {
+    return invoke("/api/categories", {
+      method: "POST",
+      userToken: token,
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(body),
+    });
+  }
+
+  it("201 — creates the Google label first, links labelId, fills colorId as nearest-classic cache", async () => {
+    const res = await post({
+      name: "주간회의",
+      backgroundColor: "#d50000",
+      keywords: ["주간회의"],
+    });
+    expect(res.status).toBe(201);
+    const body = (await res.json()) as {
+      category: { labelId: string | null; colorId: string };
+    };
+    expect(body.category.labelId).toBe(LABEL_ID);
+    expect(body.category.colorId).toBe(nearestClassicColorId("#d50000"));
+    // label creation targeted the primary calendar with the rule's name+hex
+    expect(appendEventLabelMock).toHaveBeenCalledTimes(1);
+    expect(appendEventLabelMock).toHaveBeenCalledWith("at-test", "primary", {
+      name: "주간회의",
+      backgroundColor: "#d50000",
+    });
+    expect(currentDb.state.categories[0]?.labelId).toBe(LABEL_ID);
+  });
+
+  it("atomicity — label creation failure returns an error and creates NO rule", async () => {
+    appendEventLabelMock.mockRejectedValue(
+      new CalendarApiError("server", 500, undefined, "calendars.patch 500"),
+    );
+    currentDb.state.syncStates.push({ userId: USER_A, calendarId: "primary" });
+    const res = await post({
+      name: "x",
+      backgroundColor: "#33b679",
+      keywords: ["x"],
+    });
+    expect(res.status).toBe(502);
+    const body = (await res.json()) as { error: string };
+    expect(body.error).toBe("upstream_unavailable");
+    expect(currentDb.state.categories).toHaveLength(0);
+    expect(vi.mocked(enqueueSync)).not.toHaveBeenCalled();
+  });
+
+  it("EventLabelCapError maps to 422 label_cap_reached with no rule", async () => {
+    appendEventLabelMock.mockRejectedValue(new EventLabelCapError(200));
+    const res = await post({
+      name: "x",
+      backgroundColor: "#33b679",
+      keywords: ["x"],
+    });
+    expect(res.status).toBe(422);
+    const body = (await res.json()) as { error: string };
+    expect(body.error).toBe("label_cap_reached");
+    expect(currentDb.state.categories).toHaveLength(0);
+  });
+
+  it("reauth-required token fetch maps to 503 without touching Google", async () => {
+    getValidAccessTokenMock.mockRejectedValue(new ReauthRequiredError("flag_set"));
+    const res = await post({
+      name: "x",
+      backgroundColor: "#33b679",
+      keywords: ["x"],
+    });
+    expect(res.status).toBe(503);
+    const body = (await res.json()) as { error: string };
+    expect(body.error).toBe("reauth_required");
+    expect(appendEventLabelMock).not.toHaveBeenCalled();
+    expect(currentDb.state.categories).toHaveLength(0);
+  });
+
+  it("duplicate name pre-check fires BEFORE the label is created (no orphan label)", async () => {
+    currentDb.state.categories.push(
+      row({ id: CAT_A_ID, userId: USER_A, name: "주간회의" }),
+    );
+    const res = await post({
+      name: "주간회의",
+      backgroundColor: "#d50000",
+      keywords: ["x"],
+    });
+    expect(res.status).toBe(409);
+    expect(appendEventLabelMock).not.toHaveBeenCalled();
+  });
+
+  it("regression — colorId-only body keeps the legacy path (no token fetch, no label call)", async () => {
+    const res = await post({
+      name: "주간회의",
+      colorId: "9",
+      keywords: ["주간회의"],
+    });
+    expect(res.status).toBe(201);
+    const body = (await res.json()) as { category: { colorId: string; labelId: string | null } };
+    expect(body.category.colorId).toBe("9");
+    expect(body.category.labelId).toBeNull();
+    expect(appendEventLabelMock).not.toHaveBeenCalled();
+    expect(getValidAccessTokenMock).not.toHaveBeenCalled();
+  });
+
+  it("400 when neither colorId nor backgroundColor is present", async () => {
+    const res = await post({ name: "x", keywords: ["x"] });
+    expect(res.status).toBe(400);
+  });
+
+  it("400 on a malformed hex", async () => {
+    const res = await post({
+      name: "x",
+      backgroundColor: "d50000",
+      keywords: ["x"],
+    });
+    expect(res.status).toBe(400);
+    const res2 = await post({
+      name: "x",
+      backgroundColor: "#d500",
+      keywords: ["x"],
+    });
+    expect(res2.status).toBe(400);
   });
 });
 

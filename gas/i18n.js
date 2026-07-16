@@ -11,53 +11,86 @@
  * below — never hardcode a string in addon.js. See gas/CLAUDE.md.
  */
 
-// card-latency #03 — swatches are inline base64 PNG data URIs (48x48,
-// regenerate via scripts/gen-swatch-assets.py; colors/check mirror the old
-// placehold.co affordance). Inline data renders straight from the card JSON,
-// so neither the initial grid paint nor the url <-> selectedUrl selection
-// swap makes an external image fetch. Ordering/id/key are the Google
-// Calendar colorId mapping and MUST stay unchanged.
-var COLOR_PALETTE = [
-  { id: "11", url: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAADAAAAAwAQMAAABtzGvEAAAAA1BMVEXVAAAsOMoBAAAADUlEQVR42mNgGAXUBAABUAABNLg62QAAAABJRU5ErkJggg==",
-    selectedUrl: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAADAAAAAwCAMAAABg3Am1AAAAYFBMVEX//////v7//f3//Pz+/Pz++/v++vr98vL64uL409PvoKDnbGzlZWXlYWHgQ0PaICDXDAzWBgbWBATVBATWAwPWAgLVAwPVAgLUAgLVAQHUAQHVAADUAADTAADSAADRAADkZLr1AAABI0lEQVR42u2UW3uDIAyG4wHUtioiqGkN/f//cpG5Z52TFu/lOi/6HQg8Dh44gRNYD+IxYHzM5giAZBRhPGDvTVXWZGMBHKYKIG1nGwkM7gJSQkMmDtDuBrmAy32M+yXtGhA8TyNGAZbaIpVQ0RB26TUkvKsKJJRqGoM5/AmpJxacFM2rpxvAh/RzXeeuIAXUTge7ZGkJaR3Qrl4MvT67YPkQOw4Jbp4wLDiRbFAfbivOqshE7gmcvOBKTfim3oZqyNOMia4nnk+Llszb92A52MwTSyMENFvB/2zVK1Hzp1iw6z6+uG8iYbliT/BONXzdEoB8V/BelzyRi6RUs41bAgvBp9kxKNBWzngJ3MSvGUP6t1JRe8lsNsvnvYR4rvsTOAx8Aaqz5AkRvtI9AAAAAElFTkSuQmCC", key: "tomato" },
-  { id: "4",  url: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAADAAAAAwAQMAAABtzGvEAAAAA1BMVEXmfHNAk4e0AAAADUlEQVR42mNgGAXUBAABUAABNLg62QAAAABJRU5ErkJggg==",
-    selectedUrl: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAADAAAAAwCAMAAABg3Am1AAAAYFBMVEX//////v7//f3+/fz//Pz99/b88O/65uT2zsryu7fwr6rvrafupZ7rk4zngnnngHfmf3bmfnbmfnXmfXXmfXTmfHTmfHPme3LmenHleG7ldmzldWzldWvlc2rkcmjkcWhCXAygAAABGElEQVR42u2U25KDIBBEBxYvkeCysxOCovj/fxnEsiph1cV357kPVk+PDebkwAVcwDqPcwA9LZ4BqMPWUT6AnapK6X5zATK2BGCqo0wAxxqEANVjHoBjA5xD/faBQ0CP96h3Jg8IhgsmoBrMwZbeQiJLFQgoW0u7OXyERH0wzIRyuJt0DGlduZ5uIDhIr3dviWJIfnlQ+2BYwG3Su8dHhkJI0EQJDtFw/XEVKfBsg4ZHgmw7G66+7QFg0EngjM0E9UHPitRwahp9A2wmRl/Phu+p4T9rxWkh5GJ4S58EpyMB8AWbhjeSXgkOFdkcIBKcc1a0HeaVwEyEUf1Pbmugl2UpR8yvGRyS//7fmsGkWTJ66XHV/QWcBl7aGrsXhK4bXgAAAABJRU5ErkJggg==", key: "flamingo" },
-  { id: "6",  url: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAADAAAAAwAQMAAABtzGvEAAAAA1BMVEX0UR5MGLegAAAADUlEQVR42mNgGAXUBAABUAABNLg62QAAAABJRU5ErkJggg==",
-    selectedUrl: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAADAAAAAwCAMAAABg3Am1AAAAYFBMVEX///////7//v7//f3//fz//Pv/+/r+7+r929D6sZr5lXb4jGv2ckj1Wyv0VSP0VCP0VCL0VCH0UyH0UyD0UiD0Uh/0UR/0UR70UR30Txz0Sxb0SRTzSBLzRhDzRA3zQwzyzrXwAAABI0lEQVR42u2U25KDIBBEJ0RAEQzLZSOI+v9/uaDZKtcNBt+d5z5FDd3T8Dw5cAEX8Jpvew7QvVNnAO2VCLYcUJ7XlAVVCtjeUwDEvSkE9NgAIcAHVQbIkUGFodk8cAg8Rg446kNviwDlBUUE6vDM/9LWJONMDQSocDrrwx+T9BAXRoQPX1mnTTLpl+jmqMc3NnfZLOnFpEmu+qm9YQLNXr8BbG+iScDmRMjA14V1Pq3WCXrH1UIYJ9LCdefMQbxViDbdE/HQQ9QjyoM8vAc1vYhxSgtDO3UfDkjOK9G2EBdm7/Q741YCAENKhCk40YVAABXU2pUAK1FhRIVXZSWQiDjvPiiTVjmxaPgoy2tGBSn+O3x0D2rXLJ97adddV91fQMn8ABT2w2JghmNbAAAAAElFTkSuQmCC", key: "tangerine" },
-  { id: "5",  url: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAADAAAAAwAQMAAABtzGvEAAAAA1BMVEX2vyanYwUyAAAADUlEQVR42mNgGAXUBAABUAABNLg62QAAAABJRU5ErkJggg==",
-    selectedUrl: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAADAAAAAwCAMAAABg3Am1AAAAYFBMVEX/zCX/yiX/ySX/yCX+xiX8xCX4wSb3vyb2vyb1vyb1vib0vib0vSbzvSbzvCbyvCbtuSfWqCi4kyqqiSuGbi5RSDE6ODM3NjM1NTMzMzMwMTMrLTQoKzQnKzQmKjQjJzTZK7ihAAABKklEQVR42u2U25KDIBBEJaJRLqICIkjw//8yI2arXHc1+C5PVMGB6umZzqqLK7uBG/ismlwD6LNkVwBS0BaTdIAVnR4kZqkAqUodnOsKkgiwh/LGvLrNF6cAz2UYx1ltPjgFmrz31gSFqzQABA/OBJ3Xx1XaHpGSa28m3Zb00IdfJtFCzcaNHeaHTkeTfgiRwf1xkkgc9hKNJqH1QYF6P5pZZeKw+ciTg0leomYpKAbBw6wwPe5WUrZQFBsJ2Gs/eBBMTtqbYfmy40IIinUwbtgL3otmSPpIPJAKILh/iC8DxFci9FGw/O/+zrgmEs4aBwXCJGFEV8JacJiXKcCHAMFtwdJCYCEmN3W4SU0NUA6G5zw9ZljO278On80D2yXL91yqyR33N3AZeAOu6lHysIfuPgAAAABJRU5ErkJggg==", key: "banana" },
-  { id: "2",  url: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAADAAAAAwAQMAAABtzGvEAAAAA1BMVEUztnkaEaa1AAAADUlEQVR42mNgGAXUBAABUAABNLg62QAAAABJRU5ErkJggg==",
-    selectedUrl: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAADAAAAAwCAMAAABg3Am1AAAAYFBMVEX////+//7+/v79/v78/v37/vz7/fz6/fzr+PLO7d6f3cCD0611zqRSwo48uX83uHw3t3w2t3s1t3s1t3o0t3o0tno0tnkztnkytngwtXcttHUqs3MpsnInsnIksXAjsG5t/gLPAAABIklEQVR42u2U3ZaDIAyEY8WKP6ABqVVE3/8tG117Ttdda7w313wchpkMtCcHLuAC1nk8zgH22ZkzgPWog+MDpldSFoPlAq7tJcBN9Q0TMGMO9xTUYHgAhgKEgNw3vCfVoQSRQB6ejgWgVzJOIAvt/i99muS6JoMEpO7srg+/TLI+hyRK1YC7Ti8mva+rphxSAcVU72bJ+tmkCdfzJSQkeKp2w+eelkxar8RBySiFzNv2C6DTWMQL4To9C850577E2wwFxNFCWE/nb3IreCvajCsxkmASUI7VwQLh9EOU5PCduPpw4+qFAHo+JSg0jBV9EzFk9q/g/7K0EEJEUveGVwIzQaM8clsDx4IMD8ivGRM+IsXqJdw0y3EvbbrrqvsL4MwLRPPDosP62/MAAAAASUVORK5CYII=", key: "sage" },
-  { id: "10", url: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAADAAAAAwAQMAAABtzGvEAAAAA1BMVEULgEN/eVpaAAAADUlEQVR42mNgGAXUBAABUAABNLg62QAAAABJRU5ErkJggg==",
-    selectedUrl: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAADAAAAAwCAMAAABg3Am1AAAAYFBMVEX////9/v78/v38/f37/fz6/Pvq9O/Q59uUx61rso1mr4lKoXMijFQShEgPgkYOgkYOgkUOgUUNgUUNgUQMgUQMgEMLgEMLgEIKgEIJfkEEfDwBeToAeTkAdzYAdjQAdTOYHWC5AAABIklEQVR42u2U25KDIBBERwFRCYig2QBe/v8vdzBuVdYqIr47z3MK2+5peF4cuIEb2GccrwHm5fQVwPhOTkM+oL3gVRtMLjA8PQcoHt5mAmaugTEQQecBam6AUKg/HvgKqFkAxf3wM2QBnX9UBQM+jem/9GmSdT0HBpV0JunDP5NsQMEFE6FLOm2jSf2fgBX3KbSLSmbJbCbtC2ppgTKoV5UM3/DCbwZoNqILm+A69Om0Dk5WJSUbYZ2Mgrl09ku8dWiBFCU0qzIB94vqcRB8FK2XBspIzMsmWMzq5IDUTrT4FENOnV7cmwCgEBNhM040EgQJArx3OcCbIBQFe51XApHAEUHltgZ6jIbPXX7N6EnJyVzpJX1olvNeOnTXXfc3kDO/Dn26qpypsS4AAAAASUVORK5CYII=", key: "basil" },
-  { id: "7",  url: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAADAAAAAwAQMAAABtzGvEAAAAA1BMVEUDm+Xn6calAAAADUlEQVR42mNgGAXUBAABUAABNLg62QAAAABJRU5ErkJggg==",
-    selectedUrl: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAADAAAAAwCAMAAABg3Am1AAAAYFBMVEX////9/v/8/v/7/v/7/f/6/f/6/P/x+f3f8vyu3/dvxfBkwe9Uu+4zreoPn+YHneUHnOUGneUGnOUFnOUEnOUFm+UEm+UDm+UDmuUBmuUAl+QBluQAluQAlOMAk+MAkuPGEEEoAAABHUlEQVR42u2U23KDMAxEF9cEEy4mMjXgGvr/f1mFuDMMLcR+R886Gq1WEobEwAVcQAhr0wAzTJQC9I5a38cDxjVKVd7EAtaOCsgaZyIBmkvkORpPcYCeKwiJ0vVxLWlfQ3K+3072BCDXFFnO+Z/2cErbUv3YKeRQ7WgOfdiaZMmx4KzYCt4Dq0m/5fRyx02iWvThLr1MCgl6YcE57t/6cPnswD0jlCTPgm8ovzp7DExtIaRYCTO2Crc/gnctkWebspUgHwQ/Tu/BLIGYF86XqGf95oB0IOoaggX/l78z7kUAEs+NIPv+RFeCZyWgurGPuemVEB9Z0ToT9wSeBMd+I062lY+ADZ8f8W+GvG69SflLNE2U9sisvd79BSQDPyZpwygByOS7AAAAAElFTkSuQmCC", key: "peacock" },
-  { id: "9",  url: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAADAAAAAwAQMAAABtzGvEAAAAA1BMVEU/UbWQ5rRhAAAADUlEQVR42mNgGAXUBAABUAABNLg62QAAAABJRU5ErkJggg==",
-    selectedUrl: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAADAAAAAwCAMAAABg3Am1AAAAYFBMVEX////+/v/9/f/9/f78/P77+/76+/3u7/jX2/Cpsd6KldKAjM5jcsNKW7lDVbdDVLZCVLZCU7ZBU7ZAU7ZAUrZAUrVAUbU/UbU9T7Q8T7Q5S7M2SbI1SLEzRrAwRK8wQ6/a9pRWAAABIElEQVR42u2U25KDIBBEhwWDFyBkFtYLiP//lwHdVBkrGnx3XukDNfRMQ3uy4AIu4FX2HIBth2cAdA/pbT6Agyh57TEXsO3AAYgYTCaAYwXFDYTDPECPNVAG1eqBQ+A+CmBR79c/ewA8BslJAeWbfgusjmxvSiiAy37fhzeT0MWGyU04veu0SSa9CDVFPYN6UruzhC6ZFJYLVWiAFVBt9SvAtiaaFK9MhPZiaRj3p9V2klNGZ8L2KjVcqt4ejDf6aNNPIu7oop5w4fXhPmD4J8YwN9wE9WWB9LQQzdxw/Um/MW4hABikiTAZKzoTBIBC+dvZnJ2eCcoIlwPmhUAiYn36oJ1p1aGOho86P2bQa+nxTC5tk+V7Lv3ZK+4v4DTwBPnDwyMNUDOeAAAAAElFTkSuQmCC", key: "blueberry" },
-  { id: "1",  url: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAADAAAAAwAQMAAABtzGvEAAAAA1BMVEV5hsudNUrwAAAADUlEQVR42mNgGAXUBAABUAABNLg62QAAAABJRU5ErkJggg==",
-    selectedUrl: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAADAAAAAwCAMAAABg3Am1AAAAYFBMVEX////+/v/+/v79/v79/f78/f78/P719vvt7/jl5/XEyuittt+rs96iq9uSndWAjc58icx8iMx7iMx7h8x6h8x6h8t6hst5hst4hct3hMp0gslzgMhygMhxfshvfcdufMfTDvP/AAABGUlEQVR42u2UzXKEIBCEB0XwhwUFJyyI+v5vGWRrDyFxw6YqNzn3R9H0TIN988AFXMAfgfnuzDsAeq0ClgPGy46LMJcCaF0LQKSfCwGz9tAwkIspA/Q6AKXQeyx70rTekj7YjyJAe8UJgy7Ysl9Chx0waJWbT3P4EhL6HhhhMujTpFNIz+vGPeopiG06HY05hbQ9Lhy3aJhBv0+ns4R3jCHBkCQ6yMNwv6B9ASheNXUi0KnDcDe6F4A1QUBNqkiM6KOe8NxwbtpsA1QHsW7J8C03/O1b9f4gRDTcwPCTPgtuSgQAhSZOBBZs3JOooUNXAiSippRw5XXZTh9EPHLRpSWgN9Fysery1jAh2/tfa0ZnzXKV8QX8C/AJTLjD3QYe3eIAAAAASUVORK5CYII=", key: "lavender" },
-  { id: "3",  url: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAADAAAAAwAQMAAABtzGvEAAAAA1BMVEWOJKqLOqAAAAAADUlEQVR42mNgGAXUBAABUAABNLg62QAAAABJRU5ErkJggg==",
-    selectedUrl: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAADAAAAAwCAMAAABg3Am1AAAAYFBMVEX////+/f7+/P79/P79+/79+v358/ry5fXixunKmNe6esu4dsquYsKiSrmUMK+QKayQKKyQKKuQJ6uPJ6uPJquPJqqOJaqOJKqOI6qNIamLHqiJG6eIGaaHF6WFE6SFEqNLRFiBAAABJElEQVR42u2U3ZKDIAyFA5X6g8qyRCqK+P5vWdDtjGuLxXtznQ8mOScHHicLLuAC/krrcwD2Rp0BcPxtrU4H1NDkObcqFdD9kAOQZsREAF0JGYN688UhIKcKaAbl5oND4Geq4eb7ba+TADW2d8KgmB7xLW1F6gwWwCBvDUZ1+CcSjiUwwhqrokovIr2eE7Pvz4A7EfUSjkEkJ9d+V4eFlrOImk/36EWCag6EtM0ysMW4W7XxS8noQnSmzcPAwnQH9laWAyWBEDj6BZF7Y+XhPShXrYRzy8D1fuC3tcp5JTiHG/Oc+HpxKwGQQXAEJpzoi6BQ4PvAn7y0EJSSezuotBAIhK9PC4q4VTruBZ9kesyoaWOppFxSu2T5nku77Lri/gJS6glwZsNw7vY6CQAAAABJRU5ErkJggg==", key: "grape" },
-  { id: "8",  url: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAADAAAAAwAQMAAABtzGvEAAAAA1BMVEVhYWGoPJflAAAADUlEQVR42mNgGAXUBAABUAABNLg62QAAAABJRU5ErkJggg==",
-    selectedUrl: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAADAAAAAwCAMAAABg3Am1AAAAYFBMVEX////+/v79/f38/Pz6+vrx8fHp6enj4+PV1dXBwcGrq6ufn5+bm5uWlpaEhIR2dnZoaGhmZmZkZGRjY2NiYmJhYWFgYGBfX19eXl5bW1taWlpZWVlXV1dVVVVUVFRSUlLtST4SAAABG0lEQVR42u2UyZKDMAxE29hA2MFS2GzI///lsCRVhAqMuaOr/RBytxrPi4UbuIFP8TWA6oauANxRadgdoC4P/dSQK8B1GwCi6NgRIBtBSuSbFqeAtgk8D9GmwSmgbQ5PIjK1G0B94QuFh32evNLmiFsOIRGU7bEOXyJxPw0s1HbgPbCI9DmuxhhKIh31oZeon0Ua9Pt+BqkQv/Sh+bjmSSQkyye1XQfe/c830JTKk95CcFuFUAirlk/sTSadZFoI7h9Qwi+MPt0HGpKVsMPqiEH/s0B6XIksmxWOf93fCbcSmPSaHcEOK7oQAvAQcuMCvHtI4ZcduYXATEyVG+2aGnpIAz+15B4zZHX5e+Cjfdgni0Mu8R33N3AZ+AMnr7OVsszAagAAAABJRU5ErkJggg==", key: "graphite" }
+// Inline base64 PNG swatches (48x48, regenerate via
+// scripts/gen-swatch-assets.py; see that file's header for hex provenance).
+// native-labels #03 (ADR-0006): the 24 default label-slot colors. Labels
+// have no color names — entries are { hex, url, selectedUrl } only. Inline
+// data renders straight from the card JSON, so neither the initial grid
+// paint nor the url <-> selectedUrl selection swap makes an external image
+// fetch (card-latency #03 contract). Ordering mirrors the Google Calendar
+// color grid and MUST stay in sync with the generator script.
+var LABEL_SWATCH_PALETTE = [
+  { hex: "#d50000", url: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAADAAAAAwAQMAAABtzGvEAAAAA1BMVEXVAAAsOMoBAAAADUlEQVR42mNgGAXUBAABUAABNLg62QAAAABJRU5ErkJggg==",
+    selectedUrl: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAADAAAAAwCAMAAABg3Am1AAAAYFBMVEX//////v7//f3//Pz+/Pz++/v++vr98vL64uL409PvoKDnbGzlZWXlYWHgQ0PaICDXDAzWBgbWBATVBATWAwPWAgLVAwPVAgLUAgLVAQHUAQHVAADUAADTAADSAADRAADkZLr1AAABI0lEQVR42u2UW3uDIAyG4wHUtioiqGkN/f//cpG5Z52TFu/lOi/6HQg8Dh44gRNYD+IxYHzM5giAZBRhPGDvTVXWZGMBHKYKIG1nGwkM7gJSQkMmDtDuBrmAy32M+yXtGhA8TyNGAZbaIpVQ0RB26TUkvKsKJJRqGoM5/AmpJxacFM2rpxvAh/RzXeeuIAXUTge7ZGkJaR3Qrl4MvT67YPkQOw4Jbp4wLDiRbFAfbivOqshE7gmcvOBKTfim3oZqyNOMia4nnk+Llszb92A52MwTSyMENFvB/2zVK1Hzp1iw6z6+uG8iYbliT/BONXzdEoB8V/BelzyRi6RUs41bAgvBp9kxKNBWzngJ3MSvGUP6t1JRe8lsNsvnvYR4rvsTOAx8Aaqz5AkRvtI9AAAAAElFTkSuQmCC" },
+  { hex: "#e67c73", url: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAADAAAAAwAQMAAABtzGvEAAAAA1BMVEXmfHNAk4e0AAAADUlEQVR42mNgGAXUBAABUAABNLg62QAAAABJRU5ErkJggg==",
+    selectedUrl: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAADAAAAAwCAMAAABg3Am1AAAAYFBMVEX//////v7//f3+/fz//Pz99/b88O/65uT2zsryu7fwr6rvrafupZ7rk4zngnnngHfmf3bmfnbmfnXmfXXmfXTmfHTmfHPme3LmenHleG7ldmzldWzldWvlc2rkcmjkcWhCXAygAAABGElEQVR42u2U25KDIBBEBxYvkeCysxOCovj/fxnEsiph1cV357kPVk+PDebkwAVcwDqPcwA9LZ4BqMPWUT6AnapK6X5zATK2BGCqo0wAxxqEANVjHoBjA5xD/faBQ0CP96h3Jg8IhgsmoBrMwZbeQiJLFQgoW0u7OXyERH0wzIRyuJt0DGlduZ5uIDhIr3dviWJIfnlQ+2BYwG3Su8dHhkJI0EQJDtFw/XEVKfBsg4ZHgmw7G66+7QFg0EngjM0E9UHPitRwahp9A2wmRl/Phu+p4T9rxWkh5GJ4S58EpyMB8AWbhjeSXgkOFdkcIBKcc1a0HeaVwEyEUf1Pbmugl2UpR8yvGRyS//7fmsGkWTJ66XHV/QWcBl7aGrsXhK4bXgAAAABJRU5ErkJggg==" },
+  { hex: "#f4511e", url: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAADAAAAAwAQMAAABtzGvEAAAAA1BMVEX0UR5MGLegAAAADUlEQVR42mNgGAXUBAABUAABNLg62QAAAABJRU5ErkJggg==",
+    selectedUrl: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAADAAAAAwCAMAAABg3Am1AAAAYFBMVEX///////7//v7//f3//fz//Pv/+/r+7+r929D6sZr5lXb4jGv2ckj1Wyv0VSP0VCP0VCL0VCH0UyH0UyD0UiD0Uh/0UR/0UR70UR30Txz0Sxb0SRTzSBLzRhDzRA3zQwzyzrXwAAABI0lEQVR42u2U25KDIBBEJ0RAEQzLZSOI+v9/uaDZKtcNBt+d5z5FDd3T8Dw5cAEX8Jpvew7QvVNnAO2VCLYcUJ7XlAVVCtjeUwDEvSkE9NgAIcAHVQbIkUGFodk8cAg8Rg446kNviwDlBUUE6vDM/9LWJONMDQSocDrrwx+T9BAXRoQPX1mnTTLpl+jmqMc3NnfZLOnFpEmu+qm9YQLNXr8BbG+iScDmRMjA14V1Pq3WCXrH1UIYJ9LCdefMQbxViDbdE/HQQ9QjyoM8vAc1vYhxSgtDO3UfDkjOK9G2EBdm7/Q741YCAENKhCk40YVAABXU2pUAK1FhRIVXZSWQiDjvPiiTVjmxaPgoy2tGBSn+O3x0D2rXLJ97adddV91fQMn8ABT2w2JghmNbAAAAAElFTkSuQmCC" },
+  { hex: "#ef6c00", url: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAADAAAAAwAQMAAABtzGvEAAAAA1BMVEXvbADMjI7sAAAADUlEQVR42mNgGAXUBAABUAABNLg62QAAAABJRU5ErkJggg==",
+    selectedUrl: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAADAAAAAwCAMAAABg3Am1AAAAYFBMVEX///////7//v3//fz//fv//Pv//Pr//Pn+9/H97+P838f4vYv1pmX1omDzjz3wdxfvbwXvbwTvbwPvbQbvbgPvbgLvbQHvbALvbADvagHuZwHuZQDuZADuYgDuYADuXgB30YaOAAABIklEQVR42u2U25KDIBBEO6JEMSIkgBfA/P9fLuhuVZKNiu/OE1VwlKF7Gv3BwgmcwG915hig+0EdAYxVwpl0QI+cVY3TqYDphgrI+KgTAeVr0Cu4VWmA9DeQHPWYeCXpOfICtXt92Q1A27bMKNjb+Q/gdcsMDwaKqh30qg5vIikbGs5K7vSq0rNIf9tiqnHN0Uxy1UvaRpH8ckBODShF/RSr5gt3DiLhNn/y7vjcsBX9BtCWpCAzEdaxYdYOZsPeyjUgWSSEsmxp+L45DzoKGwkfHZGDe7kzQHJaiCb8igZO7E7cQlwuFNERKmFEFwIgYI//DX/z0kyQIqvaUaeFQCRCfXugFbdK31RBcJUeM8pJ4fSRXFIfybKfS5054/4EDgM/M6nMFHiv7XgAAAAASUVORK5CYII=" },
+  { hex: "#f09300", url: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAADAAAAAwAQMAAABtzGvEAAAAA1BMVEXwkwBI0pfTAAAADUlEQVR42mNgGAXUBAABUAABNLg62QAAAABJRU5ErkJggg==",
+    selectedUrl: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAADAAAAAwCAMAAABg3Am1AAAAYFBMVEX///////7//v3//vz//vv//fv//fr//fn//Pr+9ur97dP51Jn2vWX2ul/0rT/ynBrwlQXwlQTwlQPwlAfwlAPwlALwlAHwkwPwkwHwkwDwkgHvjwDvjgDvjQDviwDvigBmVaYQAAABIklEQVR42u2UwZKDIBBEO7AawYiiYFgU/f+/DGi2KpsSxbtzlYfMdE/j92ThAi7gXcacA7S16gzQD6pzfTqgB8FZ5XQqYJ6WA6QedCKgphL5HWJUaYCcHqAZyiHxSXISyPx59zRJgB5qRnJw94xP6VOk3nYc/nxtdVSHfyLJ0TdM7mLUUaUXkf4+N3OJIkM1y6iXVpEm+W64Ql6gnJuo+YzxbwYey5WtE4z482MTd6uxHaMZXYje1hwFeGf7HXsrV4GSQDRy9AMiTIzt7j7oIGwgpuCIDGKSBwsk55Wo/K9yzzWHG7cSt1uO4AiZsKIrAdDNhre8tBD0h7DPHdhd0UD42hpQxK1e4yB4mx4zysnO6TO5pL6S5TiXvrLrivsLSKkX/77URQ7mVpcAAAAASUVORK5CYII=" },
+  { hex: "#f6bf26", url: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAADAAAAAwAQMAAABtzGvEAAAAA1BMVEX2vyanYwUyAAAADUlEQVR42mNgGAXUBAABUAABNLg62QAAAABJRU5ErkJggg==",
+    selectedUrl: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAADAAAAAwCAMAAABg3Am1AAAAYFBMVEX/zCX/yiX/ySX/yCX+xiX8xCX4wSb3vyb2vyb1vyb1vib0vib0vSbzvSbzvCbyvCbtuSfWqCi4kyqqiSuGbi5RSDE6ODM3NjM1NTMzMzMwMTMrLTQoKzQnKzQmKjQjJzTZK7ihAAABKklEQVR42u2U25KDIBBEJaJRLqICIkjw//8yI2arXHc1+C5PVMGB6umZzqqLK7uBG/ismlwD6LNkVwBS0BaTdIAVnR4kZqkAqUodnOsKkgiwh/LGvLrNF6cAz2UYx1ltPjgFmrz31gSFqzQABA/OBJ3Xx1XaHpGSa28m3Zb00IdfJtFCzcaNHeaHTkeTfgiRwf1xkkgc9hKNJqH1QYF6P5pZZeKw+ciTg0leomYpKAbBw6wwPe5WUrZQFBsJ2Gs/eBBMTtqbYfmy40IIinUwbtgL3otmSPpIPJAKILh/iC8DxFci9FGw/O/+zrgmEs4aBwXCJGFEV8JacJiXKcCHAMFtwdJCYCEmN3W4SU0NUA6G5zw9ZljO278On80D2yXL91yqyR33N3AZeAOu6lHysIfuPgAAAABJRU5ErkJggg==" },
+  { hex: "#e4c441", url: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAADAAAAAwAQMAAABtzGvEAAAAA1BMVEXkxEGn3CbqAAAADUlEQVR42mNgGAXUBAABUAABNLg62QAAAABJRU5ErkJggg==",
+    selectedUrl: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAADAAAAAwCAMAAABg3Am1AAAAYFBMVEXy0ELyz0LuzULty0LrykLnx0HlxUHlxEHkxEHjw0Hiw0HiwkHhwkHhwUHgwUHcvkDHrT+slj2fjDx+cTlTTTZDQDU5ODM3NjM1NTM0NDMzMzMwMTMsLTIpKzIoKjIlJzIf/20zAAABKElEQVR42u2U25KEIAxEuYhrwCsgqAj+/1+uOjNVrrNY+C6vcgyd7gQVNw96gAf4HLgH8JyJOwDPeEMhHRBZq42kIhWAgvXBuTaDREAQ5a0N7aHEJVARGYZhUYcCl0BFOj/aoGiRBpRZa5wJmhQXXTp8Agbam7lvGI/68MckoGoxbmxpGXUaNpM+RI3UYsdZ4jqaJb6bhF8/rHHnB7soVEfDBz+ggwsSVZtgugleFOXxtELeGGcnvxHAmlWw1zWDi3gLKsM07ASnehVszoLPogWWficI3gV3Z8Ffba3QToRuc3iR/90/Gfci3GTd2iAKCSP6rjHZWQNLAd6EdWsiRNoSWIkwu7mlVerWKLHse0nK9DUjiGi+Hb6aB5FH3h8fIHjW/QPcBn4BJKdRaKwIZOcAAAAASUVORK5CYII=" },
+  { hex: "#c0ca33", url: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAADAAAAAwAQMAAABtzGvEAAAAA1BMVEXAyjO4EPVIAAAADUlEQVR42mNgGAXUBAABUAABNLg62QAAAABJRU5ErkJggg==",
+    selectedUrl: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAADAAAAAwCAMAAABg3Am1AAAAYFBMVEXL1jPK1TPI0zPH0jPG0DPEzjPBzDPAyjO/yTO/yDO+yDO+xzO9xzO7xDOttTOXnjOKkDNxdjNKTDM6OzM3NzM2NjM1NjM1NTM0NDMzMzMxMDMvLjMsLDMrKzMqKTMnJjPZ1oF9AAABJklEQVR42u2U25KDIBBERbyMoyCgbBAB//8vl2hS5aaii+/yRBVzwLGnO6svruwGbuC94BrQVBVeAaAARiEdwJKrQVBMBaAuVZgtLyERQCK91r7fPXEKtEQE81hkAWmf1OW9m3SQtE4DsOCDHYPK65O/tDuCCpQbnWJVc6jDH5GgkMtoDad4qPQq0vu4y2K9cSLrDmepKZ4ikfZV3zszLvKzfgdADSpYv13Z5ny0sZ42x9MKFRusnlYi7mPDXrESTsYbqfDTYyWAqhBf4LQ99QNmL4IQGbRxPen+MVC7EUEIb/QivtV/CNethJ1+1oYhwaIbMU3aqah0iqc3Qs8DKzEtBJ7EPM+cdqmpEU0QBc8xPWYwR/a94SM/4EeyJOQS3HF/A5eBX6FxSF/vUhUOAAAAAElFTkSuQmCC" },
+  { hex: "#7cb342", url: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAADAAAAAwAQMAAABtzGvEAAAAA1BMVEV8s0Ktq3EpAAAADUlEQVR42mNgGAXUBAABUAABNLg62QAAAABJRU5ErkJggg==",
+    selectedUrl: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAADAAAAAwCAMAAABg3Am1AAAAYFBMVEX////+//7+/v39/v39/vz8/vv3+vTr8+LR5Lyw0Y2tz4igyHWQvl6Btkp/tUZ/tEV+tEV+tER9tER9tEN9s0N8s0N8s0J8s0F7s0F6sj93sDt2sDl2rzl1rzhzrjRxrTMRZY3FAAABIElEQVR42u2UzZKDIBCERwGJ+AdIzMIGfP+3DJi1ymWjO96dk4f5sJpuGqaTAxdwAevczwH6y6ozgHay8wYPKNfySniNBcxkOUDRuhEJqHADxqB5KhwgQw2Ewm3zg0NgCA3QuO8fBgVI11Yli/vTwS1tTDLWcGDAO6t3ffhlkv6OggvWernr9JhMWo/r5xoYBTH3u1nSi0mz/NkXQBnU+f4GMI8xmhRXhiTYt1WRBOv9tBrbxUshCxG/F8G9NQfxVl4AKcpELILLKheci1bR2DIRISWCQhP6fx6QnN+EeAv+tJ8ZNywEAIUkeEQ80ZUgwMe/gj9lKRGE0KLqnMKVQCLiNE+JbQ0ZRDQ8SHzNKL+JFKqXVNYsiF66X3V/AaeBF9QYuxKNw1YEAAAAAElFTkSuQmCC" },
+  { hex: "#33b679", url: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAADAAAAAwAQMAAABtzGvEAAAAA1BMVEUztnkaEaa1AAAADUlEQVR42mNgGAXUBAABUAABNLg62QAAAABJRU5ErkJggg==",
+    selectedUrl: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAADAAAAAwCAMAAABg3Am1AAAAYFBMVEX////+//7+/v79/v78/v37/vz7/fz6/fzr+PLO7d6f3cCD0611zqRSwo48uX83uHw3t3w2t3s1t3s1t3o0t3o0tno0tnkztnkytngwtXcttHUqs3MpsnInsnIksXAjsG5t/gLPAAABIklEQVR42u2U3ZaDIAyEY8WKP6ABqVVE3/8tG117Ttdda7w313wchpkMtCcHLuAC1nk8zgH22ZkzgPWog+MDpldSFoPlAq7tJcBN9Q0TMGMO9xTUYHgAhgKEgNw3vCfVoQSRQB6ejgWgVzJOIAvt/i99muS6JoMEpO7srg+/TLI+hyRK1YC7Ti8mva+rphxSAcVU72bJ+tmkCdfzJSQkeKp2w+eelkxar8RBySiFzNv2C6DTWMQL4To9C850577E2wwFxNFCWE/nb3IreCvajCsxkmASUI7VwQLh9EOU5PCduPpw4+qFAHo+JSg0jBV9EzFk9q/g/7K0EEJEUveGVwIzQaM8clsDx4IMD8ivGRM+IsXqJdw0y3EvbbrrqvsL4MwLRPPDosP62/MAAAAASUVORK5CYII=" },
+  { hex: "#0b8043", url: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAADAAAAAwAQMAAABtzGvEAAAAA1BMVEULgEN/eVpaAAAADUlEQVR42mNgGAXUBAABUAABNLg62QAAAABJRU5ErkJggg==",
+    selectedUrl: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAADAAAAAwCAMAAABg3Am1AAAAYFBMVEX////9/v78/v38/f37/fz6/Pvq9O/Q59uUx61rso1mr4lKoXMijFQShEgPgkYOgkYOgkUOgUUNgUUNgUQMgUQMgEMLgEMLgEIKgEIJfkEEfDwBeToAeTkAdzYAdjQAdTOYHWC5AAABIklEQVR42u2U25KDIBBERwFRCYig2QBe/v8vdzBuVdYqIr47z3MK2+5peF4cuIEb2GccrwHm5fQVwPhOTkM+oL3gVRtMLjA8PQcoHt5mAmaugTEQQecBam6AUKg/HvgKqFkAxf3wM2QBnX9UBQM+jem/9GmSdT0HBpV0JunDP5NsQMEFE6FLOm2jSf2fgBX3KbSLSmbJbCbtC2ppgTKoV5UM3/DCbwZoNqILm+A69Om0Dk5WJSUbYZ2Mgrl09ku8dWiBFCU0qzIB94vqcRB8FK2XBspIzMsmWMzq5IDUTrT4FENOnV7cmwCgEBNhM040EgQJArx3OcCbIBQFe51XApHAEUHltgZ6jIbPXX7N6EnJyVzpJX1olvNeOnTXXfc3kDO/Dn26qpypsS4AAAAASUVORK5CYII=" },
+  { hex: "#009688", url: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAADAAAAAwAQMAAABtzGvEAAAAA1BMVEUAlohjAhtUAAAADUlEQVR42mNgGAXUBAABUAABNLg62QAAAABJRU5ErkJggg==",
+    selectedUrl: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAADAAAAAwCAMAAABg3Am1AAAAYFBMVEX////9/v78/v78/v37/v37/f36/f36/Pzy+fnb8O6g2NNmwLhhvbRDsacgoZUJmYsEmIsEmIoEl4kDmIoDl4kCl4kBl4kBlogCk4YAlogAlocAk4UAkYIAkIIAjoAAjX91awOrAAABHklEQVR42u2U23aEIBRDo1PvoKIgVhH//y8HGGd1asXiu7x6touchOD74sEN3MB2pLwGiGniV4BB8WYZwgEx06IgSoQCko8FENWzCAS4LpFmoIqHAUxXiBOUc+CVmKZIzPzyudkTQKg6j1Izz/1b+vzVMDYFUhTNKLw+/DKpU0ZwlFMlvE47k96f27VCloBo5s2SUNakbaDVBGmKam294ZPS3BlmxBL9YgRnKFXnT6ucmjxOYkc4wZkVPJzEmy8EceSITXCt+tP3IKyxltA2EQnoXvCftbL1RRCChxF8NL8z7kXA+GUT0QU80TcRHwo+ypIjHl9G8CzCSsAS5tCDBXnSyjSxhvfhNcMX9hOpoF7iu2b5v5d23XXX/Q2EnCemGdPBbbQEqQAAAABJRU5ErkJggg==" },
+  { hex: "#039be5", url: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAADAAAAAwAQMAAABtzGvEAAAAA1BMVEUDm+Xn6calAAAADUlEQVR42mNgGAXUBAABUAABNLg62QAAAABJRU5ErkJggg==",
+    selectedUrl: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAADAAAAAwCAMAAABg3Am1AAAAYFBMVEX////9/v/8/v/7/v/7/f/6/f/6/P/x+f3f8vyu3/dvxfBkwe9Uu+4zreoPn+YHneUHnOUGneUGnOUFnOUEnOUFm+UEm+UDm+UDmuUBmuUAl+QBluQAluQAlOMAk+MAkuPGEEEoAAABHUlEQVR42u2U23KDMAxEF9cEEy4mMjXgGvr/f1mFuDMMLcR+R886Gq1WEobEwAVcQAhr0wAzTJQC9I5a38cDxjVKVd7EAtaOCsgaZyIBmkvkORpPcYCeKwiJ0vVxLWlfQ3K+3072BCDXFFnO+Z/2cErbUv3YKeRQ7WgOfdiaZMmx4KzYCt4Dq0m/5fRyx02iWvThLr1MCgl6YcE57t/6cPnswD0jlCTPgm8ovzp7DExtIaRYCTO2Crc/gnctkWebspUgHwQ/Tu/BLIGYF86XqGf95oB0IOoaggX/l78z7kUAEs+NIPv+RFeCZyWgurGPuemVEB9Z0ToT9wSeBMd+I062lY+ADZ8f8W+GvG69SflLNE2U9sisvd79BSQDPyZpwygByOS7AAAAAElFTkSuQmCC" },
+  { hex: "#4285f4", url: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAADAAAAAwAQMAAABtzGvEAAAAA1BMVEVChfQoQD5/AAAADUlEQVR42mNgGAXUBAABUAABNLg62QAAAABJRU5ErkJggg==",
+    selectedUrl: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAADAAAAAwCAMAAABg3Am1AAAAYFBMVEX////+/v/9/v/9/f/8/f/7/P/w9v7l7v3a5/2syvqMtfmCr/hlnPZMjPVGiPRGh/RFh/REh/REhvRDhvRDhfRChfRBhfRAhPQ/g/Q7gfQ5f/M4f/M2ffM0fPMzfPMze/Oj0QUHAAABH0lEQVR42u2U25KEIAxEgwNeEJQJusrF8f//ckB3qlxrdPHdPOdAdTpp6C8W3MANfKq7BuAw4BUAjZJOpwNoRJlzh6mA7k0BQITRiQD6ChgDYTENUJ7Dg0K1+eAUaL0AGvrdT5cEKCNzwqD0/cmUNk/pUZfAoJDjsQ9/TEIbBBMmrDp0WkeTPkQzh34K/NUe7hLaaNJrfbB51UAZVHNzuHx60MEk4HMklBNRcGWxPwFkntFsIfQoo+CyGfXJeqPjkGWRaNCGfpLvBe9F4/RL+GkRXE/tPwek5pWoF8H8W//OuJUAoBA3Qiec6EIQgAzKMLWUm16IByW5NM+0EIhEqG8DOthWNfEi516lxwy6zUol5dJzlywJudTdcX8Dl4E31ouzD0LXeO8AAAAASUVORK5CYII=" },
+  { hex: "#3f51b5", url: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAADAAAAAwAQMAAABtzGvEAAAAA1BMVEU/UbWQ5rRhAAAADUlEQVR42mNgGAXUBAABUAABNLg62QAAAABJRU5ErkJggg==",
+    selectedUrl: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAADAAAAAwCAMAAABg3Am1AAAAYFBMVEX////+/v/9/f/9/f78/P77+/76+/3u7/jX2/Cpsd6KldKAjM5jcsNKW7lDVbdDVLZCVLZCU7ZBU7ZAU7ZAUrZAUrVAUbU/UbU9T7Q8T7Q5S7M2SbI1SLEzRrAwRK8wQ6/a9pRWAAABIElEQVR42u2U25KDIBBEhwWDFyBkFtYLiP//lwHdVBkrGnx3XukDNfRMQ3uy4AIu4FX2HIBth2cAdA/pbT6Agyh57TEXsO3AAYgYTCaAYwXFDYTDPECPNVAG1eqBQ+A+CmBR79c/ewA8BslJAeWbfgusjmxvSiiAy37fhzeT0MWGyU04veu0SSa9CDVFPYN6UruzhC6ZFJYLVWiAFVBt9SvAtiaaFK9MhPZiaRj3p9V2klNGZ8L2KjVcqt4ejDf6aNNPIu7oop5w4fXhPmD4J8YwN9wE9WWB9LQQzdxw/Um/MW4hABikiTAZKzoTBIBC+dvZnJ2eCcoIlwPmhUAiYn36oJ1p1aGOho86P2bQa+nxTC5tk+V7Lv3ZK+4v4DTwBPnDwyMNUDOeAAAAAElFTkSuQmCC" },
+  { hex: "#7986cb", url: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAADAAAAAwAQMAAABtzGvEAAAAA1BMVEV5hsudNUrwAAAADUlEQVR42mNgGAXUBAABUAABNLg62QAAAABJRU5ErkJggg==",
+    selectedUrl: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAADAAAAAwCAMAAABg3Am1AAAAYFBMVEX////+/v/+/v79/v79/f78/f78/P719vvt7/jl5/XEyuittt+rs96iq9uSndWAjc58icx8iMx7iMx7h8x6h8x6h8t6hst5hst4hct3hMp0gslzgMhygMhxfshvfcdufMfTDvP/AAABGUlEQVR42u2UzXKEIBCEB0XwhwUFJyyI+v5vGWRrDyFxw6YqNzn3R9H0TIN988AFXMAfgfnuzDsAeq0ClgPGy46LMJcCaF0LQKSfCwGz9tAwkIspA/Q6AKXQeyx70rTekj7YjyJAe8UJgy7Ysl9Chx0waJWbT3P4EhL6HhhhMujTpFNIz+vGPeopiG06HY05hbQ9Lhy3aJhBv0+ns4R3jCHBkCQ6yMNwv6B9ASheNXUi0KnDcDe6F4A1QUBNqkiM6KOe8NxwbtpsA1QHsW7J8C03/O1b9f4gRDTcwPCTPgtuSgQAhSZOBBZs3JOooUNXAiSippRw5XXZTh9EPHLRpSWgN9Fysery1jAh2/tfa0ZnzXKV8QX8C/AJTLjD3QYe3eIAAAAASUVORK5CYII=" },
+  { hex: "#b39ddb", url: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAADAAAAAwAQMAAABtzGvEAAAAA1BMVEWzndu1jIKYAAAADUlEQVR42mNgGAXUBAABUAABNLg62QAAAABJRU5ErkJggg==",
+    selectedUrl: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAADAAAAAwCAMAAABg3Am1AAAAYFBMVEX//////v/+/v/+/f/+/f79/f7+/P76+f339fvy7vnl3fPZzu3SxerRw+nPwejIuOW/rOG2ody1n9y0n9y0n9u0nty0ntuzntuznduynNqxm9qwmdqvmNmul9mtltitldjeQJ9dAAABEklEQVR42u2UzZKDIBCEW0QNmqj4M0ZFfP+3DGLtYQ1SuFV7kyvzMTTdDN4XF27gBv4I0HukKwDNJNUFgOZaPEpF4R0mAaCeKBAgnSNJUKlAoFueYDHyOfBK3VKBm/pQ0UZwxvih3gMM4yDA8ZAeH36ZRHMOHiW1otMO1qSf7WYtkHKUujmNxm6Sbvd6XYJzFGvjyRJtJr3WjehVnUWpEUye8I0yYzGzxDBKgRSiGQcPQKoEiyxhBbOsVr033qRfO7HoYhNQHQV/PWu77kRpWiV4uuoPxu0EjF+xS7DDaUuYt2IQ9C3YFQ1LMBZlcqKwP70R259xX8gVvlaXxvClC58avWrl2fnueB8nyz2Mb+BfgA9T7syLFBIwawAAAABJRU5ErkJggg==" },
+  { hex: "#9e69af", url: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAADAAAAAwAQMAAABtzGvEAAAAA1BMVEWeaa+ioca3AAAADUlEQVR42mNgGAXUBAABUAABNLg62QAAAABJRU5ErkJggg==",
+    selectedUrl: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAADAAAAAwCAMAAABg3Am1AAAAYFBMVEX////+/v7+/f79/f7+/P79/P78/P769/v17/bq3+7TvNvEpM7CoMy1jMKldLWgbLGgbLCfbLCga7Cfa7CfarCfaq+eaq+eaa+eaK+dZ66bZK2aYquZYauXX6mWXamVW6jIixZvAAABIElEQVR42u2U0ZKDIAxFI5YKCsU2yFYB9///cgHbmbYrFt/llZyB5N4b+Nl54AAO4HnMPgDvI+4BtEXlTDmAk+RMOCwFzH1iACAnXQigb4FSkBbLgN53QGporS77Uu8l1BRa9zrZDQDtpako8Lf6T+Dlahg1BwpMbejwJpK2oeGqkQ6zSieRntdqbuFcg5hV1ktoo0hz/6gXcaDtr8qaz9x1FKlLxNXJpjoDt5h3qxlVQ04kEcOoOIR6NQ4b9kYngFSJ0JYvDV8384BztxA+OqIG6dWXAPUPQoSnaODU18QtBAS9oiN0QUQTEWZFgOv/Da95KRHkVLHLhGVLIBIxMysDyri194Ix4W/lawbdTa03nMvD52Yp2EvmWPcHsBv4AyRhw5cclXXJAAAAAElFTkSuQmCC" },
+  { hex: "#8e24aa", url: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAADAAAAAwAQMAAABtzGvEAAAAA1BMVEWOJKqLOqAAAAAADUlEQVR42mNgGAXUBAABUAABNLg62QAAAABJRU5ErkJggg==",
+    selectedUrl: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAADAAAAAwCAMAAABg3Am1AAAAYFBMVEX////+/f7+/P79/P79+/79+v358/ry5fXixunKmNe6esu4dsquYsKiSrmUMK+QKayQKKyQKKuQJ6uPJ6uPJquPJqqOJaqOJKqOI6qNIamLHqiJG6eIGaaHF6WFE6SFEqNLRFiBAAABJElEQVR42u2U3ZKDIAyFA5X6g8qyRCqK+P5vWdDtjGuLxXtznQ8mOScHHicLLuAC/krrcwD2Rp0BcPxtrU4H1NDkObcqFdD9kAOQZsREAF0JGYN688UhIKcKaAbl5oND4Geq4eb7ba+TADW2d8KgmB7xLW1F6gwWwCBvDUZ1+CcSjiUwwhqrokovIr2eE7Pvz4A7EfUSjkEkJ9d+V4eFlrOImk/36EWCag6EtM0ysMW4W7XxS8noQnSmzcPAwnQH9laWAyWBEDj6BZF7Y+XhPShXrYRzy8D1fuC3tcp5JTiHG/Oc+HpxKwGQQXAEJpzoi6BQ4PvAn7y0EJSSezuotBAIhK9PC4q4VTruBZ9kesyoaWOppFxSu2T5nku77Lri/gJS6glwZsNw7vY6CQAAAABJRU5ErkJggg==" },
+  { hex: "#ad1457", url: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAADAAAAAwAQMAAABtzGvEAAAAA1BMVEWtFFete+DrAAAADUlEQVR42mNgGAXUBAABUAABNLg62QAAAABJRU5ErkJggg==",
+    selectedUrl: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAADAAAAAwCAMAAABg3Am1AAAAYFBMVEX////+/v7+/P3++/z9+vv79Pf46/Hz3ObqwtPYkbDNcJnLa5XGXIq8QHayI2KvGVuuGFquF1quF1muFlmuFlitFliuFVitFVitFFetElarDlOqClCpCE6oBk2nAkqnAUlWdaBgAAABH0lEQVR42u2U25KEIAxEI+B9FDbgIor4/385oDNVrrUqvpvnnEp1OmnobxY8wAN8Sut7gDQG7wByxNbqeADHJs9qi7GA7occIGlGFQmgK4ExaDYjTgExVUAolJsBp4CYXkB9v+11FIBjmyUMiqk/3tLWpM785sAg50Ye+vDHJGW94CRt7M+h0yqY9CX47Psp1DM/vCW5mOTEp98LZlDu+zeANsqbBNUcCGGbNAi22J8APCWULERn+Cp46E7OG20NJAkEl7bwgrPGitN/QFethHOL4JfjFw8k5pWo/SjmOX75cSsBQCFchIp40S9BoFCmi/nphSA0ydoB40IgEL7+W9DBtQpXe8MnER8zOInWyju5hLtkuc6lXXY9cf8AMfUG2YTLG5q2IYoAAAAASUVORK5CYII=" },
+  { hex: "#d81b60", url: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAADAAAAAwAQMAAABtzGvEAAAAA1BMVEXYG2DAZPOQAAAADUlEQVR42mNgGAXUBAABUAABNLg62QAAAABJRU5ErkJggg==",
+    selectedUrl: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAADAAAAAwCAMAAABg3Am1AAAAYFBMVEX//////f7//P3+/P3/+/z++vz99Pj65e31xNbtlLTndJ7ncJvlZ5XgRn7bKWrZIGPZH2PYH2PZHmLYHmLZHWHYHWLYHWHYHGHYG2DYGV7XE1rWEFjWD1jVC1XVCVPVB1LkeAesAAABHUlEQVR42u2U25KDIBBEWxaCxgsYVggI7v//5YImVa61Knl3XplT0PRM4/lh4QIu4FXGfAYM1qpPAO0enTf5gHIt5/WocgFjHQeK1ulMYAgVGEO7uuIQ6MMdhKJaXXAIiNDgK/Z7a7IA5bpbwVD65/4vrU3SVpdg4J0ddn34Y5Ieo+Ditha8BWaT3sdiiv0U9SR2Z2mYTQry1d+AMlQ/Ynf4jP2OJuE+JUL6dha8ec8GiJ9CyUxoK3gSLKw+GG/la5AiEUKP5SJYHu6DSsYmIoRZcBPEyQLJaSGaBoRFTpxu3EIAFGkidMaKvgmCUtscYCEILXjnVF4IJCJWO/a5qSFDnQzv82Pm4WX3v+C9fVCbZDnPpU12XXF/ATn1C7qDy0leMNZ9AAAAAElFTkSuQmCC" },
+  { hex: "#795548", url: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAADAAAAAwAQMAAABtzGvEAAAAA1BMVEV5VUhDkQ62AAAADUlEQVR42mNgGAXUBAABUAABNLg62QAAAABJRU5ErkJggg==",
+    selectedUrl: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAADAAAAAwCAMAAABg3Am1AAAAYFBMVEX////+/v7+/f39/f39/Pz8/Pz8+/vz7+7j29nBsKqtl5Cnj4eSdWqAX1J8WUx8WEt7WEt7V0t7V0p6V0p6Vkp6Vkl5Vkl5VUh5VUd4U0Z1T0JzTT9yTD5wSjxvSDpuRzmYZgoPAAABJUlEQVR42u2UzZKDIBCEBzWgCMhCiOHX93/LIKlUZd3Sxbtz8jAf1kz3NMwnCy7gAj71OAdoa9UZQDvFg6kHlGM9oUHXAmZ2BAAxZyoBFQe4YWBe1QEyUmg7GL5+cAhMkUGX+8OzDvhxnCAMfZgPtvQlkrGmBwyEW72rwy+RjB8AI8y83FXa+CzS5zmx5P4OaBK7XtJ+FSm9HxRphA7DsIhd85nnPYsEdJnWhQZWBvZ6363GctLc2kLk73XgXlhzYG8VskxNsxLa535EWJCH96AShWYlYioDj9uB/6xVLm9iLAPTKP69uKkQAB3csiNMxYkWAgG00N9tDVCItu0Q4U7VhcBK5No64sCtMo2E0CjrY0YFyYM+k0tqkywVufS44v4CTgMvl6nDQeBQBBMAAAAASUVORK5CYII=" },
+  { hex: "#616161", url: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAADAAAAAwAQMAAABtzGvEAAAAA1BMVEVhYWGoPJflAAAADUlEQVR42mNgGAXUBAABUAABNLg62QAAAABJRU5ErkJggg==",
+    selectedUrl: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAADAAAAAwCAMAAABg3Am1AAAAYFBMVEX////+/v79/f38/Pz6+vrx8fHp6enj4+PV1dXBwcGrq6ufn5+bm5uWlpaEhIR2dnZoaGhmZmZkZGRjY2NiYmJhYWFgYGBfX19eXl5bW1taWlpZWVlXV1dVVVVUVFRSUlLtST4SAAABG0lEQVR42u2UyZKDMAxE29hA2MFS2GzI///lsCRVhAqMuaOr/RBytxrPi4UbuIFP8TWA6oauANxRadgdoC4P/dSQK8B1GwCi6NgRIBtBSuSbFqeAtgk8D9GmwSmgbQ5PIjK1G0B94QuFh32evNLmiFsOIRGU7bEOXyJxPw0s1HbgPbCI9DmuxhhKIh31oZeon0Ua9Pt+BqkQv/Sh+bjmSSQkyye1XQfe/c830JTKk95CcFuFUAirlk/sTSadZFoI7h9Qwi+MPt0HGpKVsMPqiEH/s0B6XIksmxWOf93fCbcSmPSaHcEOK7oQAvAQcuMCvHtI4ZcduYXATEyVG+2aGnpIAz+15B4zZHX5e+Cjfdgni0Mu8R33N3AZ+AMnr7OVsszAagAAAABJRU5ErkJggg==" },
+  { hex: "#a79b8e", url: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAADAAAAAwAQMAAABtzGvEAAAAA1BMVEWnm47j+IvJAAAADUlEQVR42mNgGAXUBAABUAABNLg62QAAAABJRU5ErkJggg==",
+    selectedUrl: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAADAAAAAwCAMAAABg3Am1AAAAYFBMVEX///////7+//7+/v7+/v3+/f39/f39/fz9/Pz39/bw7+3d2dTJwrrDu7O1qp+rn5OpnZConZConJConI+nnI+nm4+nm46nm42mmoykl4mjloiiloihlIagk4Wgk4SfkoP1qRC6AAABC0lEQVR42u2UW1OEMAyFj1YQSm9LdO0F9P//SwPLzriMywZnfKOvzdfm5CTBeefBARzAHwH6iLQHoNT78iYHKDndmkLyH6IGnl0iIUBDh/oVLguBMBioGl0SphQGi4rji7BKLLjl93U5v4sAiqTB8X7DhxuTKLFg1fwUvAZmk67X4dOgqWDGcLc1LiYtAWG0U0HNV9joJc4Zy5N9YcENulU+t0D0rarUTFD0Gg10iFsAFbZJzQRlLpBqXT5ttjeNCzGMXKAadggP5iEshLV4qZkLDwfoQoD9mjqCBBM3E0+AgqYoAa5ZqdYnks30RPBxuZcuASbY8F8F3+lWKiefac+aWW+WYxkfwL8A37UJu+wCRR9IAAAAAElFTkSuQmCC" }
 ];
+
+// colorId ('1'..'11') → modern UI hex. Renders the legacy classic cache
+// (`categories.colorId`, a read-only nearest-classic value under ADR-0006)
+// as a swatch. Removed with the native-labels #04 cutover.
+var CLASSIC_COLOR_ID_HEX = {
+  '1': '#7986cb',
+  '2': '#33b679',
+  '3': '#8e24aa',
+  '4': '#e67c73',
+  '5': '#f6bf26',
+  '6': '#f4511e',
+  '7': '#039be5',
+  '8': '#616161',
+  '9': '#3f51b5',
+  '10': '#0b8043',
+  '11': '#d50000'
+};
 
 var MESSAGES = {
   en: {
-    // Color labels (Google Calendar standard names)
-    'colors.tomato': 'Tomato',
-    'colors.flamingo': 'Flamingo',
-    'colors.tangerine': 'Tangerine',
-    'colors.banana': 'Banana',
-    'colors.sage': 'Sage',
-    'colors.basil': 'Basil',
-    'colors.peacock': 'Peacock',
-    'colors.blueberry': 'Blueberry',
-    'colors.lavender': 'Lavender',
-    'colors.grape': 'Grape',
-    'colors.graphite': 'Graphite',
-    'colors.fallback': 'Color',
-    'colors.default': 'Default',
+    // Labels (ADR-0006 — names/colors live in Google Calendar)
+    'label.fallback': 'Label',
 
     // buildConfigNeededCard
     'config.title': 'Backend setup required',
@@ -85,6 +118,7 @@ var MESSAGES = {
     'home.btn.settings': 'More settings',
     'home.info': 'ℹ️ When you add a new event, the color is usually applied within 5–10 seconds.\n\nℹ️ Tap "Apply rules to all events" to scan events from 30 days ago through 365 days ahead and apply rules. Manually-set colors are preserved.',
     'home.info.firstEventDelay': 'ℹ️ The first automatic color application can take more than a minute — please wait a moment :)',
+    'home.hint.nameLabel': '💡 Name a color in Google Calendar and it becomes a rule here.',
     'home.cta.syncNow': 'Apply rules to all events',
 
     // actionSyncNow
@@ -113,10 +147,13 @@ var MESSAGES = {
     'event.empty': 'No event selected',
     'event.untitled': 'Untitled',
     'event.section.status': 'Current state',
-    'event.appliedColor': 'Applied color: {{label}}',
+    'event.appliedLabel': 'Applied label: {{name}}',
+    'event.appliedLabel.none': 'No label applied',
+    'event.appliedLabel.unknown': 'Applied label: (no matching rule)',
     'event.btn.classifyLlm': '🤖 Run AI classification',
     'event.section.override': 'Manual override and state changes',
-    'event.colorPicker': 'Pick a color',
+    'event.labelPicker': 'Pick a label',
+    'event.labels.empty': 'No labels yet — create a color rule first.',
     'event.btn.exclude': 'Exclude this event from auto-classification',
     'event.btn.save': 'Save changes',
 
@@ -160,11 +197,14 @@ var MESSAGES = {
     'rules.list.loadFailed': '⚠️ Could not load rules: {{error}}',
     'rules.list.empty': 'No rules yet. Create your first one above.',
     'rules.btn.delete': 'Delete',
+    'rules.badge.labelDeleted': 'Label deleted in Google Calendar',
     'rules.list.note': 'ℹ️ Already-colored events are not changed automatically. To apply a new rule to existing events, tap <b>Dashboard → "Apply rules now"</b>.',
+    'rules.manageInGoogle': 'ℹ️ Rename, recolor, or delete labels in Google Calendar — your rules follow automatically.',
 
     // actionAddRule
     'rules.toast.nameRequired': 'Please enter a rule name.',
     'rules.toast.colorFirst': 'Please pick a color first.',
+    'rules.toast.colorPicked': 'Color selected.',
     'rules.toast.added': 'New rule saved.',
     'rules.toast.duplicate': 'A rule with the same name already exists.',
     'rules.toast.saveFailed': 'Failed to save rule: {{message}}',
@@ -238,19 +278,7 @@ var MESSAGES = {
   },
 
   ko: {
-    'colors.tomato': '토마토',
-    'colors.flamingo': '플라밍고',
-    'colors.tangerine': '귤',
-    'colors.banana': '바나나',
-    'colors.sage': '세이지',
-    'colors.basil': '바질',
-    'colors.peacock': '공작',
-    'colors.blueberry': '블루베리',
-    'colors.lavender': '라벤더',
-    'colors.grape': '포도',
-    'colors.graphite': '회연필',
-    'colors.fallback': '색상',
-    'colors.default': '기본',
+    'label.fallback': '라벨',
 
     'config.title': '백엔드 구성 필요',
     'config.subtitle': '관리자 설정이 완료되지 않았습니다',
@@ -275,6 +303,7 @@ var MESSAGES = {
     'home.btn.settings': '상세 설정',
     'home.info': "ℹ️ 새 일정을 만들면 보통 5~10초 안에 자동으로 색이 적용됩니다.\n\nℹ️ '지금 모든 일정에 규칙 적용'을 누르면 과거 30일 ~ 미래 365일의 일정을 검사해 규칙을 적용합니다. 직접 지정한 색상은 그대로 유지됩니다.",
     'home.info.firstEventDelay': "ℹ️ 첫 색상 자동 적용은 1분이 넘는 시간이 소요될 수 있어요! 조금만 기다려 주세요 :)",
+    'home.hint.nameLabel': '💡 Google 캘린더에서 색에 이름을 붙이면 여기서 규칙이 됩니다.',
     'home.cta.syncNow': '지금 모든 일정에 규칙 적용',
 
     'sync.toast.running': '규칙을 적용 중입니다. 잠시 후 반영됩니다.',
@@ -299,10 +328,13 @@ var MESSAGES = {
     'event.empty': '선택된 일정 없음',
     'event.untitled': '제목 없음',
     'event.section.status': '현재 상태',
-    'event.appliedColor': '적용된 색상: {{label}}',
+    'event.appliedLabel': '적용된 라벨: {{name}}',
+    'event.appliedLabel.none': '적용된 라벨 없음',
+    'event.appliedLabel.unknown': '적용된 라벨: (규칙에 없음)',
     'event.btn.classifyLlm': '🤖 AI 분류 확인',
     'event.section.override': '수동 오버라이드 및 상태 변경',
-    'event.colorPicker': '색상 선택',
+    'event.labelPicker': '라벨 선택',
+    'event.labels.empty': '라벨이 아직 없습니다 — 먼저 색상 규칙을 만들어 주세요.',
     'event.btn.exclude': '이 일정은 자동 분류에서 제외',
     'event.btn.save': '변경사항 저장',
 
@@ -340,10 +372,13 @@ var MESSAGES = {
     'rules.list.loadFailed': '⚠️ 규칙 목록을 불러오지 못했습니다: {{error}}',
     'rules.list.empty': '아직 등록된 규칙이 없습니다. 위에서 첫 규칙을 만들어보세요.',
     'rules.btn.delete': '삭제',
+    'rules.badge.labelDeleted': 'Google 캘린더에서 라벨 삭제됨',
     'rules.list.note': "ℹ️ 이미 색이 지정된 일정은 자동 변경되지 않습니다. 새 규칙을 기존 일정에 적용하려면 <b>대시보드 → '지금 즉시 동기화'</b>를 눌러주세요.",
+    'rules.manageInGoogle': 'ℹ️ 이름·색 변경과 라벨 삭제는 Google 캘린더에서 하세요 — 규칙 목록이 자동으로 따라갑니다.',
 
     'rules.toast.nameRequired': '규칙 이름을 입력해주세요.',
     'rules.toast.colorFirst': '색상을 먼저 선택해주세요.',
+    'rules.toast.colorPicked': '색상이 선택되었습니다.',
     'rules.toast.added': '새 규칙이 저장되었습니다.',
     'rules.toast.duplicate': '이미 같은 이름의 규칙이 있습니다.',
     'rules.toast.saveFailed': '규칙 저장 실패: {{message}}',
@@ -410,19 +445,7 @@ var MESSAGES = {
   },
 
   'zh-CN': {
-    'colors.tomato': '番茄红',
-    'colors.flamingo': '火烈鸟',
-    'colors.tangerine': '橘黄',
-    'colors.banana': '香蕉黄',
-    'colors.sage': '鼠尾草',
-    'colors.basil': '罗勒',
-    'colors.peacock': '孔雀蓝',
-    'colors.blueberry': '蓝莓',
-    'colors.lavender': '薰衣草',
-    'colors.grape': '葡萄',
-    'colors.graphite': '石墨',
-    'colors.fallback': '颜色',
-    'colors.default': '默认',
+    'label.fallback': '标签',
 
     'config.title': '需要后端配置',
     'config.subtitle': '管理员配置尚未完成',
@@ -447,6 +470,7 @@ var MESSAGES = {
     'home.btn.settings': '更多设置',
     'home.info': "ℹ️ 添加新日程时,通常 5~10 秒内自动应用颜色。\n\nℹ️ 点击「立即对所有日程应用规则」会扫描过去 30 天到未来 365 天的日程并应用规则。手动指定的颜色将保持不变。",
     'home.info.firstEventDelay': "ℹ️ 首次自动应用颜色可能需要超过 1 分钟,请稍候片刻 :)",
+    'home.hint.nameLabel': '💡 在 Google 日历中为颜色命名,它就会在这里成为规则。',
     'home.cta.syncNow': '立即对所有日程应用规则',
 
     'sync.toast.running': '正在应用规则。请稍候。',
@@ -471,10 +495,13 @@ var MESSAGES = {
     'event.empty': '未选择日程',
     'event.untitled': '无标题',
     'event.section.status': '当前状态',
-    'event.appliedColor': '已应用颜色: {{label}}',
+    'event.appliedLabel': '已应用标签: {{name}}',
+    'event.appliedLabel.none': '未应用标签',
+    'event.appliedLabel.unknown': '已应用标签: (无对应规则)',
     'event.btn.classifyLlm': '🤖 检查 AI 分类',
     'event.section.override': '手动覆盖与状态变更',
-    'event.colorPicker': '选择颜色',
+    'event.labelPicker': '选择标签',
+    'event.labels.empty': '尚无标签 — 请先创建颜色规则。',
     'event.btn.exclude': '将此日程从自动分类中排除',
     'event.btn.save': '保存更改',
 
@@ -512,10 +539,13 @@ var MESSAGES = {
     'rules.list.loadFailed': '⚠️ 无法加载规则列表: {{error}}',
     'rules.list.empty': '尚无规则。在上方创建您的第一条规则。',
     'rules.btn.delete': '删除',
+    'rules.badge.labelDeleted': '标签已在 Google 日历中删除',
     'rules.list.note': "ℹ️ 已经设置颜色的日程不会自动更改。要将新规则应用到现有日程,请点击 <b>仪表板 → 「立即同步」</b>。",
+    'rules.manageInGoogle': 'ℹ️ 重命名、更改颜色或删除标签请在 Google 日历中操作 — 规则列表会自动跟随。',
 
     'rules.toast.nameRequired': '请输入规则名称。',
     'rules.toast.colorFirst': '请先选择颜色。',
+    'rules.toast.colorPicked': '已选择颜色。',
     'rules.toast.added': '新规则已保存。',
     'rules.toast.duplicate': '已存在同名规则。',
     'rules.toast.saveFailed': '保存规则失败: {{message}}',
@@ -582,19 +612,7 @@ var MESSAGES = {
   },
 
   'zh-TW': {
-    'colors.tomato': '蕃茄紅',
-    'colors.flamingo': '紅鶴',
-    'colors.tangerine': '橘黃',
-    'colors.banana': '香蕉黃',
-    'colors.sage': '鼠尾草',
-    'colors.basil': '羅勒',
-    'colors.peacock': '孔雀藍',
-    'colors.blueberry': '藍莓',
-    'colors.lavender': '薰衣草',
-    'colors.grape': '葡萄',
-    'colors.graphite': '石墨',
-    'colors.fallback': '顏色',
-    'colors.default': '預設',
+    'label.fallback': '標籤',
 
     'config.title': '需要後端設定',
     'config.subtitle': '管理員設定尚未完成',
@@ -619,6 +637,7 @@ var MESSAGES = {
     'home.btn.settings': '更多設定',
     'home.info': "ℹ️ 新增活動時,通常 5~10 秒內自動套用顏色。\n\nℹ️ 點選「立即將規則套用至所有活動」會掃描過去 30 天到未來 365 天的活動並套用規則。手動指定的顏色將保持不變。",
     'home.info.firstEventDelay': "ℹ️ 首次自動套用顏色可能需要超過 1 分鐘,請稍候片刻 :)",
+    'home.hint.nameLabel': '💡 在 Google 日曆中為顏色命名,它就會在這裡成為規則。',
     'home.cta.syncNow': '立即將規則套用至所有活動',
 
     'sync.toast.running': '正在套用規則。請稍候。',
@@ -643,10 +662,13 @@ var MESSAGES = {
     'event.empty': '未選擇活動',
     'event.untitled': '無標題',
     'event.section.status': '目前狀態',
-    'event.appliedColor': '已套用顏色: {{label}}',
+    'event.appliedLabel': '已套用標籤: {{name}}',
+    'event.appliedLabel.none': '未套用標籤',
+    'event.appliedLabel.unknown': '已套用標籤: (無對應規則)',
     'event.btn.classifyLlm': '🤖 檢查 AI 分類',
     'event.section.override': '手動覆寫與狀態變更',
-    'event.colorPicker': '選擇顏色',
+    'event.labelPicker': '選擇標籤',
+    'event.labels.empty': '尚無標籤 — 請先建立顏色規則。',
     'event.btn.exclude': '將此活動從自動分類中排除',
     'event.btn.save': '儲存變更',
 
@@ -684,10 +706,13 @@ var MESSAGES = {
     'rules.list.loadFailed': '⚠️ 無法載入規則清單: {{error}}',
     'rules.list.empty': '尚無規則。在上方建立您的第一條規則。',
     'rules.btn.delete': '刪除',
+    'rules.badge.labelDeleted': '標籤已在 Google 日曆中刪除',
     'rules.list.note': "ℹ️ 已設定顏色的活動不會自動變更。要將新規則套用至現有活動,請點選 <b>資訊主頁 → 「立即同步」</b>。",
+    'rules.manageInGoogle': 'ℹ️ 重新命名、變更顏色或刪除標籤請在 Google 日曆中操作 — 規則清單會自動跟隨。',
 
     'rules.toast.nameRequired': '請輸入規則名稱。',
     'rules.toast.colorFirst': '請先選擇顏色。',
+    'rules.toast.colorPicked': '已選擇顏色。',
     'rules.toast.added': '新規則已儲存。',
     'rules.toast.duplicate': '已有相同名稱的規則。',
     'rules.toast.saveFailed': '儲存規則失敗: {{message}}',
@@ -819,19 +844,33 @@ function t(key, params, locale) {
 }
 
 /**
- * Returns the calendar color list with locale-appropriate labels. The
- * palette (id / image URLs) is locale-free; only `label` is translated.
+ * Returns the 24-entry label swatch palette ({ hex, url, selectedUrl }).
+ * Locale-free — labels have no color names (ADR-0006, native-labels #03).
  */
-function getCalendarColors(locale) {
-  var L = locale || 'en';
-  return COLOR_PALETTE.map(function (c) {
-    return {
-      id: c.id,
-      label: t('colors.' + c.key, null, L),
-      url: c.url,
-      selectedUrl: c.selectedUrl
-    };
-  });
+function getLabelSwatches() {
+  return LABEL_SWATCH_PALETTE;
+}
+
+/**
+ * Exact-match swatch lookup by hex (case-insensitive). Returns null when
+ * the hex is not one of the 24 defaults (e.g. a custom RGB label color).
+ */
+function getSwatchForHex(hex) {
+  if (!hex) return null;
+  var h = String(hex).toLowerCase();
+  for (var i = 0; i < LABEL_SWATCH_PALETTE.length; i++) {
+    if (LABEL_SWATCH_PALETTE[i].hex === h) return LABEL_SWATCH_PALETTE[i];
+  }
+  return null;
+}
+
+/**
+ * Swatch for a legacy classic colorId cache value (`categories.colorId`).
+ * Falls back to graphite for unknown ids so list rows always render an
+ * icon. Removed with the native-labels #04 cutover.
+ */
+function getSwatchForClassicColorId(colorId) {
+  return getSwatchForHex(CLASSIC_COLOR_ID_HEX[String(colorId)] || '#616161');
 }
 
 /**

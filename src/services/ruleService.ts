@@ -58,6 +58,9 @@ export type RuleCreateInput = {
   colorId: string;
   keywords: string[];
   priority?: number | undefined;
+  // ADR-0006 (native-labels #03) — the Google event-label UUID the editor's
+  // create flow minted via `appendEventLabel` before inserting the Rule.
+  labelId?: string | undefined;
 };
 
 export type RuleUpdateInput = {
@@ -461,6 +464,7 @@ export async function createRule(
         colorId: input.colorId,
         keywords: input.keywords,
         ...(input.priority !== undefined ? { priority: input.priority } : {}),
+        ...(input.labelId !== undefined ? { labelId: input.labelId } : {}),
       })
       .returning(SELECT_FIELDS);
     row = inserted[0]!;

@@ -1,19 +1,35 @@
 #!/usr/bin/env python3
-"""Regenerate the inline swatch PNGs embedded in gas/i18n.js COLOR_PALETTE.
+"""Regenerate the inline swatch PNGs embedded in gas/i18n.js LABEL_SWATCH_PALETTE.
 
-card-latency #03: the 11-color swatch grid renders from base64 data URIs
-inlined in the card JSON instead of external placehold.co PNGs, so neither
-the initial paint nor the url <-> selectedUrl selection swap makes an
-external image fetch.
+card-latency #03 contract, carried into native-labels #03: the swatch grid
+renders from base64 data URIs inlined in the card JSON instead of external
+PNGs, so neither the initial paint nor the url <-> selectedUrl selection
+swap makes an external image fetch.
+
+native-labels #03 (ADR-0006): the palette is the 24 default label-slot hex
+colors Google pre-seeds per calendar (PRD "기본 24색 = unnamed 라벨 슬롯").
+Labels have no color names, so entries carry only the hex.
+
+Hex provenance (operator prod-account labelProperties probe, 2026-07-15,
+`.scratch/native-labels/spike/label-probe.ts` run — 21 unnamed slots read
+verbatim; plus per-entry notes below):
+- 21 entries: measured directly as unnamed slots.
+- #e67c73: the classic flamingo hex from this file's previous 11-color
+  palette (absent from the probe account's remaining slots).
+- #ad1457: measured as the probe account's named test label ("내가 만든
+  라벨" — the PRD row-3 label), matching the public Radicchio value.
+- #d81b60: TODO(native-labels): NOT probe-measured — public Google palette
+  value (Cherry Blossom). Verify against a fresh account's labelProperties
+  before treating as canonical.
 
 Visuals mirror the old placehold.co affordance:
 - unselected: 48x48 solid color square (CardService circle-crops it)
-- selected:   same color with a check mark (white; #333333 on banana)
+- selected:   same color with a check mark (white; #333333 on light colors)
 
 Usage (operator workstation, requires Pillow):
     python3 scripts/gen-swatch-assets.py
-Then paste the printed entries over the COLOR_PALETTE array body in
-gas/i18n.js. Ordering/id/key are the Google Calendar colorId mapping and
+Then paste the printed entries over the LABEL_SWATCH_PALETTE array body in
+gas/i18n.js. Ordering follows the Google Calendar color-grid layout and
 MUST stay unchanged.
 """
 import base64
@@ -21,19 +37,32 @@ import io
 
 from PIL import Image, ImageDraw
 
-# (colorId, hex, checkHex, key) — order and values are the frozen palette
+# (hex, checkHex) — 24 default label-slot colors, grid order.
 PALETTE = [
-    ("11", "D50000", "FFFFFF", "tomato"),
-    ("4",  "E67C73", "FFFFFF", "flamingo"),
-    ("6",  "F4511E", "FFFFFF", "tangerine"),
-    ("5",  "F6BF26", "333333", "banana"),
-    ("2",  "33B679", "FFFFFF", "sage"),
-    ("10", "0B8043", "FFFFFF", "basil"),
-    ("7",  "039BE5", "FFFFFF", "peacock"),
-    ("9",  "3F51B5", "FFFFFF", "blueberry"),
-    ("1",  "7986CB", "FFFFFF", "lavender"),
-    ("3",  "8E24AA", "FFFFFF", "grape"),
-    ("8",  "616161", "FFFFFF", "graphite"),
+    ("d50000", "FFFFFF"),  # tomato
+    ("e67c73", "FFFFFF"),  # flamingo (classic-palette hex; not in probe slots)
+    ("f4511e", "FFFFFF"),  # tangerine
+    ("ef6c00", "FFFFFF"),  # pumpkin
+    ("f09300", "FFFFFF"),  # mango
+    ("f6bf26", "333333"),  # banana
+    ("e4c441", "333333"),  # citron
+    ("c0ca33", "333333"),  # avocado
+    ("7cb342", "FFFFFF"),  # pistachio
+    ("33b679", "FFFFFF"),  # sage
+    ("0b8043", "FFFFFF"),  # basil
+    ("009688", "FFFFFF"),  # eucalyptus
+    ("039be5", "FFFFFF"),  # peacock
+    ("4285f4", "FFFFFF"),  # cobalt
+    ("3f51b5", "FFFFFF"),  # blueberry
+    ("7986cb", "FFFFFF"),  # lavender
+    ("b39ddb", "FFFFFF"),  # wisteria
+    ("9e69af", "FFFFFF"),  # amethyst
+    ("8e24aa", "FFFFFF"),  # grape
+    ("ad1457", "FFFFFF"),  # radicchio (probe: named test label bg)
+    ("d81b60", "FFFFFF"),  # cherry blossom — TODO(native-labels): verify (see header)
+    ("795548", "FFFFFF"),  # cocoa
+    ("616161", "FFFFFF"),  # graphite
+    ("a79b8e", "FFFFFF"),  # birch
 ]
 
 SIZE = 48
@@ -74,13 +103,12 @@ def check_png(color_hex, check_hex):
 def main():
     total = 0
     lines = []
-    for cid, color, check, key in PALETTE:
+    for color, check in PALETTE:
         u = solid_png(color)
         s = check_png(color, check)
         total += len(u) + len(s)
-        pad = " " if len(cid) == 2 else "  "
-        lines.append('  { id: "%s",%surl: "%s",' % (cid, pad, u))
-        lines.append('    selectedUrl: "%s", key: "%s" },' % (s, key))
+        lines.append('  { hex: "#%s", url: "%s",' % (color, u))
+        lines.append('    selectedUrl: "%s" },' % s)
     lines[-1] = lines[-1].rstrip(",")  # last array entry: no trailing comma
     print("\n".join(lines))
     print("// total data-URI chars: %d" % total)
