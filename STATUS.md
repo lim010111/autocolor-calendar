@@ -31,37 +31,43 @@ AGENTS.md ↔ CLAUDE.md canonicalize(AGENTS.md 정본, `@AGENTS.md` 래퍼).
 
 ## Start here next session
 
-**트랙 간 권장 순서(07-15 확정)**: ① sync-reliability #01(사람, 플랜 결정)
-→ ② native-labels #01(사용자 색 선택 파괴 방어가 최우선) → ③
-sync-reliability #03 → ④ sync-reliability #02(①이 업그레이드면 긴급도↓)
-→ ⑤ native-labels #02→#03→#04(컷오버는 ① 또는 ④ 게이트).
+**07-16 세션 결과**: 두 런칭 게이트 트랙의 에이전트 몫 전부 PR로 랜딩 —
+**사람 몫 = PR 4개 리뷰·머지 + 라이브 검증**이 다음 병목.
 
-- **사람 — sync-reliability #01 (Workers Paid 결정)**: Free 플랜 50-fetch 캡이
-  원인으로 확정 — $5/월 업그레이드 즉시 vs 트리거 조건부 보류 결정만 하면 됨.
-  **native-labels #04(컷오버)도 이 결정에 게이트됨.**
-  spec: `.scratch/sync-reliability/issues/01-workers-paid-plan-decision.md`.
-- **사람 — embedding-classifier #04 (rule editor)**: PR #128 머지됨. 남은 건
-  사람 단계 하나 — 4 로케일 편집기 스크린샷 각 1장 이슈 첨부 → 6번째 AC 체크 →
-  done. (로컬에 2장만 있음, 4 로케일 아님.)
-- **능동 — native-labels #01 (label-aware manual skip)**: 방어 패치, 소형,
-  즉시 착수 가능, 런칭 게이트급(06월 이후 색 만진 사용자 전원이 잠재 피해자).
-  spec: `.scratch/native-labels/issues/01-label-aware-manual-skip.md`.
-- **능동 — sync-reliability #03 (unknown-error 관측성+cap-latch)**: 소형,
-  즉시 착수 가능. #02(fetch 예산 가드)는 그 다음.
-- **능동 — embedding-classifier #05 (examples + Instant Feedback)**: harden
-  완료(19 AC). 다크 빌드 범위만 pre-OAuth 머지, UI+동의는 검수 후 별도 PR.
+- **사람 — PR 머지 트레인 (스택 순서대로)**: ① PR #141 (native-labels #01
+  방어 패치, findings drop 1) → ② PR #142 (sync-reliability #03 관측성 +
+  cap-latch, findings 2건 재현·수정 완료) → ③ PR #143 (sync-reliability #02
+  예산 가드, findings 1건 surface) → ④ PR #144 (native-labels #02 라벨 쓰기,
+  base 를 main 으로 retarget 후; findings 2건 = ADR 재론이라 drop) → ⑤ PR
+  #145 예정 (native-labels #03 편집기). **뒤에 머지되는 쪽 rebase 포인트**:
+  #142↔#144 drizzle 0018 번호 충돌, #143↔#144 calendarSync 충돌 + reconcile
+  +1 fetch 를 예산 카운터에 계상.
+- **사람 — 라이브 검증 (머지·배포 후)**: native-labels #02 AC 1 (라벨 쓰기
+  1건 육안 + appendEventLabel 클라이언트 mint id 검증), #03 4로케일
+  스크린샷 + GAS 새 버전(기존 deployment, URL 동결).
+- **사람 — embedding-classifier #04 (rule editor)**: 4 로케일 편집기
+  스크린샷 각 1장 첨부 → 6번째 AC 체크 → done. (로컬에 2장만 있음.)
+- **게이트 대기 — native-labels #04 (컷오버)**: #02·#03 머지 + OAuth 검수
+  통과(=Paid 전환 트리거) 후 착수. needs-triage — 착수 전 grill 권장.
+- **능동 — embedding-classifier #05 (examples + Instant Feedback)**: 다크
+  빌드 범위만 pre-OAuth 머지 가능.
   spec: `.scratch/embedding-classifier/issues/05-examples-seeds-instant-feedback.md`.
 - **병행 — architecture-deepening 후보 (CalendarApiError pair)**: un-grilled,
   grill 선행, 별도 PR. (`watch/core.ts` classify ↔ `googleCalendar.ts` 중복.)
 - **휴면 — #06 (history-based suggestions)**: #05 로 blocked, 동일 OAuth 게이트 —
   건드리지 말 것.
+- **후속 이슈 후보 (findings 에서 surface)**: ① 지연된 incremental
+  continuation 이 신선한 syncToken 을 되덮는 레이스(PR #143 finding —
+  observed-not-prevented 수용, 재발 시 이슈화) ② `colorRollback.ts` 자체
+  페이징 루프의 서브리퀘스트 캡 노출(#02 가드 미적용 범위).
 
 ## Open decisions
 
-- **Workers Free → Paid($5/월) 업그레이드** — Free 50-fetch 캡이 sync 를 물어
-  뜯는 것 실증됨(sync-reliability #01). 즉시 전환 vs 런칭 임박 트리거 보류 —
-  운영자 결정 대기. **native-labels #04(컷오버 full resync fan-out) + #02 의
-  런당 +1 fetch 도 이 결정에 걸려 있음.**
+- **Workers Free → Paid($5/월) — 보류 결정(2026-07-16), 트리거 = OAuth 검수
+  통과 → native-labels #04 컷오버 직전 전환.** sync-reliability #02 예산
+  가드(PR #143)가 Free 캡에서도 chunk 재개로 완주를 보장해 긴급도 하향.
+  전환 시 `SYNC_SUBREQUEST_BUDGET` ~900 으로 상향(대형 resync 속도 회복) +
+  #01 이슈 AC 2 검증 절차 수행. 상세: sync-reliability #01 Comments.
 - merge-gate enforcement = advisory (보고만, 차단 안 함). client-side-blocking
   전환은 팀 준비되면 `harness.toml` 에서.
 - **#04 keyword optional ↔ backend `keywords.min(1)`** — 편집기는 keyword 를
