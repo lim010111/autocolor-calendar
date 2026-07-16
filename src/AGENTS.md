@@ -164,6 +164,17 @@ under `extendedProperties.private`. Constants live at the top of
   rollback path must add that key and accept that events colored before
   the change cannot be perfectly restored.
 
+**Label-aware manual gate (native-labels #01, ADR-0006).** Google's 2026-06/07
+label rewrite surfaces user color picks as `Event.eventLabelId` — with an
+**empty** legacy `colorId` for non-classic grid colors (named labels show a
+best-match colorId). Both §5.4 readers (`calendarSync.processEvent`,
+`colorRollback`) therefore treat *marker mismatch + `eventLabelId` present* as
+user-manual, even when `colorId` reads empty. Label presence alone is NOT
+manual — our own colorId PATCHes carry a Google-bridged label too, and
+app-owned events (marker colorId equality) stay re-applicable. Residual risk:
+a custom color applied **without** a label (PRD TEST-D, unconfirmed path) is
+invisible to the API and cannot be protected.
+
 ### Concurrent PATCH race
 
 If two devices / a webhook delivery race against an in-flight sync, the

@@ -1,4 +1,4 @@
-Status: ready-for-agent
+Status: done
 
 ## What to build
 
@@ -29,18 +29,23 @@ ADR-0006 의 라벨 쓰기 전환(#02)과 독립 — 이 이슈는 **읽기·판
 
 ## Acceptance criteria
 
-- [ ] `CalendarEvent` 가 `eventLabelId` 를 읽는다 (마스크 사용 시 마스크
+- [x] `CalendarEvent` 가 `eventLabelId` 를 읽는다 (마스크 사용 시 마스크
       포함, 미사용 시 타입만)
-- [ ] 마커 불일치 + `eventLabelId` 존재 이벤트가 `skipped_manual` 로
+- [x] 마커 불일치 + `eventLabelId` 존재 이벤트가 `skipped_manual` 로
       스킵된다 (colorId 빈 값이어도) — calendarSync + colorRollback 양쪽
-- [ ] 우리가 과거 colorId 로 색칠한 이벤트(마커 v1 일치 + 브리지 라벨
+- [x] 우리가 과거 colorId 로 색칠한 이벤트(마커 v1 일치 + 브리지 라벨
       병존)는 계속 재적용 대상이다 (오탐 스킵 없음)
-- [ ] best-match 위장 케이스(colorId 비어있지 않음 + 마커 불일치)의 기존
+- [x] best-match 위장 케이스(colorId 비어있지 않음 + 마커 불일치)의 기존
       skip 동작 회귀 없음 — 테스트로 고정
-- [ ] 신규/갱신 테스트: 위 세 판정 경로 + 라벨 없는 무색 이벤트는 여전히
+- [x] 신규/갱신 테스트: 위 세 판정 경로 + 라벨 없는 무색 이벤트는 여전히
       색칠된다
-- [ ] `src/AGENTS.md` §5.4 에 라벨-불가시 커스텀 색 잔여 리스크 1줄 추가
-- [ ] `python3 scripts/check-context-paths.py` 통과
+- [x] `src/AGENTS.md` §5.4 에 라벨-불가시 커스텀 색 잔여 리스크 1줄 추가
+- [x] `python3 scripts/check-context-paths.py` 통과
+
+> **Resolution:** feat/native-labels-01-label-aware-manual-skip — 현행 읽기
+> 경로는 fields 마스크 미사용이라 타입 추가 + 마스크 해저드 주석 갱신으로
+> 커버. 무색·무라벨 이벤트 색칠 유지는 기존 "PATCHes empty-color event"
+> 테스트가 계속 고정.
 
 ## Blocked by
 

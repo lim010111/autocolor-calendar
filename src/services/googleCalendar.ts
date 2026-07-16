@@ -21,6 +21,14 @@ export type CalendarEvent = {
   description?: string;
   location?: string;
   colorId?: string;
+  // native-labels #01 (ADR-0006) — Google's 2026-06/07 label rewrite. The
+  // API returns this without any opt-in (no eventLabelVersion needed on
+  // reads). Semantics per raw-API probe (.scratch/native-labels/PRD.md):
+  // every UI color pick assigns a label slot, and legacy `colorId` writes
+  // are bridged to one too — so our own PATCHes ALSO produce a label here.
+  // Non-classic grid colors / named labels surface with an EMPTY `colorId`,
+  // which is why manual-change detection must read this field.
+  eventLabelId?: string;
   start?: { dateTime?: string; date?: string; timeZone?: string };
   end?: { dateTime?: string; date?: string; timeZone?: string };
   creator?: { email?: string; self?: boolean };
@@ -133,9 +141,11 @@ async function throwApiError(res: Response, op: string): Promise<never> {
 // which includes `extendedProperties` on every event that has it. If a
 // future change adds a `fields=` mask here for bandwidth optimization, the
 // mask MUST include `items(extendedProperties/private)` (or at minimum
-// `items(extendedProperties/private/autocolor_v,autocolor_color,autocolor_category)`).
-// Dropping that field silently breaks ownership detection — re-applies stop
-// happening on rule changes, with no error surfaced.
+// `items(extendedProperties/private/autocolor_v,autocolor_color,autocolor_category)`)
+// AND `items(eventLabelId)` — the label-aware manual gate (native-labels #01)
+// reads it. Dropping either field silently breaks ownership detection —
+// re-applies stop happening on rule changes / user label picks get painted
+// over, with no error surfaced.
 export async function listEvents(
   accessToken: string,
   calendarId: string,

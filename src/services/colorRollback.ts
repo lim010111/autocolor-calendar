@@ -164,7 +164,20 @@ export async function runColorRollback(
       }
       const ownedColor = priv[AUTOCOLOR_KEYS.color];
       const current = event.colorId ?? "";
-      if (!ownedColor || ownedColor !== current) {
+      // `!!ownedColor` (not `!== undefined`) preserves the pre-existing
+      // guard's semantics: an empty-string marker color is never ours.
+      const appOwned = !!ownedColor && ownedColor === current;
+      // native-labels #01 — same label-aware gate as calendarSync's §5.4
+      // check. A post-PATCH user repaint via a label reads back as an empty
+      // or best-match `colorId`, so marker-color inequality already skips
+      // it under marker v1; the explicit `eventLabelId` clause keeps the
+      // two §5.4 readers in lockstep (and keeps holding when marker v2/#02
+      // changes what "appOwned" means).
+      if (!appOwned && (event.eventLabelId ?? "") !== "") {
+        summary.skipped_manual_override += 1;
+        continue;
+      }
+      if (!appOwned) {
         // Marker predates a user-initiated color change — the user re-
         // painted this event after our last PATCH, so we treat it as
         // manual and leave it alone (same invariant §5.4 uses in sync).
