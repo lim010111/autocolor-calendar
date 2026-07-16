@@ -127,6 +127,13 @@
       "when": 1782880652726,
       "tag": "0017_volatile_maelstrom",
       "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "7",
+      "when": 1784197276438,
+      "tag": "0018_sad_demogoblin",
+      "breakpoints": true
     }
   ]
 }

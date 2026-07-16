@@ -54,6 +54,7 @@ const OutcomeSchema = z.enum([
   "quota_exceeded",
   "http_error",
   "bad_response",
+  "fetch_failed",
   "disabled",
 ]);
 
