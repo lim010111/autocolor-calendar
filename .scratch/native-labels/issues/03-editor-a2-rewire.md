@@ -39,4 +39,4 @@ Google UI 로 안내 (ADR-0006 Decision 2·3 의 UI 절반).
 
 ## Blocked by
 
-- native-labels #02 (`appendEventLabel`, 라벨 캐시/자동 Rule)
+- #02 (`appendEventLabel`, 라벨 캐시/자동 Rule)

@@ -53,4 +53,4 @@ Status: ready-for-agent
 
 ## Blocked by
 
-- native-labels #01 (판정 로직 기반)
+- #01 (판정 로직 기반)
