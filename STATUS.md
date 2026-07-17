@@ -53,9 +53,9 @@ AGENTS.md ↔ CLAUDE.md canonicalize(AGENTS.md 정본, `@AGENTS.md` 래퍼).
 - **능동 — embedding-classifier #05**: 다크 빌드 범위만 pre-OAuth 머지 가능.
 - **병행 — architecture-deepening 후보 (CalendarApiError pair)**: grill 선행.
 - **휴면 — #06**: #05 로 blocked, OAuth 게이트 — 건드리지 말 것.
-- **후속 이슈 후보**: ① 지연 continuation 의 syncToken 되덮기(PR #143
-  finding, observed-not-prevented 수용) ② colorRollback 페이징 루프의
-  서브리퀘스트 캡 노출(#02 가드 미적용).
+- **기안 완료 — sync-reliability #04·#05 (07-17, needs-triage)**: ① 지연
+  continuation 의 syncToken 되덮기(GH #150) ② colorRollback 페이징 루프의
+  캡 노출(GH #151). 둘 다 grill 선행, pre-OAuth 머지 가능.
 
 ## Open decisions
 
@@ -136,13 +136,15 @@ AGENTS.md ↔ CLAUDE.md canonicalize(AGENTS.md 정본, `@AGENTS.md` 래퍼).
 
 ## sync-reliability
 
-`██████████████████████` 16/16 acceptance criteria met (100%)
+`███████████████░░░░░░░` 16/24 acceptance criteria met (67%)
 
 | # | Issue | Triage | Criteria | State | Blocked by |
 |---|-------|--------|----------|-------|-----------|
 | 01 | Workers paid plan decision | `done` | 3/3 | ✅ done | — |
 | 02 | Subrequest budget guard | `done` | 6/6 | ✅ done | — |
 | 03 | Llm unknown error observability | `done` | 7/7 | ✅ done | — |
+| 04 | Continuation synctoken race | `needs-triage` | 0/4 | ⬜ todo | — |
+| 05 | Colorrollback subrequest cap | `needs-triage` | 0/4 | ⬜ todo | — |
 
 State is derived: all criteria checked → `done`; some → `in-progress`; none
 with an unfinished blocker → `blocked`; otherwise → `todo`. Issues triaged
