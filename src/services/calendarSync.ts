@@ -50,14 +50,16 @@ export type SyncSummary = {
   llm_timeout: number;
   llm_quota_exceeded: number;
   stored_next_sync_token: boolean;
-  // sync-reliability #04 — set when a continuation-resume hop finished its
-  // arc but found sync_state.nextSyncToken changed since the arc started
-  // (another run completed while the hop sat in the queue). The final CAS
-  // UPDATE skipped, so the newer token survived. Present-only-when-true and
-  // deliberately NOT a `sync_runs` column (jsonb summaries only — same
-  // policy as `skipped_no_label`); this flag plus the warn line is what
-  // distinguishes a stale-skip from a #02 budget stop, which shares the
-  // `outcome='ok' AND stored_next_sync_token=false` sync_runs signature.
+  // sync-reliability #04 — set when a syncToken-paged run found
+  // sync_state.nextSyncToken changed since its arc started (another run
+  // completed meanwhile): either the resume-hop entry pre-check tripped
+  // before any external fetch, or the final CAS UPDATE missed. The newer
+  // token survived either way. Present-only-when-true and deliberately NOT
+  // a `sync_runs` column (jsonb summaries only — same policy as
+  // `skipped_no_label`); the flagged summary is persisted through a narrow
+  // `lastRunSummary` write, which is the durable surface distinguishing a
+  // stale-skip from a #02 budget stop (both share the `outcome='ok' AND
+  // stored_next_sync_token=false` sync_runs signature).
   sync_token_write_skipped?: true;
   started_at: string;
   finished_at: string;
@@ -103,10 +105,14 @@ export type SyncRunRecord = SyncSummary & { outcome: SyncRunOutcome };
 // - incremental (syncToken-paged, #02 budget guard): `syncToken` — carried in
 //   the job rather than re-read from sync_state so the (syncToken, pageToken)
 //   pair Google sees stays consistent even if another incremental sync
-//   interleaves between the stop and the resume. The write-back side is
-//   guarded too (#04): the resume hop stores its arc's final token via a CAS
-//   on the arc's start token, so a delayed hop never rolls sync_state back
-//   over a newer token an interleaved run stored.
+//   interleaves between the stop and the resume. Staleness is guarded in
+//   three layers (#04): a resumed hop pre-checks the store at entry and
+//   aborts before any external fetch when a newer NON-NULL token landed
+//   while the job sat in the queue; every syncToken-paged run stores its
+//   arc's final token via a CAS on the arc's start token (covers changes
+//   that land DURING a hop, incl. stale-claim overlap); and a stale-skip
+//   persists the flagged summary to sync_state.lastRunSummary so the skip
+//   is durably distinguishable from a #02 budget stop.
 export type SyncContinuation = {
   pageToken: string;
   timeMin?: string | undefined;
@@ -483,6 +489,41 @@ async function runPagedList(
     ctx.recordSyncRun?.({ ...summary, outcome });
     return result;
   };
+  // #04 — shared stale-skip path, used by the entry pre-check and the
+  // final-write CAS miss below. Flags the summary, emits one counters-only
+  // warn (no calendarId — a primary calendar id is the user's email), and
+  // persists the flagged summary through a NARROW sync_state UPDATE:
+  // lastRunSummary + updatedAt only. Deliberately NO nextSyncToken (the
+  // newer token must survive), NO lastFailureSummary (a stale-skip is not
+  // "progress" that may clear another run's staged failure snapshot), NO
+  // lastError. The narrow write is the durable surface that distinguishes a
+  // stale-skip from a #02 budget stop — sync_runs rows are scalar-only, so
+  // without it the flag would live in memory and transient logs alone.
+  const staleSkip = async (): Promise<void> => {
+    summary.stored_next_sync_token = false;
+    summary.sync_token_write_skipped = true;
+    if (!summary.finished_at) {
+      summary.finished_at = new Date().toISOString();
+    }
+    console.warn(
+      JSON.stringify({
+        level: "warn",
+        msg: "stale continuation — sync_state token changed since arc start; skipping token write",
+        pages: summary.pages,
+        seen: summary.seen,
+        userId: ctx.userId,
+      }),
+    );
+    await ctx.db
+      .update(syncState)
+      .set({ lastRunSummary: summary, updatedAt: sql`now()` })
+      .where(
+        and(
+          eq(syncState.userId, ctx.userId),
+          eq(syncState.calendarId, ctx.calendarId),
+        ),
+      );
+  };
   // ADR-0004 #02 — Stage-1 embedding kNN. The default classifier reads each
   // event's title vector from `pageVectors`, refreshed per page by
   // `embedPageTitles` in the loop below. `getTitleVector` closes over the
@@ -517,6 +558,35 @@ async function runPagedList(
     });
 
   try {
+  // #04 — entry pre-check: a resumed hop (syncToken AND pageToken carried in
+  // from the queue job) proves its arc is still current BEFORE doing any
+  // external work. If a newer run completed while this job sat in the queue,
+  // the stored token differs and the whole hop is stale — abort here with
+  // zero external fetches instead of burning quota on pages/PATCHes whose
+  // final token write would only be skipped by the CAS below anyway (worse:
+  // a hop that budget-stops again would re-enqueue the stale arc without
+  // ever reaching that CAS). A NULL store is tolerated: that is a 410-clear
+  // / bootstrap absence, not evidence of a newer completed run — the pending
+  // full_resync re-establishes the arc and the final-write CAS still
+  // protects this corner.
+  if (start.syncToken !== undefined && start.pageToken !== undefined) {
+    const rows = await ctx.db
+      .select({ nextSyncToken: syncState.nextSyncToken })
+      .from(syncState)
+      .where(
+        and(
+          eq(syncState.userId, ctx.userId),
+          eq(syncState.calendarId, ctx.calendarId),
+        ),
+      )
+      .limit(1);
+    const stored = rows[0]?.nextSyncToken ?? null;
+    if (stored !== null && stored !== start.syncToken) {
+      await staleSkip();
+      return finalize({ ok: true, summary });
+    }
+  }
+
   let accessToken: string;
   try {
     const res = await getValidAccessToken(ctx.db, ctx.env, ctx.userId);
@@ -707,20 +777,20 @@ async function runPagedList(
     if (start.timeMin) {
       update.lastFullResyncAt = sql`now()` as unknown as Date;
     }
-    // sync-reliability #04 — a continuation-resume hop (syncToken AND
-    // pageToken carried in from the queue job) writes its arc's final token
-    // through a CAS: only when sync_state still holds the arc's start token.
-    // Every run reads+writes the token under the sync claim, so fresh runs
-    // are already atomic — the resume hop is the one writer whose start
-    // token can go stale (the claim was released between hops, and another
-    // run may have completed while the job sat in the queue). A CAS miss
-    // skips the WHOLE update: the interleaved run already stored the newer
-    // token plus its own lastRunSummary/failure-clear, and this hop's
-    // stale-arc snapshot must not clobber either. full_resync stays
-    // unconditional — its purpose is to establish a fresh token arc.
-    const resumedIncremental =
-      start.syncToken !== undefined && start.pageToken !== undefined;
-    if (resumedIncremental) {
+    // sync-reliability #04 — every syncToken-paged run (fresh AND resumed)
+    // writes its arc's final token through a CAS: only when sync_state still
+    // holds the token this arc started from. Fresh runs are USUALLY
+    // claim-atomic, but syncClaim's 5-minute stale window explicitly allows
+    // a second consumer to take over while an overrunning run is still
+    // executing — so an unconditional fresh-run write would be a second
+    // token-rollback path. The uniform CAS gives the store a linearity
+    // invariant: it only ever moves X → Y where Y was minted by an arc that
+    // started at the stored X; no writer can regress it. A CAS miss skips
+    // the token/failure-clear entirely (the interleaved run's writes are the
+    // authoritative ones) and routes through `staleSkip` for the durable
+    // flagged-summary surface. full_resync stays unconditional — its purpose
+    // is to establish a fresh token arc.
+    if (start.syncToken !== undefined) {
       const casRows = await ctx.db
         .update(syncState)
         .set(update)
@@ -728,25 +798,12 @@ async function runPagedList(
           and(
             eq(syncState.userId, ctx.userId),
             eq(syncState.calendarId, ctx.calendarId),
-            eq(syncState.nextSyncToken, start.syncToken!),
+            eq(syncState.nextSyncToken, start.syncToken),
           ),
         )
         .returning({ id: syncState.id });
       if (casRows.length === 0) {
-        summary.stored_next_sync_token = false;
-        summary.sync_token_write_skipped = true;
-        // Counters only — no event content, no calendarId (a primary
-        // calendar id is the user's email). Same redaction posture as the
-        // #02 budget-stop warn.
-        console.warn(
-          JSON.stringify({
-            level: "warn",
-            msg: "stale continuation — sync_state token changed since arc start; skipping token write",
-            pages: summary.pages,
-            seen: summary.seen,
-            userId: ctx.userId,
-          }),
-        );
+        await staleSkip();
       }
     } else {
       await ctx.db

@@ -1818,7 +1818,10 @@ describe("calendarSync — #04 stale-continuation CAS", () => {
     expect(updates.some((u) => u.nextSyncToken === "arc-final-tok")).toBe(true);
   });
 
-  it("fresh (non-resume) incremental runs keep the unconditional write — CAS scope is resume hops only", async () => {
+  it("fresh (non-resume) incremental runs also write through the CAS — uniform token-arc linearity", async () => {
+    // finding-0 (merge-gate): syncClaim's 5-minute stale window allows a
+    // second consumer to overlap an overrunning fresh run, so fresh runs are
+    // NOT unconditionally claim-atomic — they CAS on their start token too.
     const env = makeEnv();
     const tokenRow = await seedTokenRow(env);
     const { db, casState } = makeDb({ nextSyncToken: "stored-tok", tokenRow });
@@ -1829,7 +1832,8 @@ describe("calendarSync — #04 stale-continuation CAS", () => {
     expect(result.ok).toBe(true);
     if (!result.ok) return;
     expect(result.summary.stored_next_sync_token).toBe(true);
-    expect(casState.returningCalls).toBe(0);
+    expect(result.summary.sync_token_write_skipped).toBeUndefined();
+    expect(casState.returningCalls).toBe(1);
   });
 });
 

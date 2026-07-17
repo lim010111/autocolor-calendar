@@ -64,3 +64,28 @@ None — 배포 게이트와 무관, pre-OAuth 머지 가능(라이브 반영만
     먼저 완주한 쪽만 쓰고 늦은 쪽은 CAS 미스로 스킵 — 원하는 방향.
     끼어든 410-clear(stored=NULL)와의 비교도 자연히 미스 → 스킵(대기 중인
     full_resync 가 토큰을 재확립).
+
+- **2026-07-17 merge-gate findings 패스 1 (ADR-0027 loop): 3건 재현 확정 →
+  3-레이어로 확장.** 위 grill 결론의 두 판단이 리뷰에서 반증됨:
+  - finding-0 (재현 확정): "fresh 런은 claim-원자" 는 과대 주장 —
+    `syncClaim` 의 5분 stale 윈도우가 overrun 런과 새 consumer 의 동시
+    실행을 명시적으로 허용하므로, fresh 무조건 쓰기는 제2의 되덮기
+    경로였다. → CAS 를 **모든 syncToken-paged 런**으로 통일 (스토어
+    선형성: stored X 에서 시작한 arc 의 결과만 X 를 대체 가능). grill 이
+    우려한 "fresh 역전"은 통일 CAS 아래서 benign(과다 재처리 한 사이클,
+    플래그로 관측)으로 재평가.
+  - finding-1 (재현 확정): CAS 미스 시 전체 UPDATE 스킵이면 skip 플래그가
+    메모리/로그에만 남음(sync_runs 는 스칼라 전용) → **narrow persist**
+    추가: `{lastRunSummary(플래그 포함), updatedAt}` 만 쓰는 좁은 UPDATE.
+    nextSyncToken(최신 토큰 보존)·lastFailureSummary(타 런의 실패
+    스냅샷 보존)는 건드리지 않는다.
+  - finding-2 (재현 확정, 구현 diff 리뷰): CAS 가 최종 페이지 브랜치에만
+    있어 다시 예산-중단하는 stale hop 은 fetch 를 계속 쓰고 재enqueue 를
+    반복 → **entry pre-check** 추가: resume hop 은 어떤 외부 fetch 보다
+    먼저 stored 토큰을 재조회, 비-NULL 불일치면 즉시 stale-skip 종료
+    (fetch 0). NULL 은 관용(410-clear 잔재 — 최종 CAS 가 커버).
+  - 오라클: `calendarSync.finding{0,1,2}.repro.test.ts` (동결 회귀 테스트로
+    영구 편입). 절차 메모: finding-2 reproduce 서브의 파일 쓰기가 2회
+    유실·보고 불일치 → 오라클은 메인 세션이 직접 작성·HEAD 실패 확인.
+    fix 서브 결과물도 동시 실행 서브 간섭으로 유실 → 동일 설계를 메인
+    세션이 재적용 후 전체 재검증 (571 tests green).
