@@ -25,7 +25,7 @@
 
 | 자원 | 식별자 | 비고 |
 |---|---|---|
-| Project (dev) | `tdbyaaedrvkjxidchvpa` — `ap-southeast-1` (Singapore) | extensions: `pgcrypto` |
+| Project (dev) | `tdbyaaedrvkjxidchvpa` — `ap-southeast-1` (Singapore) | extensions: `pgcrypto`, `vector`(public, 2026-07-17 수동 설치 — 0000 의 CREATE EXTENSION 이 dev 에 미반영이었음) |
 | Project (prod) | `ap-northeast-1` (Tokyo) — project ref 는 `.prod.vars` `DIRECT_DATABASE_URL` | extensions: `pgcrypto`, `pg_cron` · region 변경 시 [`docs/legal/privacy-policy.md`](legal/privacy-policy.md) §3·§4·§4.1 본문 동시 갱신 |
 
 ## GCP — Google OAuth Web Client

@@ -36,8 +36,9 @@ AGENTS.md ↔ CLAUDE.md canonicalize(AGENTS.md 정본, `@AGENTS.md` 래퍼).
 페이지 크기 파생식에 계상). main 565 tests green. 다음 병목은
 **사람: 배포 + 라이브 검증**.
 
-- **사람 — 배포 게이트**: 배포 전 `pnpm db:migrate`(0018+0019 pending).
-  #144 내용(라벨 쓰기)은 #04 컷오버와 같은 운영 윈도우에 배포하거나
+- **사람 — 배포 게이트**: ~~배포 전 `pnpm db:migrate`~~ **done 07-17 —
+  dev·prod 모두 20/20** (dev 는 pause 복구 + pgvector 수동 설치 후 0014~0019
+  일괄 적용). #144 내용(라벨 쓰기)은 #04 컷오버와 같은 운영 윈도우에 배포하거나
   pre-launch 색칠 일시 중지 수용(관측: `lastRunSummary.skipped_no_label`).
   Worker 배포 시 라이브 GAS(colorId 전송)가 manual override 400 을 맞음 —
   GAS labelId 버전(#145 내용) co-deploy 필수 (PR #144 코멘트 참조).
