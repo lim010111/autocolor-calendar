@@ -39,12 +39,10 @@ AGENTS.md ↔ CLAUDE.md canonicalize(AGENTS.md 정본, `@AGENTS.md` 래퍼).
   "데모영상에 요청 스코프 미노출" 지적 — 동의 화면 **'2 services' 클릭해
   스코프 펼친 장면** 포함해 재촬영 → 그 메일에 답장으로 링크 제출. Cloud
   Console 변경 불필요. 라이브 표면(GAS v55·Worker)은 촬영·검수 끝까지 동결.
-- **사람 — 배포 게이트**: ~~배포 전 `pnpm db:migrate`~~ **done 07-17 —
-  dev·prod 모두 20/20** (dev 는 pause 복구 + pgvector 수동 설치 후 0014~0019
-  일괄 적용). #144 내용(라벨 쓰기)은 #04 컷오버와 같은 운영 윈도우에 배포하거나
-  pre-launch 색칠 일시 중지 수용(관측: `lastRunSummary.skipped_no_label`).
-  Worker 배포 시 라이브 GAS(colorId 전송)가 manual override 400 을 맞음 —
-  GAS labelId 버전(#145 내용) co-deploy 필수 (PR #144 코멘트 참조).
+- **사람 — 배포 게이트**: DB migrate **done 07-17 — dev·prod 20/20**
+  (dev 는 pause 복구 + pgvector 수동 설치). Worker 배포는 #04 컷오버
+  윈도우로 — 라이브 GAS(colorId 전송)가 manual override 400 을 맞으므로
+  GAS labelId 버전 co-deploy 필수 (PR #144 코멘트 참조).
 - **사람 — 라이브 검증 (배포 후)**: native-labels #02 AC 1(라벨 쓰기
   육안 + 클라이언트 mint id), #03 4로케일 스크린샷 + GAS 새 버전(URL 동결,
   AKfycbxfHV5… deployment 편집) + `#d81b60` hex 실측. GAS 배포 직전
