@@ -8,8 +8,9 @@ outside the narrative block; mechanical sections are regenerated every run._
 
 embedding-classifier (ADR-0004) — Stage 1 = 임베딩 kNN. **#01~#03 done**,
 잠정 gemma(768)·`T=(0.30,0.55,0.10)` = ADR-0005 provisional. **#04 rule
-editor — PR #128 머지, 남은 건 4로케일 스크린샷(사람) 5/6.** #05/#06 은
-OAuth 게이트 (#05 는 다크빌드 백엔드만 pre-OAuth 가능).
+editor — PR #128 머지, 남은 건 4로케일 스크린샷(사람) 5/6.** **#05 다크
+빌드 백엔드 = PR #154 (findings pass 1 완료)** — 잔여 = eval-gate(키
+재발급)·OAuth 4 AC, 상세는 이슈 #05 Comments. #06 은 OAuth 게이트.
 
 **card-latency — 전 트랙 done (24/24).** Worker + GAS v55 라이브 검증 완료.
 
@@ -49,7 +50,9 @@ AGENTS.md ↔ CLAUDE.md canonicalize(AGENTS.md 정본, `@AGENTS.md` 래퍼).
 - **사람 — embedding-classifier #04**: 4로케일 스크린샷 각 1장 → 6번째 AC.
 - **게이트 대기 — native-labels #04 (컷오버)**: #02·#03 머지 완료 — 남은
   게이트는 OAuth 통과(=Paid 전환 트리거)뿐. needs-triage — grill 선행.
-- **능동 — embedding-classifier #05**: 다크 빌드 범위만 pre-OAuth 머지 가능.
+- **능동 — embedding-classifier #05**: PR #154 (다크 빌드) 리뷰 → 머지.
+  사람 = OPENAI_API_KEY 재발급 → eval-gate 3-gate → prompt v6 범프 (절차는
+  이슈 Comments 07-17). fix-push 의 새 advisory 리뷰는 pass 2 사람 게이트.
 - **병행 — architecture-deepening 후보 (CalendarApiError pair)**: grill 선행.
 - **휴면 — #06**: #05 로 blocked, OAuth 게이트 — 건드리지 말 것.
 
@@ -74,8 +77,8 @@ AGENTS.md ↔ CLAUDE.md canonicalize(AGENTS.md 정본, `@AGENTS.md` 래퍼).
   parity 가 빈 prefix 로만 측정됨(mean 1.0). 승자 `sts` 프리픽스로 WAI 재측정
   후 provisional 해제(ADR-0005 §6). en/zh 는 ko 잠정값 차용·미검증.
 - **외부 게이트 — OAuth 검수**(라운드 2 대응 07-17 제출): #05/#06 씨앗 출시 + GAS Instant
-  Feedback UI 표면화가 묶임(제목 durable 저장 → 개인정보처리방침/동의 변경). #05 는
-  다크-빌드로 백엔드만 pre-OAuth 머지 가능. eval persona/en-zh 확장도 동일 게이트.
+  Feedback UI 표면화가 묶임(제목 durable 저장 → 개인정보처리방침/동의 변경). #05
+  다크-빌드 백엔드는 PR #154 로 분리 완료. eval persona/en-zh 확장도 동일 게이트.
 - un-grilled architecture-deepening 후보 (필요 시 별도 grill): CalendarApiError
   factory(1순위, `watch/core.ts`↔`googleCalendar.ts` 중복), ColorOwnershipMarker,
   ResultHandler, ObservabilityRecorder, route-test-harness, GAS
@@ -144,4 +147,5 @@ AGENTS.md ↔ CLAUDE.md canonicalize(AGENTS.md 정본, `@AGENTS.md` 래퍼).
 
 State is derived: all criteria checked → `done`; some → `in-progress`; none
 with an unfinished blocker → `blocked`; otherwise → `todo`. Issues triaged
-`wontfix` show as `wontfix` and are excluded from the progress bar.
+`wontfix` (decided against) or `parked` (deferred until operator opt-in) show
+that triage state and are excluded from the progress bar.
