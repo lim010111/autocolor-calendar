@@ -50,6 +50,15 @@ export type SyncSummary = {
   llm_timeout: number;
   llm_quota_exceeded: number;
   stored_next_sync_token: boolean;
+  // sync-reliability #04 — set when a continuation-resume hop finished its
+  // arc but found sync_state.nextSyncToken changed since the arc started
+  // (another run completed while the hop sat in the queue). The final CAS
+  // UPDATE skipped, so the newer token survived. Present-only-when-true and
+  // deliberately NOT a `sync_runs` column (jsonb summaries only — same
+  // policy as `skipped_no_label`); this flag plus the warn line is what
+  // distinguishes a stale-skip from a #02 budget stop, which shares the
+  // `outcome='ok' AND stored_next_sync_token=false` sync_runs signature.
+  sync_token_write_skipped?: true;
   started_at: string;
   finished_at: string;
 };
@@ -94,7 +103,10 @@ export type SyncRunRecord = SyncSummary & { outcome: SyncRunOutcome };
 // - incremental (syncToken-paged, #02 budget guard): `syncToken` — carried in
 //   the job rather than re-read from sync_state so the (syncToken, pageToken)
 //   pair Google sees stays consistent even if another incremental sync
-//   interleaves between the stop and the resume.
+//   interleaves between the stop and the resume. The write-back side is
+//   guarded too (#04): the resume hop stores its arc's final token via a CAS
+//   on the arc's start token, so a delayed hop never rolls sync_state back
+//   over a newer token an interleaved run stored.
 export type SyncContinuation = {
   pageToken: string;
   timeMin?: string | undefined;
@@ -695,15 +707,58 @@ async function runPagedList(
     if (start.timeMin) {
       update.lastFullResyncAt = sql`now()` as unknown as Date;
     }
-    await ctx.db
-      .update(syncState)
-      .set(update)
-      .where(
-        and(
-          eq(syncState.userId, ctx.userId),
-          eq(syncState.calendarId, ctx.calendarId),
-        ),
-      );
+    // sync-reliability #04 — a continuation-resume hop (syncToken AND
+    // pageToken carried in from the queue job) writes its arc's final token
+    // through a CAS: only when sync_state still holds the arc's start token.
+    // Every run reads+writes the token under the sync claim, so fresh runs
+    // are already atomic — the resume hop is the one writer whose start
+    // token can go stale (the claim was released between hops, and another
+    // run may have completed while the job sat in the queue). A CAS miss
+    // skips the WHOLE update: the interleaved run already stored the newer
+    // token plus its own lastRunSummary/failure-clear, and this hop's
+    // stale-arc snapshot must not clobber either. full_resync stays
+    // unconditional — its purpose is to establish a fresh token arc.
+    const resumedIncremental =
+      start.syncToken !== undefined && start.pageToken !== undefined;
+    if (resumedIncremental) {
+      const casRows = await ctx.db
+        .update(syncState)
+        .set(update)
+        .where(
+          and(
+            eq(syncState.userId, ctx.userId),
+            eq(syncState.calendarId, ctx.calendarId),
+            eq(syncState.nextSyncToken, start.syncToken!),
+          ),
+        )
+        .returning({ id: syncState.id });
+      if (casRows.length === 0) {
+        summary.stored_next_sync_token = false;
+        summary.sync_token_write_skipped = true;
+        // Counters only — no event content, no calendarId (a primary
+        // calendar id is the user's email). Same redaction posture as the
+        // #02 budget-stop warn.
+        console.warn(
+          JSON.stringify({
+            level: "warn",
+            msg: "stale continuation — sync_state token changed since arc start; skipping token write",
+            pages: summary.pages,
+            seen: summary.seen,
+            userId: ctx.userId,
+          }),
+        );
+      }
+    } else {
+      await ctx.db
+        .update(syncState)
+        .set(update)
+        .where(
+          and(
+            eq(syncState.userId, ctx.userId),
+            eq(syncState.calendarId, ctx.calendarId),
+          ),
+        );
+    }
   } else if (!finalSyncToken) {
     // Mid-chunked full_resync: record partial summary without touching token.
     await ctx.db
