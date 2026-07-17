@@ -13,10 +13,9 @@ OAuth 게이트 (#05 는 다크빌드 백엔드만 pre-OAuth 가능).
 
 **card-latency — 전 트랙 done (24/24).** Worker + GAS v55 라이브 검증 완료.
 
-**sync-reliability (07-14 진단 완료):** `[llmClassifier] unknown error` ×32
-의 근본 원인 = **Workers Free 서브리퀘스트 50개 캡**(실증). 캡 초과 시 분류
-무성 소실 + 재시도 폭풍 + 쿼터 전소. 런칭 게이트급 — 온보딩 full sync 가
-구조적으로 밟음. 상세: `.scratch/sync-reliability/PRD.md`.
+**sync-reliability — 전 트랙 done (24/24).** Workers Free 50캡 대응 완결:
+예산 가드(#02) + syncToken 3-레이어 가드(#04, PR #152) + rollback 예산
+가드(#05, PR #153). 라이브 반영은 OAuth 후 배포 게이트와 함께.
 
 **native-labels (신규 트랙, 07-15 grilling + ADR-0006):** Google Calendar 색
 체계가 라벨 기반으로 재편됨(07-07 API GA, colorId 는 legacy 브리지). 결정:
@@ -31,8 +30,8 @@ AGENTS.md ↔ CLAUDE.md canonicalize(AGENTS.md 정본, `@AGENTS.md` 래퍼).
 
 ## Start here next session
 
-**07-17 머지 트레인 완주**: PR #141~#145 전부 main 랜딩(상세는 각 PR
-코멘트), main 565 tests green. 다음 병목 = **Google 재검수 응답 →
+**07-17 머지 트레인 완주**: PR #141~#145 + #152·#153 전부 main 랜딩(상세는
+각 PR 코멘트), main 577 tests green. 다음 병목 = **Google 재검수 응답 →
 배포 → 라이브 검증**.
 
 - **외부 대기 — OAuth 라운드 2 대응 제출 완료 (07-17)**: '2 services'
@@ -53,9 +52,6 @@ AGENTS.md ↔ CLAUDE.md canonicalize(AGENTS.md 정본, `@AGENTS.md` 래퍼).
 - **능동 — embedding-classifier #05**: 다크 빌드 범위만 pre-OAuth 머지 가능.
 - **병행 — architecture-deepening 후보 (CalendarApiError pair)**: grill 선행.
 - **휴면 — #06**: #05 로 blocked, OAuth 게이트 — 건드리지 말 것.
-- **기안 완료 — sync-reliability #04·#05 (07-17, needs-triage)**: ① 지연
-  continuation 의 syncToken 되덮기(GH #150) ② colorRollback 페이징 루프의
-  캡 노출(GH #151). 둘 다 grill 선행, pre-OAuth 머지 가능.
 
 ## Open decisions
 
@@ -136,15 +132,15 @@ AGENTS.md ↔ CLAUDE.md canonicalize(AGENTS.md 정본, `@AGENTS.md` 래퍼).
 
 ## sync-reliability
 
-`███████████████░░░░░░░` 16/24 acceptance criteria met (67%)
+`██████████████████████` 24/24 acceptance criteria met (100%)
 
 | # | Issue | Triage | Criteria | State | Blocked by |
 |---|-------|--------|----------|-------|-----------|
 | 01 | Workers paid plan decision | `done` | 3/3 | ✅ done | — |
 | 02 | Subrequest budget guard | `done` | 6/6 | ✅ done | — |
 | 03 | Llm unknown error observability | `done` | 7/7 | ✅ done | — |
-| 04 | Continuation synctoken race | `needs-triage` | 0/4 | ⬜ todo | — |
-| 05 | Colorrollback subrequest cap | `needs-triage` | 0/4 | ⬜ todo | — |
+| 04 | Continuation synctoken race | `done` | 4/4 | ✅ done | — |
+| 05 | Colorrollback subrequest cap | `done` | 4/4 | ✅ done | — |
 
 State is derived: all criteria checked → `done`; some → `in-progress`; none
 with an unfinished blocker → `blocked`; otherwise → `todo`. Issues triaged
