@@ -66,7 +66,12 @@ const envFile = process.argv.includes("--env")
   : ".dev.vars";
 const execute = process.argv.includes("--execute");
 
-loadEnv({ path: envFile });
+// override: the --env file is authoritative — stale shell exports (e.g. a
+// leftover dev DIRECT_DATABASE_URL) must not silently win over the file.
+const envResult = loadEnv({ path: envFile, override: true });
+if (envResult.error) {
+  throw new Error(`failed to load env file ${envFile}: ${envResult.error.message}`);
+}
 
 const dbUrl = process.env["DIRECT_DATABASE_URL"];
 const encKey = process.env["TOKEN_ENCRYPTION_KEY"];

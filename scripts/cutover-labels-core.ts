@@ -97,8 +97,10 @@ export function planCutover(args: {
 export type ApplyResult = {
   linked: number;
   appended: number;
-  // A link UPDATE that hit 0 rows: the row was linked concurrently (e.g. a
-  // sync run's reconcile paired it first). Converged — warn-only.
+  // A pre-planned link UPDATE that hit 0 rows: the row was linked
+  // concurrently (e.g. a sync run's reconcile paired it first). Converged —
+  // warn-only. A post-append 0-row link is NOT counted here — it orphans the
+  // just-minted Google label and lands in `failures` instead.
   linkMissed: number;
   appendsSkippedForCap: number;
   failures: Array<{ categoryId: string; name: string; error: string }>;
@@ -160,7 +162,16 @@ export async function applyUserPlan(
       if (await deps.linkCategory(append.categoryId, id)) {
         result.linked += 1;
       } else {
-        result.linkMissed += 1;
+        // 0 rows AFTER a real append: a concurrent writer linked the row
+        // between plan and apply, so the label minted above is now an orphan
+        // on the user's calendar (duplicate name, consumes the 200-label
+        // cap). Must surface as a failure — folding it into `linkMissed`
+        // would let remaining-count verification read clean.
+        result.failures.push({
+          categoryId: append.categoryId,
+          name: append.name,
+          error: `post-append link hit 0 rows — minted label ${id} is orphaned (row linked concurrently); delete the duplicate label or relink manually`,
+        });
       }
     } catch (err) {
       result.failures.push({
