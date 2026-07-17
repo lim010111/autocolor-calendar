@@ -209,9 +209,19 @@ export function buildPrompt(
   categories: Rule[],
   version: ClassifierPromptVersion = DEFAULT_CLASSIFIER_PROMPT_VERSION,
 ): ChatMessage[] {
+  // ADR-0004 #05 — `examples` is a structured field (not prose): the
+  // user-confirmed past titles merged into `Rule.seeds` by `listRules`
+  // (seed_type='example', already redacted at mint time by
+  // `consentExample`). Bounded by the per-rule lifecycle cap
+  // (`EXAMPLES_PER_RULE_CAP` = 10), so the field cannot blow up the prompt.
+  // Empty array until the OAuth-gated Instant Feedback flow ships (dark
+  // build stores zero examples).
   const categoryList = categories.slice(0, LLM_MAX_CATEGORIES).map((c) => ({
     name: c.name,
     keywords: c.keywords,
+    examples: c.seeds
+      .filter((s) => s.type === "example")
+      .map((s) => s.text),
   }));
 
   // System prompt body lives under `prompts/classifier/system.<version>.md`

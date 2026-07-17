@@ -1,4 +1,4 @@
-import { and, asc, eq, inArray, isNull } from "drizzle-orm";
+import { and, asc, eq, inArray, isNull, ne } from "drizzle-orm";
 import type { PostgresJsDatabase } from "drizzle-orm/postgres-js";
 
 import { categories, ruleSeeds, syncState } from "../db/schema";
@@ -114,13 +114,10 @@ type CategoriesRow = {
   updatedAt: Date;
 };
 
-// ADR-0004 #02 will replace this with a SELECT from `rule_seeds`. The
-// shape and grade values are pinned now so the swap is local.
-//
 // Convention: the rule's name yields one `name` seed; each keyword yields
 // one `keyword` seed. Everything is `declared` because it originates from
-// user typing — `verified` seeds arrive only via Instant Feedback
-// (ADR-0004 #05).
+// user typing — `verified` example seeds have no `categories` column and
+// are merged from `rule_seeds` by `listRules` (ADR-0004 #05).
 export function synthesizeSeeds(row: {
   name: string;
   keywords: string[];
@@ -159,7 +156,38 @@ export async function listRules(
         : and(eq(categories.userId, userId), isNull(categories.labelDeletedAt)),
     )
     .orderBy(asc(categories.priority), asc(categories.createdAt));
-  return rows.map(toRule);
+  const rules = rows.map(toRule);
+
+  // ADR-0004 #05 — example seeds are durable-only (`rule_seeds`, no
+  // `categories` column), so merge them into `Rule.seeds` here. The one
+  // consumer of example seeds on a `Rule` is the Stage-2 prompt builder's
+  // `examples` field (`buildPrompt`); Stage-1 kNN reads `rule_seeds`
+  // directly and never looks at `Rule.seeds`. Oldest-first (FIFO insert
+  // order) so the prompt sees a stable ordering.
+  const exampleRows = await db
+    .select({
+      ruleId: ruleSeeds.ruleId,
+      seedText: ruleSeeds.seedText,
+      createdAt: ruleSeeds.createdAt,
+    })
+    .from(ruleSeeds)
+    .where(
+      and(eq(ruleSeeds.userId, userId), eq(ruleSeeds.seedType, "example")),
+    );
+  if (exampleRows.length > 0) {
+    exampleRows.sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime());
+    const byRule = new Map<string, Seed[]>();
+    for (const r of exampleRows) {
+      const list = byRule.get(r.ruleId) ?? [];
+      list.push({ text: r.seedText, type: "example", grade: "verified" });
+      byRule.set(r.ruleId, list);
+    }
+    for (const rule of rules) {
+      const examples = byRule.get(rule.id);
+      if (examples) rule.seeds.push(...examples);
+    }
+  }
+  return rules;
 }
 
 export async function getRule(
@@ -616,23 +644,124 @@ export async function deleteRule(
   return { sideEffects };
 }
 
-// ADR-0004 #05 — Instant Feedback entry point. The signature is pinned
-// now so the shape of `RuleService` stops drifting between this PR and
-// the embedding-classifier wave; the body is a no-op resolve until the
-// consent + rule_seeds insert + FIFO eviction logic lands.
+// ADR-0004 #05 — example lifecycle cap: at most 10 example seeds per rule;
+// the 11th add evicts the oldest (FIFO on `created_at`). Exported for the
+// lifecycle unit tests.
+export const EXAMPLES_PER_RULE_CAP = 10;
+
+// ADR-0004 #05 — Instant Feedback write outcome. Unlike the #02/#03 seed
+// writes (fire-and-forget fan-out, warn-only), an example add is a direct
+// user action: the Instant Feedback UI must be able to tell the user their
+// correction did NOT stick, so an embedding failure surfaces as a soft
+// failure instead of being swallowed.
+export type AddExampleResult =
+  | { stored: true }
+  | { stored: false; reason: "embed_failed" };
+
+// ADR-0004 #05 — Instant Feedback entry point (dark build: live write path,
+// zero production callers until the OAuth-gated consent flow can mint a
+// `ConsentReceipt`).
 //
 // §5.2 branded contract — accepts only `ConsentedExample`. The brand
 // asserts the joint invariant "consented AND redacted", minted exclusively
 // by `consentExample()` in `piiRedactor.ts`. A raw `(ruleId, title)` insert
-// is unspellable at compile time. The `_example.ruleId` already carries
-// the target rule, so no separate `ruleId` arg is needed.
+// is unspellable at compile time. `example.ruleId` / `example.userId`
+// already carry the target rule and tenant, so no separate args are needed.
 //
-// Deliberately no-op rather than `throw`: a stray caller during the
-// interim should fall through silently. Wiring this into a route is
-// gated until #05.
+// embed-before-mutate: the title is embedded via the frozen-prefix
+// `embedTexts` FIRST; a failure (or a missing embedder — for a direct user
+// action a silent skip would lie to the user) returns `embed_failed` with
+// zero rows touched. Mutations then run in three steps, insert-before-delete
+// (codex:finding-0 — same discipline as `reconcileKeywordSeeds`: the two
+// statements are separate and non-transactional, so the order decides the
+// mid-mutation failure mode):
+//   1. insert the fresh `seed_type='example'` row under a client-minted id
+//      (grade is derived at read time — example ≡ verified, never stored).
+//   2. last-write-wins move — delete this (redacted) title's OTHER example
+//      rows anywhere in the tenant (`user_id` + `seed_type='example'` +
+//      `seed_text`, excluding the just-minted id — RLS is bypassed on the
+//      Worker path, src/AGENTS.md "Tenant isolation"), so a title is at
+//      most one rule's example (CONTEXT.md). Inserting FIRST means a DB
+//      failure between the statements degrades to a benign transient
+//      DUPLICATE — over-inclusive, self-heals on the next same-title write,
+//      and a same-title duplicate across rules merely degrades Stage 1 to
+//      ambiguous → Stage 2 — instead of losing the user's example (the
+//      delete-before-insert order committed the delete and then dropped
+//      the insert, leaving the title with ZERO example rows). The failure
+//      still throws to the caller, which surfaces it.
+//   3. FIFO cap — keep the newest `EXAMPLES_PER_RULE_CAP` example rows for
+//      this rule; delete the oldest beyond the cap (seed row delete ≡ its
+//      embedding dies with it).
 export async function addExample(
-  _db: PostgresJsDatabase,
-  _example: ConsentedExample,
-): Promise<void> {
-  // intentionally no-op until ADR-0004 #05
+  db: PostgresJsDatabase,
+  embed: EmbedTexts | undefined,
+  example: ConsentedExample,
+): Promise<AddExampleResult> {
+  let embedding: number[] | undefined;
+  try {
+    if (!embed) throw new Error("no embedder available");
+    const vectors = await embed([example.text]);
+    embedding = vectors[0];
+    if (!embedding) throw new Error("empty embedding result");
+  } catch (err) {
+    // SECURITY: never log `example.text` (calendar content).
+    console.warn(
+      JSON.stringify({
+        level: "warn",
+        msg: "example embedding failed (correction not stored)",
+        userId: example.userId,
+        ruleId: example.ruleId,
+        error: err instanceof Error ? err.message : String(err),
+      }),
+    );
+    return { stored: false, reason: "embed_failed" };
+  }
+
+  // Client-minted id (the schema's `gen_random_uuid()` default tolerates
+  // explicit ids) so the last-write-wins delete below can exclude the row
+  // this call just inserted — insert-before-delete, codex:finding-0.
+  const newSeedId = crypto.randomUUID();
+  await db.insert(ruleSeeds).values({
+    id: newSeedId,
+    ruleId: example.ruleId,
+    userId: example.userId,
+    seedType: "example",
+    seedText: example.text,
+    embedding,
+  });
+
+  await db
+    .delete(ruleSeeds)
+    .where(
+      and(
+        eq(ruleSeeds.userId, example.userId),
+        eq(ruleSeeds.seedType, "example"),
+        eq(ruleSeeds.seedText, example.text),
+        ne(ruleSeeds.id, newSeedId),
+      ),
+    );
+
+  const rows = await db
+    .select({ id: ruleSeeds.id, createdAt: ruleSeeds.createdAt })
+    .from(ruleSeeds)
+    .where(
+      and(
+        eq(ruleSeeds.ruleId, example.ruleId),
+        eq(ruleSeeds.userId, example.userId),
+        eq(ruleSeeds.seedType, "example"),
+      ),
+    );
+  if (rows.length > EXAMPLES_PER_RULE_CAP) {
+    rows.sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime());
+    const excess = rows
+      .slice(0, rows.length - EXAMPLES_PER_RULE_CAP)
+      .map((r) => r.id);
+    await db
+      .delete(ruleSeeds)
+      .where(
+        and(eq(ruleSeeds.userId, example.userId), inArray(ruleSeeds.id, excess)),
+      );
+  }
+
+  return { stored: true };
 }

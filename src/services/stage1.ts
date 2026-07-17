@@ -16,7 +16,10 @@ import type { Rule } from "./ruleService";
 // A Rule's meaning = its seed vectors (name / keyword / example), each
 // embedded separately. score(rule) = MAX cosine over that rule's seeds vs the
 // event-title vector (kNN, k = whole seed pool, agg = max, metric = cosine).
-// This slice writes only `name` seeds, all Declared grade.
+// Seed types arrived in slices: name (#02), keyword (#03), example (#05 —
+// Instant Feedback, the only Verified-grade type). The pool query below is
+// deliberately seed-type-agnostic, so each new type joined without a
+// read-path change.
 
 // One row per rule = its single best seed against the title vector (the
 // pgvector `DISTINCT ON (rule_id)` query below). Exported for unit tests of
@@ -67,10 +70,14 @@ function lookupRuleRef(
     : undefined;
 }
 
-// Pure decision logic (ADR-0004 #02 AC #7). Grade-aware bar: a verified best
-// seed uses `T_VERIFIED`, a declared best seed uses `T_DECLARED`. This slice
-// only ever produces declared seeds, so the `T_VERIFIED` path is inert until
-// the examples slice (#05).
+// Pure decision logic (ADR-0004 #02 AC #7). Grade-aware bar chosen by the
+// seed_type of the pool-wide max-cosine WINNER (no separate verified-only
+// aggregation): a verified (example, #05) best seed uses `T_VERIFIED`, a
+// declared (name/keyword) best seed uses `T_DECLARED`. A rule with zero
+// examples can never produce a verified winner, so `T_VERIFIED` simply never
+// fires for it — no cold-start special case (ADR-0005 REPORT §1's "verified
+// score nan" cannot arise under max-over-pool). `MARGIN` applies across the
+// whole pool regardless of grade.
 //
 // Branches:
 //   1. best.score < bar               → miss   → Stage-2 LLM fallback

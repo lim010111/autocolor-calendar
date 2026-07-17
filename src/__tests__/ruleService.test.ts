@@ -17,6 +17,7 @@ import {
   createRule,
   deleteRule,
   DuplicateRuleNameError,
+  EXAMPLES_PER_RULE_CAP,
   getRule,
   listRules,
   synthesizeSeeds,
@@ -624,19 +625,210 @@ describe("deleteRule", () => {
   });
 });
 
-describe("addExample", () => {
-  it("resolves without side effects (no-op stub until ADR-0004 #05)", async () => {
-    const { db } = makeFakeDb({
-      categories: [row({ id: RULE_A, userId: USER_A })],
+describe("addExample (ADR-0004 #05 — 저장 경로 + 생애주기)", () => {
+  const embedOk = () =>
+    vi.fn(async (texts: string[]) => texts.map(() => [0.1, 0.2, 0.3]));
+
+  // §5.2: `ConsentReceipt` has no production minter (OAuth-gated consent
+  // flow) — test-side forgery of the receipt brand only; production code
+  // MUST NOT cast its way around the type.
+  const receipt = {} as ConsentReceipt;
+  const mint = (title: string, ruleId = RULE_A, userId = USER_A) => {
+    const example = consentExample(title, ruleId, userId, receipt);
+    if (!example) throw new Error("fixture title must survive redaction");
+    return example;
+  };
+
+  const exSeed = (
+    seedText: string,
+    opts: {
+      id: string;
+      createdAt: Date;
+      ruleId?: string;
+      userId?: string;
+    },
+  ): RuleSeedRow => ({
+    id: opts.id,
+    ruleId: opts.ruleId ?? RULE_A,
+    userId: opts.userId ?? USER_A,
+    seedType: "example",
+    seedText,
+    embedding: [9, 9, 9],
+    createdAt: opts.createdAt,
+  });
+
+  const exampleSeeds = (state: { ruleSeeds: RuleSeedRow[] }) =>
+    state.ruleSeeds.filter((s) => s["seedType"] === "example");
+
+  it("consentExample→addExample 경로: 임베딩(embedTexts) 후 rule_seeds(example) insert", async () => {
+    const { db, state } = makeFakeDb({});
+    const embed = embedOk();
+    const result = await addExample(db as never, embed, mint("회의실 잡기"));
+    expect(result).toEqual({ stored: true });
+    expect(embed).toHaveBeenCalledWith(["회의실 잡기"]);
+    expect(exampleSeeds(state)).toHaveLength(1);
+    expect(exampleSeeds(state)[0]).toMatchObject({
+      ruleId: RULE_A,
+      userId: USER_A,
+      seedType: "example",
+      seedText: "회의실 잡기",
+      embedding: [0.1, 0.2, 0.3],
     });
-    // §5.2: the only branded entry path. `ConsentReceipt` has no exposed
-    // minter in this PR (ADR-0004 #05 introduces consent log + receipt
-    // issuance) — fabricate a brand-only fake here. This is the single
-    // test-side forgery of the receipt brand; production code MUST NOT
-    // cast its way around the type.
-    const example = consentExample("회의실 잡기", RULE_A, {} as ConsentReceipt);
-    await expect(addExample(db as never, example)).resolves.toBeUndefined();
-    expect(vi.mocked(enqueueSync)).not.toHaveBeenCalled();
+  });
+
+  it("embed 실패 → embed_failed 소프트 실패, 행 변경 0 (embed-before-mutate)", async () => {
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const { db, state } = makeFakeDb({
+      ruleSeeds: [
+        exSeed("기존 예시", { id: "s-1", createdAt: new Date("2026-07-01") }),
+      ],
+    });
+    const embed = vi.fn(async () => {
+      throw new Error("AI unavailable");
+    });
+    const result = await addExample(db as never, embed, mint("회의실 잡기"));
+    // #02/#03 fan-out의 warn-only-silent와 달리 직접 사용자 행위 — 실패가
+    // 반환값으로 표면화되어 Instant Feedback UI가 "정정이 안 붙었음"을
+    // 보여줄 수 있어야 한다.
+    expect(result).toEqual({ stored: false, reason: "embed_failed" });
+    expect(exampleSeeds(state)).toHaveLength(1);
+    expect(exampleSeeds(state)[0]).toMatchObject({ seedText: "기존 예시" });
+    warnSpy.mockRestore();
+  });
+
+  it("embedder 부재 → embed_failed (직접 사용자 행위라 silent skip 금지)", async () => {
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const { db, state } = makeFakeDb({});
+    const result = await addExample(db as never, undefined, mint("회의실 잡기"));
+    expect(result).toEqual({ stored: false, reason: "embed_failed" });
+    expect(state.ruleSeeds).toHaveLength(0);
+    warnSpy.mockRestore();
+  });
+
+  it("캡: 11번째 추가 시 created_at 기준 가장 오래된 example부터 FIFO 축출", async () => {
+    // 캡(10개)을 채운 상태 — 배열 순서를 섞어 넣어 FIFO가 배열 순서가 아닌
+    // created_at 정렬임을 함께 고정한다. t1이 가장 오래됨.
+    const seeds = [3, 1, 5, 2, 4, 6, 7, 8, 9, 10].map((n) =>
+      exSeed(`예시 ${n}`, {
+        id: `s-${n}`,
+        createdAt: new Date(`2026-07-${String(n).padStart(2, "0")}`),
+      }),
+    );
+    const { db, state } = makeFakeDb({ ruleSeeds: seeds });
+    const result = await addExample(
+      db as never,
+      embedOk(),
+      mint("열한번째 예시"),
+    );
+    expect(result).toEqual({ stored: true });
+    const remaining = exampleSeeds(state).map((s) => s["seedText"]);
+    expect(remaining).toHaveLength(EXAMPLES_PER_RULE_CAP);
+    expect(remaining).not.toContain("예시 1"); // 최고령 축출
+    expect(remaining).toContain("예시 2");
+    expect(remaining).toContain("열한번째 예시");
+  });
+
+  it("제목당 단일 Rule (last-write-wins): 다른 Rule의 동일 제목 example을 제거하고 이동", async () => {
+    const { db, state } = makeFakeDb({
+      ruleSeeds: [
+        exSeed("스탠드업", {
+          id: "s-b",
+          ruleId: RULE_B,
+          createdAt: new Date("2026-07-01"),
+        }),
+      ],
+    });
+    const result = await addExample(db as never, embedOk(), mint("스탠드업"));
+    expect(result).toEqual({ stored: true });
+    const rows = exampleSeeds(state);
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({ ruleId: RULE_A, seedText: "스탠드업" });
+  });
+
+  it("last-write-wins 제거는 테넌트 스코프 — 다른 사용자의 동일 제목 example은 보존", async () => {
+    const { db, state } = makeFakeDb({
+      ruleSeeds: [
+        exSeed("스탠드업", {
+          id: "s-other",
+          ruleId: RULE_B,
+          userId: USER_B,
+          createdAt: new Date("2026-07-01"),
+        }),
+      ],
+    });
+    await addExample(db as never, embedOk(), mint("스탠드업"));
+    const rows = exampleSeeds(state);
+    expect(rows).toHaveLength(2);
+    expect(
+      rows.find((s) => s["userId"] === USER_B),
+    ).toMatchObject({ ruleId: RULE_B, seedText: "스탠드업" });
+  });
+
+  it("같은 Rule에 같은 제목 재추가 → 행 교체 (중복 0, created_at 갱신)", async () => {
+    const { db, state } = makeFakeDb({
+      ruleSeeds: [
+        exSeed("스탠드업", { id: "s-old", createdAt: new Date("2026-07-01") }),
+      ],
+    });
+    await addExample(db as never, embedOk(), mint("스탠드업"));
+    const rows = exampleSeeds(state);
+    expect(rows).toHaveLength(1);
+    expect(rows[0]?.["id"]).not.toBe("s-old");
+  });
+});
+
+describe("listRules — example 씨앗 합류 (ADR-0004 #05)", () => {
+  it("rule_seeds의 example 행이 verified grade로 seeds에 합류 (created_at 오름차순)", async () => {
+    const { db } = makeFakeDb({
+      categories: [row({ id: RULE_A, userId: USER_A, name: "회의" })],
+      ruleSeeds: [
+        {
+          id: "s-2",
+          ruleId: RULE_A,
+          userId: USER_A,
+          seedType: "example",
+          seedText: "둘째 예시",
+          embedding: [0, 0, 1],
+          createdAt: new Date("2026-07-02"),
+        },
+        {
+          id: "s-1",
+          ruleId: RULE_A,
+          userId: USER_A,
+          seedType: "example",
+          seedText: "첫째 예시",
+          embedding: [0, 1, 0],
+          createdAt: new Date("2026-07-01"),
+        },
+        // keyword 행은 examples 합류 대상이 아니다 (synthesize가 커버).
+        {
+          id: "s-kw",
+          ruleId: RULE_A,
+          userId: USER_A,
+          seedType: "keyword",
+          seedText: "kw",
+          embedding: [1, 0, 0],
+          createdAt: new Date("2026-07-01"),
+        },
+        // 다른 사용자의 example은 테넌트 밖 — 합류 금지.
+        {
+          id: "s-b",
+          ruleId: RULE_A,
+          userId: USER_B,
+          seedType: "example",
+          seedText: "남의 예시",
+          embedding: [1, 1, 1],
+          createdAt: new Date("2026-07-01"),
+        },
+      ],
+    });
+    const rules = await listRules(db as never, USER_A);
+    expect(rules).toHaveLength(1);
+    const exampleSeeds = rules[0]?.seeds.filter((s) => s.type === "example");
+    expect(exampleSeeds).toEqual([
+      { text: "첫째 예시", type: "example", grade: "verified" },
+      { text: "둘째 예시", type: "example", grade: "verified" },
+    ]);
   });
 });
 

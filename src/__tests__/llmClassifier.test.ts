@@ -268,6 +268,46 @@ describe("buildPrompt", () => {
   });
 });
 
+// ADR-0004 #05 — the category JSON gains a structured `examples` field
+// (user-confirmed past titles, merged into `Rule.seeds` by `listRules`) and
+// the v6 system prompt teaches its usage in one field-handling line.
+describe("buildPrompt — examples 구조화 필드 (ADR-0004 #05)", () => {
+  it("Rule.seeds의 example 씨앗이 category JSON의 examples 필드로 합류", () => {
+    const msgs = buildPrompt(ev({ summary: "standup" }), [
+      cat({
+        seeds: [
+          ...synthesizeSeeds({ name: "회의", keywords: ["회의"] }),
+          { text: "주간 스탠드업", type: "example", grade: "verified" },
+          { text: "회의실 잡기", type: "example", grade: "verified" },
+        ],
+      }),
+    ]);
+    const user = msgs.find((m) => m.role === "user")!;
+    const payload = JSON.parse(user.content) as {
+      categories: Array<{ examples: string[] }>;
+    };
+    expect(payload.categories[0]!.examples).toEqual([
+      "주간 스탠드업",
+      "회의실 잡기",
+    ]);
+  });
+
+  it("example이 없는 rule은 examples: [] — 필드 자체는 항상 존재 (구조화, 산문 아님)", () => {
+    const msgs = buildPrompt(ev(), [cat()]);
+    const payload = JSON.parse(msgs.find((m) => m.role === "user")!.content) as {
+      categories: Array<{ examples?: string[] }>;
+    };
+    expect(payload.categories[0]!.examples).toEqual([]);
+  });
+
+  it("v6 system prompt에 examples 필드 사용법 라인이 있다", () => {
+    const msgs = buildPrompt(ev(), [cat()], "v6");
+    const sys = msgs.find((m) => m.role === "system")!;
+    expect(sys.content).toMatch(/`examples`/);
+    expect(sys.content).toMatch(/confirmed as belonging/);
+  });
+});
+
 describe("mapCategoryNameToRuleRef", () => {
   const cats = [cat({ id: "c-1", name: "회의", colorId: "9" }), cat({ id: "c-2", name: "개인", colorId: "5" })];
 
