@@ -209,8 +209,10 @@ syncRoutes.post("/heal-watch", async (c) => {
         return c.json({ error: "calendar_inactive" }, 409);
       case "api_error":
         // Thin kind → HTTP mapping kept inline (mapper extraction is a separate
-        // deepening candidate). Watch's throwWatchError never sets Retry-After,
-        // so rate_limited is a fixed 1s — matching the prior `?? 1` fallback.
+        // deepening candidate). ReRegisterResult carries kind only — the
+        // factory-parsed retryAfterSec is dropped at the reRegisterWatch
+        // boundary (#07) — so rate_limited is a fixed 1s, matching the prior
+        // `?? 1` fallback.
         switch (result.kind) {
           case "auth":
             return c.json({ error: "reauth_required" }, 503);
