@@ -41,10 +41,10 @@ export const EMBEDDING_PREFIX = "task: sentence similarity | query: ";
 // Grade-based Stage-1 thresholds — all PROVISIONAL (ADR-0005 §threshold).
 // Decision logic: a best-seed cosine below its grade bar → Stage-2 LLM
 // fallback; a best/second gap below `MARGIN` → ambiguous → Stage-2 fallback;
-// otherwise assign the best rule. `T_VERIFIED` (the low bar for
-// Instant-Feedback example seeds) is inert until the examples slice (#05) —
-// the name-seed slice only ever produces `declared` seeds, so only
-// `T_DECLARED` / `MARGIN` are reachable today.
+// otherwise assign the best rule. `T_VERIFIED` is the low bar for
+// Instant-Feedback example seeds (#05, `addExample`) — live in the decision
+// logic, though examples stay at zero rows until the OAuth-gated consent
+// flow can mint a `ConsentReceipt` (dark build).
 export const T_VERIFIED = 0.3;
 export const T_DECLARED = 0.55;
 export const MARGIN = 0.1;

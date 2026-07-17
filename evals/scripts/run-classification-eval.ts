@@ -67,6 +67,8 @@ const VALID_PROMPT_VERSIONS: readonly ClassifierPromptVersion[] = [
   "v5-L2",
   "v5-L4",
   "v5-L5",
+  // v6 — ADR-0004 #05 examples-field line (2026-07-17).
+  "v6",
 ];
 const LANGFUSE_PROMPT_NAME_PREFIX = "autocolor-classifier";
 const LANGFUSE_PROMPT_LABEL = "eval";

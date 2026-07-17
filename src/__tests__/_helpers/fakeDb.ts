@@ -229,6 +229,29 @@ function fillRowDefaults(v: Partial<Row>): Row {
 // `categories` Row.
 export type RuleSeedRow = Record<string, unknown>;
 
+// rule_seeds SQL column → camelCase row key (mirror of COL_MAP for the
+// categories table). Used by the delete arm so eq/inArray predicates on any
+// seed column (ADR-0004 #05 adds `seed_text` eq + `id` IN) match generically.
+const SEED_COL_MAP: Record<string, string> = {
+  id: "id",
+  rule_id: "ruleId",
+  user_id: "userId",
+  seed_type: "seedType",
+  seed_text: "seedText",
+  created_at: "createdAt",
+};
+
+// DB-default fill for inserted seed rows (`gen_random_uuid()` id +
+// `defaultNow()` created_at) so the ADR-0004 #05 FIFO-eviction logic — which
+// selects id/created_at back — behaves like the real table.
+function fillSeedDefaults(v: RuleSeedRow): RuleSeedRow {
+  return {
+    ...v,
+    id: v["id"] ?? randomUuidIsh(),
+    createdAt: v["createdAt"] ?? new Date(),
+  };
+}
+
 export type FakeDbInitial = {
   categories?: Row[];
   syncStates?: SyncStateRow[];
@@ -314,17 +337,20 @@ export function makeFakeDb(initial: FakeDbInitial = {}): FakeDbHandle {
       };
     },
     insert(table: unknown) {
-      // ADR-0004 #02/#03 — `rule_seeds` writes. Two shapes:
+      // ADR-0004 #02/#03/#05 — `rule_seeds` writes. Three shapes:
       //   - name seed (#02): `.values(obj).onConflictDoUpdate(...)`, a
       //     create-or-replace against the partial-unique `(rule_id) WHERE
       //     seed_type='name'` — model it by replacing an existing name row.
       //   - keyword adds (#03): `.values(array)` awaited directly (plain
       //     insert, no conflict target — keyword rows are unconstrained).
+      //   - example add (#05): `.values(obj)` awaited directly (plain
+      //     single-row insert) — the builder is thenable so the same
+      //     `.values(obj)` return also still exposes `onConflictDoUpdate`.
       if (table === ruleSeeds) {
         return {
           values(v: RuleSeedRow | RuleSeedRow[]) {
             if (Array.isArray(v)) {
-              for (const rowv of v) state.ruleSeeds.push(rowv);
+              for (const rowv of v) state.ruleSeeds.push(fillSeedDefaults(rowv));
               return Promise.resolve(undefined);
             }
             return {
@@ -333,9 +359,17 @@ export function makeFakeDb(initial: FakeDbInitial = {}): FakeDbHandle {
                   (r) =>
                     r["ruleId"] === v["ruleId"] && r["seedType"] === "name",
                 );
-                if (idx >= 0) state.ruleSeeds[idx] = v;
-                else state.ruleSeeds.push(v);
+                if (idx >= 0) state.ruleSeeds[idx] = fillSeedDefaults(v);
+                else state.ruleSeeds.push(fillSeedDefaults(v));
                 return undefined;
+              },
+              // Plain-await path (#05 example insert, no conflict clause).
+              then(
+                onFulfilled?: (value: undefined) => unknown,
+                onRejected?: (reason: unknown) => unknown,
+              ) {
+                state.ruleSeeds.push(fillSeedDefaults(v));
+                return Promise.resolve(undefined).then(onFulfilled, onRejected);
               },
             };
           },
@@ -395,24 +429,27 @@ export function makeFakeDb(initial: FakeDbInitial = {}): FakeDbHandle {
       };
     },
     delete(table: unknown) {
-      // ADR-0004 #03 — keyword removal. `.where()` resolves directly (no
-      // `.returning()`); delete rows matching the eq predicates (rule_id /
-      // user_id / seed_type) AND the `seed_text IN (…)` list.
+      // ADR-0004 #03/#05 — seed removal. `.where()` resolves directly (no
+      // `.returning()`); delete rows matching every eq predicate (any
+      // rule_seeds column via SEED_COL_MAP — #05 adds `seed_text` eq) AND
+      // the `IN (…)` list on its extracted column (#03 deletes by
+      // `seed_text IN`, #05 FIFO eviction deletes by `id IN`).
       if (table === ruleSeeds) {
         return {
           where(whereSql: unknown) {
             const eqc = extractEq(whereSql);
             const inClause = extractInArray(whereSql);
             const inSet = inClause ? new Set(inClause.values) : null;
+            const inField = inClause
+              ? (SEED_COL_MAP[inClause.column] ?? inClause.column)
+              : null;
             state.ruleSeeds = state.ruleSeeds.filter((r) => {
-              const eqMatch =
-                (eqc["rule_id"] === undefined ||
-                  r["ruleId"] === eqc["rule_id"]) &&
-                (eqc["user_id"] === undefined ||
-                  r["userId"] === eqc["user_id"]) &&
-                (eqc["seed_type"] === undefined ||
-                  r["seedType"] === eqc["seed_type"]);
-              const inMatch = inSet ? inSet.has(r["seedText"]) : true;
+              const eqMatch = Object.entries(eqc).every(([sqlCol, val]) => {
+                const field = SEED_COL_MAP[sqlCol];
+                return field !== undefined && r[field] === val;
+              });
+              const inMatch =
+                inSet && inField ? inSet.has(r[inField]) : true;
               // keep rows that do NOT match every delete predicate
               return !(eqMatch && inMatch);
             });

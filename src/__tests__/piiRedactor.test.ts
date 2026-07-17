@@ -2,9 +2,12 @@ import { describe, expect, it } from "vitest";
 
 import type { CalendarEvent } from "../services/googleCalendar";
 import {
+  consentExample,
+  isUnfitExample,
   PII_REGEXES,
   PII_TOKENS,
   redactEventForLlm,
+  type ConsentReceipt,
 } from "../services/piiRedactor";
 
 // Group E (골든 acceptance) 는 `JSON.stringify(redacted)` 전체에 대해
@@ -330,5 +333,67 @@ describe("redactEventForLlm — Group E: 수용 기준 골든", () => {
     expect(redacted.summary).toContain(PII_TOKENS.EMAIL);
     expect(redacted.summary).toContain(PII_TOKENS.URL);
     expect(redacted.description).toContain(PII_TOKENS.PHONE);
+  });
+});
+
+// ADR-0004 #05 — 과도 redaction drop 임계 로직. redaction 후 (a) 빈 문자열
+// 또는 (b) 문자의 ≥50%가 placeholder 토큰이면 example 부적합 → 조용히 drop.
+describe("isUnfitExample — 과도 redaction drop 기준 (ADR-0004 #05)", () => {
+  it("빈 문자열 / 공백-only → unfit", () => {
+    expect(isUnfitExample("")).toBe(true);
+    expect(isUnfitExample("   ")).toBe(true);
+  });
+
+  it("placeholder 토큰만 남은 제목 → unfit (100%)", () => {
+    expect(isUnfitExample(PII_TOKENS.URL)).toBe(true);
+    expect(isUnfitExample(PII_TOKENS.EMAIL)).toBe(true);
+  });
+
+  it("정확히 50% placeholder → unfit (경계 포함, ≥50%)", () => {
+    // "[url]" = 5자 + 실문자 5자 = 10자, 비율 정확히 0.5.
+    expect(isUnfitExample("[url]abcde")).toBe(true);
+  });
+
+  it("50% 미만 placeholder → fit", () => {
+    // "[url]" = 5자 + 실문자 6자 = 11자, 비율 ≈ 0.45.
+    expect(isUnfitExample("[url]abcdef")).toBe(false);
+  });
+
+  it("복수 placeholder 합산이 ≥50%면 unfit", () => {
+    // "[email] [phone]" = placeholder 14자 / 전체 15자.
+    expect(isUnfitExample(`${PII_TOKENS.EMAIL} ${PII_TOKENS.PHONE}`)).toBe(
+      true,
+    );
+  });
+
+  it("placeholder 없는 일반 제목 → fit", () => {
+    expect(isUnfitExample("주간회의")).toBe(false);
+  });
+});
+
+describe("consentExample — durable example 민터 (ADR-0004 #05)", () => {
+  // `ConsentReceipt`에는 프로덕션 민터가 없다(OAuth 게이트) — 테스트 전용
+  // brand 위조. 프로덕션 코드는 절대 cast로 우회하지 않는다 (§5.2).
+  const receipt = {} as ConsentReceipt;
+
+  it("PII를 redact한 (trim된) 제목과 ruleId/userId를 브랜드에 싣는다", () => {
+    const out = consentExample(
+      "  프로젝트 미팅 with alice@acme.com  ",
+      "rule-1",
+      "user-1",
+      receipt,
+    );
+    expect(out).not.toBeNull();
+    expect(out?.text).toBe(`프로젝트 미팅 with ${PII_TOKENS.EMAIL}`);
+    expect(out?.ruleId).toBe("rule-1");
+    expect(out?.userId).toBe("user-1");
+  });
+
+  it("redaction이 제목을 망가뜨리면 null (조용한 drop — 저장 0)", () => {
+    // URL-only 제목 → "[url]" → 100% placeholder → 부적합.
+    expect(
+      consentExample("https://zoom.us/j/123", "rule-1", "user-1", receipt),
+    ).toBeNull();
+    expect(consentExample("   ", "rule-1", "user-1", receipt)).toBeNull();
   });
 });

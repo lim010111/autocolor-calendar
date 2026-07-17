@@ -108,7 +108,7 @@ AGENTS.md ↔ CLAUDE.md canonicalize(AGENTS.md 정본, `@AGENTS.md` 래퍼).
 
 ## embedding-classifier
 
-`██████████████░░░░░░░░` 50/78 acceptance criteria met (64%)
+`██████████████████░░░░` 64/78 acceptance criteria met (82%)
 
 | # | Issue | Triage | Criteria | State | Blocked by |
 |---|-------|--------|----------|-------|-----------|
@@ -116,7 +116,7 @@ AGENTS.md ↔ CLAUDE.md canonicalize(AGENTS.md 정본, `@AGENTS.md` 래퍼).
 | 02 | Embedding knn classifier name seeds | `done` | 14/14 | ✅ done | — |
 | 03 | Keyword seeds | `ready-for-agent` | 14/14 | ✅ done | — |
 | 04 | Rule editor redesign | `ready-for-human` | 5/6 | 🔵 in-progress | #03 |
-| 05 | Examples seeds instant feedback | `ready-for-agent` | 0/19 | ⬜ todo | #03 |
+| 05 | Examples seeds instant feedback | `ready-for-human` | 14/19 | 🔵 in-progress | #03 |
 | 06 | History based rule suggestions | `ready-for-agent` | 0/8 | ⛔ blocked | #05 |
 
 ## native-labels
@@ -144,5 +144,4 @@ AGENTS.md ↔ CLAUDE.md canonicalize(AGENTS.md 정본, `@AGENTS.md` 래퍼).
 
 State is derived: all criteria checked → `done`; some → `in-progress`; none
 with an unfinished blocker → `blocked`; otherwise → `todo`. Issues triaged
-`wontfix` (decided against) or `parked` (deferred until operator opt-in) show
-that triage state and are excluded from the progress bar.
+`wontfix` show as `wontfix` and are excluded from the progress bar.

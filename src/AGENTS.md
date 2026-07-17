@@ -126,13 +126,19 @@ branded type `RedactedEvent` defined in `src/services/piiRedactor.ts`:
 `classifyWithLlm` and `buildPrompt` accept only `RedactedEvent`, so a
 caller passing a raw `CalendarEvent` is rejected at compile time. The
 unique minter is `redactEventForLlm`. The same file co-locates
-`ConsentedExample` (durable storage of user-provided titles via
-`rule_seeds.seed_text` — ADR-0004 #05) and the `ConsentReceipt` type
-required by its minter `consentExample`. All three brands are phantom
-`unique symbol` intersections — zero runtime footprint, no forgeable
-literal, no surface for `JSON.stringify` to leak into a prompt body or
-`llm_calls.prompt_summary`. Sibling redactors or out-of-file `as
-RedactedEvent` casts break the invariant and must not be introduced.
+`ConsentedExample` — the **active durable path** for user-confirmed titles
+(ADR-0004 #05): its unique minter `consentExample` runs `redactString`,
+applies the unfit-drop gate (`isUnfitExample` — empty or ≥50%-placeholder
+titles return `null`, silently dropped), and stamps the brand;
+`ruleService.addExample` is the only sink and accepts nothing else. The
+`ConsentReceipt` type required by the minter still has **no production
+minter** — the OAuth-gated consent flow issues the first receipts, so
+example storage is structurally zero until then (dark build). All three
+brands are phantom `unique symbol` intersections — zero runtime footprint,
+no forgeable literal, no surface for `JSON.stringify` to leak into a
+prompt body or `llm_calls.prompt_summary`. Sibling redactors or
+out-of-file `as RedactedEvent` / `as ConsentedExample` casts break the
+invariant and must not be introduced.
 
 ## Color ownership marker (§5.4)
 
@@ -444,13 +450,27 @@ Stage-2 LLM leg below.
 - **Rule meaning = seed vectors.** A Rule's meaning is its *seeds* — name +
   keyword + example — each embedded **separately** (no centroid/concat; a Rule
   can be multi-modal). `score(rule)` = **max cosine** over that rule's seeds vs
-  the event-title vector (k = seed pool, agg = max, metric = cosine). This
-  slice (#02) stores `seed_type='name'` rows only; keyword (#03) / example (#05)
-  arrive later.
+  the event-title vector (k = seed pool, agg = max, metric = cosine). All three
+  seed types are live: name (#02), keyword (#03), example (#05 — Instant
+  Feedback via `addExample`, dark until the OAuth consent flow mints receipts).
+  The kNN pool query is seed-type-agnostic, so example rows joined with zero
+  read-path change.
 - **Trust grades (derived, never stored).** example = **verified** (Instant
-  Feedback, strong), name/keyword = **declared** (weak). Grade-aware bar:
-  `T_verified` (low) for verified best seeds, `T_declared` (high) for declared.
-  Name-only seeds are all declared, so `T_verified` is inert until #05.
+  Feedback, strong), name/keyword = **declared** (weak). Grade-aware bar chosen
+  by the seed_type of the **pool-wide max-cosine winner** (no verified-only
+  aggregation): `T_verified` (low) for a verified winner, `T_declared` (high)
+  for declared; `margin` applies across grades. A rule with zero examples can
+  never produce a verified winner, so cold-start needs no special case.
+- **Example lifecycle (#05, `addExample`).** Per-rule cap **10** with FIFO
+  eviction on `created_at`; one (redacted) title is at most ONE rule's example
+  — a re-add moves it (tenant-scoped last-write-wins delete on `user_id` +
+  `seed_type='example'` + `seed_text`). embed-before-mutate like #02/#03, but
+  the failure mode differs: an embed failure returns `embed_failed` to the
+  caller (direct user action — the Instant Feedback UI must surface "your
+  correction did not stick"), NOT the fan-out warn-only-silent model.
+  Exact-title direct-hit shortcut (CONTEXT.md "완전일치 shortcut") is **not
+  implemented** — #05 treats examples as embedding seeds only; the shortcut is
+  a deferred follow-up issue.
 - **Two-tier decision (`decideStage1`, unit-tested).** `score(best) < bar` →
   Stage-2 LLM fallback; `best - second < margin` → ambiguous → Stage-2 fallback;
   else assign best. Stage 1 never guesses.
@@ -561,6 +581,14 @@ order, the six tie-breakers, or the few-shot examples in `buildPrompt` must:
 
 A delta worse than -2%p triggers the `evals/report.md` §8.3 per-pattern stdout grep
 analysis. New ledger rows are append-only; never overwrite prior baselines.
+
+**Category `examples` field (ADR-0004 #05).** The user-message category JSON
+carries a structured `examples` array — the user-confirmed past titles
+(`listRules` merges `seed_type='example'` rows into `Rule.seeds`;
+`buildPrompt` maps them per category, bounded by the per-rule lifecycle cap
+of 10 and empty until the OAuth-gated Instant Feedback flow ships). The v6
+system prompt is v2 verbatim plus one field-handling line teaching the
+field's usage.
 
 **Prompt body lives in versioned `.md` files, not inline literals.** Source-of-truth
 files are `prompts/classifier/system.v<N>.md` (with YAML frontmatter — see

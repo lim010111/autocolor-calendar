@@ -1,4 +1,4 @@
-Status: ready-for-agent
+Status: ready-for-human
 GitHub: #117
 
 ## What to build
@@ -55,42 +55,42 @@ example durable 저장이 **구조적으로** 일어나지 않는다. 착지 전
 
 ### 저장 경로 (씨앗 write) — 다크 빌드 가능
 
-- [ ] **`consentExample`→`addExample` 경로로 저장** — example 은 `consentExample()`
+- [x] **`consentExample`→`addExample` 경로로 저장** — example 은 `consentExample()`
       (≡ `redactString` + `ConsentReceipt` 검증)로 민팅되어 `addExample(db,
       ConsentedExample)` 로 저장된다. `addExample` stub 을 실동작으로 채운다:
       임베딩(`embedTexts`, 고정 프리픽스) → `rule_seeds(seed_type='example')` insert.
       `redactEventForLlm` 직접 경로 사용 금지(src/AGENTS.md §5.2).
-- [ ] **과도 redaction drop 기준** — `redactString` 후 제목이 (a) 빈 문자열이거나
+- [x] **과도 redaction drop 기준** — `redactString` 후 제목이 (a) 빈 문자열이거나
       (b) 문자의 **≥50% 가 placeholder 토큰**이면 example 로 부적합 → **조용히
       버린다**(저장 0, keyword 추가 경로는 여전히 제공). 임계 로직 단위 테스트.
-- [ ] **kNN 풀 자동 합류 (테스트 고정)** — example 씨앗이 seed-type-무관
+- [x] **kNN 풀 자동 합류 (테스트 고정)** — example 씨앗이 seed-type-무관
       `DISTINCT ON (rule_id)` max-코사인 풀에 자동 합류함을 테스트로 고정(read-path
       코드 변경 0 — #02/#03 이 이미 커버, 회귀 방지 목적).
 
 ### examples 생애주기 (3 불변항 — 각각 검증)
 
-- [ ] **캡 = Rule 당 example 10개** — 11번째 추가 시 캡 초과분을 정리한다.
-- [ ] **FIFO eviction** — 캡 초과 시 `created_at` 기준 가장 오래된 example 행부터
+- [x] **캡 = Rule 당 example 10개** — 11번째 추가 시 캡 초과분을 정리한다.
+- [x] **FIFO eviction** — 캡 초과 시 `created_at` 기준 가장 오래된 example 행부터
       밀어낸다(씨앗 행 삭제 = 임베딩도 함께 소멸). eviction 순서 단위 테스트.
-- [ ] **제목당 단일 Rule (last-write-wins)** — 같은 (redacted) 제목이 다른 Rule 의
+- [x] **제목당 단일 Rule (last-write-wins)** — 같은 (redacted) 제목이 다른 Rule 의
       example 로 이미 있으면 그 행을 제거하고 새 Rule 로 이동한다. 제거는 **테넌트
       스코프**(`where user_id=? AND seed_type='example' AND seed_text=?` — RLS 는
       Worker 경로 무효). CONTEXT.md "한 제목은 최대 한 Rule 의 Example".
 
 ### 결정 로직 (`T_verified` 활성화)
 
-- [ ] **Verified 경로 활성 + grade-aware 바** — `decideStage1` 은 풀 전체 max-코사인
+- [x] **Verified 경로 활성 + grade-aware 바** — `decideStage1` 은 풀 전체 max-코사인
       **승자 씨앗의 seed_type** 으로 바를 고른다: example→verified→`T_verified`(낮은
       바), name/keyword→declared→`T_declared`. 별도 verified-only 집계 없음.
-- [ ] **cold-start nan 비이슈 테스트** — example 0개 Rule 은 verified 씨앗이 승자가
+- [x] **cold-start nan 비이슈 테스트** — example 0개 Rule 은 verified 씨앗이 승자가
       될 수 없어 `T_verified` 가 발화하지 않는다 → ADR-0005 REPORT §1 의 "verified
       score nan" 은 max-over-pool 설계에서 발생하지 않음을 테스트로 고정.
-- [ ] **cross-grade margin 테스트** — best=verified(rule A) · second=declared(rule
+- [x] **cross-grade margin 테스트** — best=verified(rule A) · second=declared(rule
       B) 가 `margin` 이내면 여전히 모호 → Stage 2. margin 은 등급 무관 전 풀에 적용.
 
 ### 실패 거동
 
-- [ ] **embed-before-mutate + 실패 시 UI 표면화** — example 임베딩을 행 변경 이전에
+- [x] **embed-before-mutate + 실패 시 UI 표면화** — example 임베딩을 행 변경 이전에
       수행; 실패 시 정정 미저장 + **Instant Feedback UI 에 소프트 실패 표면화**.
       (직접 사용자 행위 → #02/#03 의 fan-out warn-only-silent 와 **구별**: 정정이
       안 붙었음을 사용자가 알아야 함.)
@@ -117,16 +117,46 @@ example durable 저장이 **구조적으로** 일어나지 않는다. 착지 전
 
 ### lockstep + 범위 명시
 
-- [ ] **src/AGENTS.md §5.2 lockstep** — `ConsentedExample` 를 "type only" →
+- [x] **src/AGENTS.md §5.2 lockstep** — `ConsentedExample` 를 "type only" →
       **활성 durable 경로**로 갱신하고, §5-classifier 의 "`T_verified` inert until
       #05" 서술을 갱신한다(이 PR 에서 동시).
-- [ ] **exact-match shortcut = 이연 (명시)** — CONTEXT.md/ADR-0004 가 언급하는 제목
+- [x] **exact-match shortcut = 이연 (명시)** — CONTEXT.md/ADR-0004 가 언급하는 제목
       완전일치 shortcut 은 **이 이슈 범위 밖**. #05 는 example 을 임베딩 씨앗으로만
       다룬다 — 완전일치 direct-hit 는 별도 후속 이슈로 남긴다.
-- [ ] `pnpm test` / `pnpm typecheck` / `pnpm lint` 통과
-- [ ] `python3 scripts/check-context-paths.py` 통과
+- [x] `pnpm test` / `pnpm typecheck` / `pnpm lint` 통과
+- [x] `python3 scripts/check-context-paths.py` 통과
 
 ## Blocked by
 
 - #03
 - 출시는 OAuth 검수(2026-05-14 재제출분) 통과 후에만 가능 — 외부 게이트
+
+## Comments
+
+### 2026-07-17 — 다크 빌드 범위 구현 (agent)
+
+브랜치 `embedding-classifier/05-examples-dark-build`. 백엔드·seams·테스트만
+머지, durable 저장 0 (`ConsentReceipt` 프로덕션 민터 부재 = 타입 게이트 유지).
+
+- **저장 경로**: `consentExample(title, ruleId, userId, receipt)` →
+  `ConsentedExample | null` (unfit 시 null = 조용한 drop). unfit 판정은
+  `isUnfitExample` (trim 후 빈 문자열 or placeholder 문자 비율 ≥50%).
+  `addExample(db, embed, example)` 실동작: embed-before-mutate →
+  last-write-wins 테넌트 스코프 delete → insert → 캡 10 초과분 FIFO 축출.
+- **실패 거동 AC 해석 (다크 빌드)**: `addExample` 이 embed 실패를
+  `{stored:false, reason:"embed_failed"}` 로 **호출자에 표면화** (#02/#03
+  warn-only-silent 와 구별). "Instant Feedback UI 에 표면화" 절반은 OAuth
+  후 UI PR 이 이 반환값을 소비하며 완성 — seam 은 이 PR 로 완결.
+- **LLM 프롬프트 AC 미체크 사유**: `examples` 구조화 필드(`buildPrompt`) +
+  `listRules` example 씨앗 합류 + system v6 프롬프트(v2 + 사용법 1줄) +
+  버전 등록까지 완료했으나, **eval-gate 3-gate 실행이 환경 문제로 차단** —
+  `.dev.vars` 의 `OPENAI_API_KEY` 가 401 (Incorrect API key, 폐기/회전된
+  키). 지시대로 우회하지 않음. `DEFAULT_CLASSIFIER_PROMPT_VERSION` 은
+  §5.3 규칙("eval-gate 통과 시에만 범프")에 따라 v2 유지 — 다크 빌드에선
+  examples 가 항상 `[]` 이라 v2 유지가 동작 차이 0. **후속(사람)**: OpenAI
+  키 재발급 → ①회귀 가드(≥90% + user-report-* 0 fail) ②4로케일
+  `--include-rule-leg` 델타 ≥ -1%p (최신 v2 베이스라인 2026-05-13: en
+  0.885 / ko 0.891 / zh-CN 0.875 / zh-TW 0.880) ③Pattern B 4건 grep →
+  통과 시 DEFAULT v6 범프. 401 노이즈 ledger 행은 append 직후 revert 함.
+- Status `ready-for-human`: 잔여 = eval-gate 재실행(키 재발급 필요) + OAuth
+  게이트 4개 AC (동의·법무·UI).

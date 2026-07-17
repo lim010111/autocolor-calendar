@@ -75,18 +75,22 @@ export type RedactedEvent = CalendarEvent & {
 
 // Output of `consentExample`. Brand asserts the joint invariant
 // "consented AND redacted": `consentExample()` body runs `redactString` and
-// validates the receipt. The eventual `addExample(db, example)` sink takes
+// validates the receipt. The `addExample(db, embed, example)` sink takes
 // only this branded shape, so a raw `(ruleId, title)` insert is unspellable.
+// `userId` rides in the brand so every downstream `rule_seeds` write and
+// tenant-scoped delete inherits the minting request's principal.
 export type ConsentedExample = {
   readonly text: string;
   readonly ruleId: string;
+  readonly userId: string;
   readonly [ConsentedExampleBrand]: "consented-example";
 };
 
-// Required 3rd arg to `consentExample`. This PR defines the type only — no
-// exported minter exists. ADR-0004 #05 introduces the first minter (the
-// consent log + receipt issuance flow), unblocking real Instant Feedback
-// writes only after the OAuth re-verification gate clears.
+// Required arg to `consentExample`. No exported minter exists yet — the
+// consent log + receipt issuance flow (Instant Feedback UI, ADR-0004 #05
+// OAuth-gated slice) lands after the OAuth re-verification gate clears, so
+// example durable storage is structurally impossible until then even though
+// the `addExample` write path below it is live (dark build).
 export type ConsentReceipt = {
   readonly [ConsentReceiptBrand]: "consent-receipt";
 };
@@ -166,23 +170,47 @@ export function redactEventForLlm(event: CalendarEvent): RedactedEvent {
   return redacted as RedactedEvent;
 }
 
+// ADR-0004 #05 — post-redaction fitness gate. A title whose redaction left
+// (a) an empty/whitespace-only string or (b) ≥50% of its characters inside
+// `[email]`/`[url]`/`[phone]` placeholder tokens carries too little real
+// signal to serve as an example seed: its embedding would mostly encode the
+// placeholder text and poison the rule's verified (low-bar) pool. Such a
+// correction is silently dropped as an example (the keyword-add path stays
+// available to the user). Pure; exported for the threshold unit tests.
+export function isUnfitExample(redactedTitle: string): boolean {
+  const t = redactedTitle.trim();
+  if (t.length === 0) return true;
+  let placeholderChars = 0;
+  for (const token of Object.values(PII_TOKENS)) {
+    for (let i = t.indexOf(token); i !== -1; i = t.indexOf(token, i + token.length)) {
+      placeholderChars += token.length;
+    }
+  }
+  return placeholderChars * 2 >= t.length;
+}
+
 // **Unique minter for `ConsentedExample`.** Runs the same string-level
-// redaction the LLM input passes through, then stamps the brand. Body is
-// pinned now so ADR-0004 #05's Instant Feedback handler has a single
-// branded entry point to call — the actual `rule_seeds` insert / FIFO
-// eviction lives in `ruleService.addExample`, which only accepts the
+// redaction the LLM input passes through, applies the `isUnfitExample`
+// drop gate, then stamps the brand. Returns `null` when the redacted title
+// is unfit — the caller silently drops the correction as an example
+// (ADR-0004 #05 "과도 redaction drop"). The actual `rule_seeds` insert /
+// FIFO eviction lives in `ruleService.addExample`, which only accepts the
 // branded value this function produces.
 //
-// The `consent` parameter has no exposed minter in this PR; ADR-0004 #05
-// will introduce the consent log + receipt issuance, at which point the
-// only callers of `consentExample` will be that flow.
+// The `consent` parameter has no exposed minter yet; the OAuth-gated
+// Instant Feedback slice introduces the consent log + receipt issuance, at
+// which point the only callers of `consentExample` will be that flow.
 export function consentExample(
   title: string,
   ruleId: string,
+  userId: string,
   _consent: ConsentReceipt,
-): ConsentedExample {
+): ConsentedExample | null {
+  const text = redactString(title).trim();
+  if (isUnfitExample(text)) return null;
   return {
-    text: redactString(title),
+    text,
     ruleId,
+    userId,
   } as ConsentedExample;
 }
