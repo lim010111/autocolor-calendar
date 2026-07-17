@@ -1,4 +1,4 @@
-Status: ready-for-agent
+Status: done
 GitHub: #151
 
 ## What to build
@@ -22,10 +22,10 @@ fetch 계상(`fetches.used`)·chunk continuation 패턴을 rollback 경로에
 
 ## Acceptance criteria
 
-- [ ] rollback 런의 fetch 사용량이 예산 계상된다 (list + PATCH)
-- [ ] 예산 도달 시 중도 사망 대신 관측 가능한 재개(또는 부분완료 보고) 경로
-- [ ] 캡 초과 시나리오 테스트 (대형 캘린더 시뮬레이션)
-- [ ] 기존 `colorRollback.test.ts` 회귀 없음
+- [x] rollback 런의 fetch 사용량이 예산 계상된다 (list + PATCH)
+- [x] 예산 도달 시 중도 사망 대신 관측 가능한 재개(또는 부분완료 보고) 경로
+- [x] 캡 초과 시나리오 테스트 (대형 캘린더 시뮬레이션)
+- [x] 기존 `colorRollback.test.ts` 회귀 없음
 
 ## Blocked by
 

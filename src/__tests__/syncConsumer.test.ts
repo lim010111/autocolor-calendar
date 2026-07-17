@@ -358,6 +358,53 @@ describe("syncConsumer.handleSyncBatch", () => {
       expect(mocks.callLog).not.toContain("release");
       expect(mocks.callLog).not.toContain("runIncrementalSync");
       expect(msg.ack).toHaveBeenCalled();
+      // #05 — a plain completion must NOT re-enqueue a restart.
+      expect(mocks.callLog).not.toContain("enqueue");
+    });
+
+    it("#05 — re-enqueues the same rollback job and acks on a budget-stop continuation", async () => {
+      const { enqueueSync } = await import("../queues/syncProducer");
+      vi.mocked(enqueueSync).mockClear();
+      mocks.rollbackResult = {
+        ok: true,
+        summary: {
+          pages: 1,
+          seen: 40,
+          cleared: 39,
+          skipped_stale_marker: 0,
+          skipped_manual_override: 0,
+          skipped_version_mismatch: 0,
+          not_found: 0,
+          forbidden_events: 0,
+          budget_stopped: true,
+          started_at: new Date().toISOString(),
+          finished_at: new Date().toISOString(),
+        },
+        continuation: true,
+      };
+      const msg = makeMessage(rollbackJob);
+      await handleSyncBatch(makeBatch(msg), {} as never, makeCtx());
+
+      // Restart-resume: same (user, calendar, category) triple, fresh
+      // enqueuedAt, NO pageToken — cleared events left the marker filter,
+      // so page 1 resumes at the first still-marked event.
+      expect(enqueueSync).toHaveBeenCalledTimes(1);
+      expect(enqueueSync).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.objectContaining({
+          type: "color_rollback",
+          userId: "u1",
+          calendarId: "primary",
+          categoryId: "cat-removed",
+        }),
+      );
+      expect(msg.ack).toHaveBeenCalled();
+      expect(msg.retry).not.toHaveBeenCalled();
+      // The audit row for THIS run still lands (before the re-enqueue).
+      const rollbackRow = mocks.insertedRows.find(
+        (r) => "categoryId" in r && r.outcome === "ok",
+      );
+      expect(rollbackRow).toBeTruthy();
     });
 
     it("marks reauth and acks when rollback returns reauth_required", async () => {

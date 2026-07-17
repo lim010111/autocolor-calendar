@@ -1,6 +1,7 @@
 import type { PostgresJsDatabase } from "drizzle-orm/postgres-js";
 
 import type { Bindings } from "../env";
+import { parseSubrequestBudget } from "./calendarSync";
 import {
   AUTOCOLOR_KEYS,
   AUTOCOLOR_MARKER_VERSION,
@@ -19,6 +20,32 @@ const ROLLBACK_PAST_MS = 30 * 24 * 3600 * 1000;
 const ROLLBACK_FUTURE_MS = 365 * 24 * 3600 * 1000;
 const MAX_PAGES_PER_ROLLBACK_RUN = 10;
 
+// sync-reliability #05 — per-invocation subrequest budget guard, ported from
+// calendarSync (#02) in reduced form. The paging loop's fetches (1 list per
+// page + 1 PATCH per app-owned event) previously went uncounted, so a
+// rollback over a large marked set (maxResults defaults to 2500 and
+// singleEvents=true expands recurring instances) ran straight into the
+// Workers Free 50-subrequest cap: the thrown fetch escaped as an unknown
+// error, msg.retry ground forward ~46 clears per attempt, and after
+// max_retries the DLQ left the calendar permanently half-colored — the
+// category is already deleted, so no user-accessible path re-triggers the
+// rollback. The guard counts list + PATCH fetches against the shared
+// SYNC_SUBREQUEST_BUDGET (one env edit on the #01 plan change recovers both
+// paths) and stops BEFORE the fetch that would overrun.
+//
+// Resume needs NO continuation state (unlike #02's (syncToken, pageToken)):
+// every cleared event loses its `autocolor_category` marker and drops out of
+// the privateExtendedProperty filter, so restarting from page 1 naturally
+// resumes at the first still-marked event — carrying a pageToken into a
+// mutating filtered listing would instead risk item-shift skips. The
+// consumer simply re-enqueues the same job, gated on PROGRESS
+// (cleared + not_found > 0): the filter-match set strictly shrinks each run,
+// so the restart chain terminates. A budget stop with zero progress (e.g.
+// per-event 403s eating the whole budget) abandons the remainder with a
+// warn — same semantics as the MAX_PAGES_PER_ROLLBACK_RUN valve below.
+const ROLLBACK_PAGE_FETCH_COST = 1; // events.list
+const ROLLBACK_EVENT_FETCH_COST = 1; // events.patch (clearEventLabel)
+
 export type RollbackSummary = {
   pages: number;
   seen: number;
@@ -28,6 +55,11 @@ export type RollbackSummary = {
   skipped_version_mismatch: number;
   not_found: number;
   forbidden_events: number;
+  // #05 — set when the run stopped at the subrequest budget instead of
+  // exhausting the marked set. Present-only-when-true; lands in the
+  // consumer's completion info log (rollback_runs has no column for it —
+  // the repeated ok rows of the restart chain are the durable trace).
+  budget_stopped?: true;
   started_at: string;
   finished_at: string;
 };
@@ -40,7 +72,10 @@ export type RollbackContext = {
 };
 
 export type RollbackResult =
-  | { ok: true; summary: RollbackSummary }
+  // #05 — `continuation: true` asks the consumer to re-enqueue the same job
+  // (restart-resume; no coordinates needed, see the budget-guard comment
+  // above). Set only when the run budget-stopped AND made progress.
+  | { ok: true; summary: RollbackSummary; continuation?: true }
   | {
       ok: false;
       reason: "reauth_required" | "forbidden" | "not_found" | "retryable";
@@ -107,10 +142,33 @@ export async function runColorRollback(
   const timeMax = new Date(Date.now() + ROLLBACK_FUTURE_MS).toISOString();
   const filter = `${AUTOCOLOR_KEYS.category}=${categoryId}`;
 
+  // #05 budget guard state — see the header comment on the constants above.
+  // Counters only in the warn (log redaction contract); calendarId is
+  // deliberately excluded — a primary calendar id is the user's email.
+  const budget = parseSubrequestBudget(ctx.env.SYNC_SUBREQUEST_BUDGET);
+  const fetches = { used: 0 };
+  let budgetStopped = false;
+  const warnBudgetStop = (): void => {
+    console.warn(
+      JSON.stringify({
+        level: "warn",
+        msg: "rollback subrequest budget reached — stopping run",
+        used: fetches.used,
+        budget,
+        pages: summary.pages,
+        seen: summary.seen,
+        cleared: summary.cleared,
+        userId: ctx.userId,
+      }),
+    );
+  };
+
   let pageToken: string | undefined;
   do {
     let pageItems: CalendarEvent[];
     try {
+      // Counted before issuing — a list that throws still consumed budget.
+      fetches.used += ROLLBACK_PAGE_FETCH_COST;
       const res = await listEvents(accessToken, ctx.calendarId, {
         privateExtendedProperty: filter,
         timeMin,
@@ -197,7 +255,17 @@ export async function runColorRollback(
         continue;
       }
 
+      // #05 mid-page budget stop — placed after the ownership gates so
+      // skip-only events keep scanning for free; only the PATCH spends
+      // budget. The event that trips the guard stays marked and is picked
+      // up by the restart (its marker keeps it in the filter).
+      if (fetches.used + ROLLBACK_EVENT_FETCH_COST > budget) {
+        budgetStopped = true;
+        break;
+      }
       try {
+        // Counted before issuing — a PATCH that throws still consumed budget.
+        fetches.used += ROLLBACK_EVENT_FETCH_COST;
         await clearEventLabel(accessToken, ctx.calendarId, event.id);
         summary.cleared += 1;
       } catch (err) {
@@ -239,6 +307,18 @@ export async function runColorRollback(
       }
     }
 
+    if (budgetStopped) break;
+    // #05 page-boundary budget stop — only fetch the next page when it plus
+    // at least one PATCH still fits. Checked BEFORE the MAX_PAGES valve so
+    // a run that trips both gets the re-enqueue semantics, not the abandon.
+    if (
+      pageToken &&
+      fetches.used + ROLLBACK_PAGE_FETCH_COST + ROLLBACK_EVENT_FETCH_COST >
+        budget
+    ) {
+      budgetStopped = true;
+      break;
+    }
     if (summary.pages >= MAX_PAGES_PER_ROLLBACK_RUN && pageToken) {
       // Safety valve — runaway marker filter shouldn't starve the queue.
       // Abandon remaining pages; they stay visible to a future rollback
@@ -248,5 +328,16 @@ export async function runColorRollback(
   } while (pageToken);
 
   summary.finished_at = new Date().toISOString();
+  if (budgetStopped) {
+    summary.budget_stopped = true;
+    warnBudgetStop();
+    // Progress gate — the restart chain must strictly shrink the marked set
+    // to terminate. `cleared` events lose the marker; `not_found` events are
+    // gone from the calendar. Anything else (forbidden, skips) would recur
+    // verbatim on restart, so a no-progress stop abandons like MAX_PAGES.
+    if (summary.cleared + summary.not_found > 0) {
+      return { ok: true, summary, continuation: true };
+    }
+  }
   return { ok: true, summary };
 }
