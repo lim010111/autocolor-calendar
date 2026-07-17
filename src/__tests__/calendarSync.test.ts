@@ -49,9 +49,14 @@ function makeDb(opts: {
   // §5.3: row returned by reserveLlmCall's UPSERT … RETURNING. Present =
   // quota available, omit = over-quota (empty RETURNING → ok: false).
   reserveRow?: { callCount: number };
+  // sync-reliability #04: rows the final CAS UPDATE … RETURNING resolves to.
+  // Default = one row (CAS passes); pass [] to simulate an interleaved run
+  // having changed sync_state.nextSyncToken since the arc started.
+  casRows?: Array<{ id: string }>;
 }) {
   const updates: Array<Record<string, unknown>> = [];
   const inserts: Array<Record<string, unknown>> = [];
+  const casState = { returningCalls: 0 };
   const db = {
     select: (cols?: Record<string, unknown>) => ({
       from: (_table: unknown) => ({
@@ -73,7 +78,17 @@ function makeDb(opts: {
     update: (_table: unknown) => ({
       set: (patch: Record<string, unknown>) => {
         updates.push(patch);
-        return { where: async () => undefined };
+        return {
+          // Awaited directly by unconditional updates; the #04 CAS path
+          // chains `.returning()` instead, so the double supports both.
+          where: () =>
+            Object.assign(Promise.resolve(undefined), {
+              returning: async () => {
+                casState.returningCalls += 1;
+                return opts.casRows ?? [{ id: "sync-state-row" }];
+              },
+            }),
+        };
       },
     }),
     insert: (_table: unknown) => ({
@@ -88,7 +103,7 @@ function makeDb(opts: {
       },
     }),
   };
-  return { db: db as never, updates, inserts };
+  return { db: db as never, updates, inserts, casState };
 }
 
 async function seedTokenRow(env: Bindings) {
@@ -1714,6 +1729,111 @@ describe("calendarSync — #02 subrequest budget guard", () => {
     // The budget actually forced chunking (multiple invocations).
     expect(hops).toBeGreaterThan(1);
     warnSpy.mockRestore();
+  });
+});
+
+describe("calendarSync — #04 stale-continuation CAS", () => {
+  const original = globalThis.fetch;
+  afterEach(() => {
+    globalThis.fetch = original;
+    vi.restoreAllMocks();
+  });
+
+  // One-page resume fixture: the delayed hop resumes with the arc's
+  // (syncToken, pageToken) pair and Google answers the final page of the
+  // delta, minting the arc's final token.
+  function mockResumePage(): void {
+    mockFetchQueue([
+      new Response(
+        JSON.stringify({ access_token: "at", expires_in: 3600, scope: "openid", token_type: "Bearer" }),
+        { status: 200 },
+      ),
+      new Response(
+        JSON.stringify({
+          items: [{ id: "e1", status: "confirmed", summary: "Lunch", colorId: "" }],
+          nextSyncToken: "arc-final-tok",
+        }),
+        { status: 200 },
+      ),
+    ]);
+  }
+
+  it("AC 1+2 — delayed resume against a changed sync_state token: skips the token write, observable and distinct", async () => {
+    // Race reproduction: while this continuation sat in the queue, another
+    // run completed and stored a fresh token — simulated by the CAS
+    // RETURNING resolving to zero rows. Pre-#04 the unconditional UPDATE
+    // would have rolled sync_state back to arc-final-tok here.
+    const env = makeEnv();
+    const tokenRow = await seedTokenRow(env);
+    const { db, updates, casState } = makeDb({ tokenRow, casRows: [] });
+    mockResumePage();
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+
+    const result = await runIncrementalSync(
+      { db, env, userId: USER_ID, calendarId: CAL },
+      { syncToken: "arc-start-tok", pageToken: "pt-resume" },
+    );
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.continuation).toBeUndefined();
+    // The write went through the conditional (RETURNING) path and missed.
+    expect(casState.returningCalls).toBe(1);
+    // Distinct from a normal completion (stored=true) AND from a #02 budget
+    // stop (which carries a continuation): stored=false + the skip flag.
+    expect(result.summary.stored_next_sync_token).toBe(false);
+    expect(result.summary.sync_token_write_skipped).toBe(true);
+    // Exactly one warn line, counters only — no calendarId, no event content.
+    const staleWarns = warnSpy.mock.calls
+      .map((c) => String(c[0]))
+      .filter((s) => s.includes("stale continuation"));
+    expect(staleWarns).toHaveLength(1);
+    const payload = JSON.parse(staleWarns[0]!) as Record<string, unknown>;
+    expect(payload.userId).toBe(USER_ID);
+    expect("calendarId" in payload).toBe(false);
+    expect(staleWarns[0]).not.toContain("Lunch");
+    // The staged patch carried the arc token, but the summary that callers
+    // and sync_runs see reflects the skip.
+    expect(updates.some((u) => u.nextSyncToken === "arc-final-tok")).toBe(true);
+    warnSpy.mockRestore();
+  });
+
+  it("AC 3 — resume with an unchanged token stores it through the CAS (non-contended path intact)", async () => {
+    const env = makeEnv();
+    const tokenRow = await seedTokenRow(env);
+    // Default casRows → one row: sync_state still holds arc-start-tok.
+    const { db, updates, casState } = makeDb({ tokenRow });
+    mockResumePage();
+
+    const result = await runIncrementalSync(
+      { db, env, userId: USER_ID, calendarId: CAL },
+      { syncToken: "arc-start-tok", pageToken: "pt-resume" },
+    );
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(casState.returningCalls).toBe(1);
+    expect(result.summary.stored_next_sync_token).toBe(true);
+    expect(result.summary.sync_token_write_skipped).toBeUndefined();
+    expect(updates.some((u) => u.nextSyncToken === "arc-final-tok")).toBe(true);
+  });
+
+  it("fresh (non-resume) incremental runs also write through the CAS — uniform token-arc linearity", async () => {
+    // finding-0 (merge-gate): syncClaim's 5-minute stale window allows a
+    // second consumer to overlap an overrunning fresh run, so fresh runs are
+    // NOT unconditionally claim-atomic — they CAS on their start token too.
+    const env = makeEnv();
+    const tokenRow = await seedTokenRow(env);
+    const { db, casState } = makeDb({ nextSyncToken: "stored-tok", tokenRow });
+    mockResumePage();
+
+    const result = await runIncrementalSync({ db, env, userId: USER_ID, calendarId: CAL });
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.summary.stored_next_sync_token).toBe(true);
+    expect(result.summary.sync_token_write_skipped).toBeUndefined();
+    expect(casState.returningCalls).toBe(1);
   });
 });
 
