@@ -349,3 +349,140 @@ describe("runColorRollback", () => {
     expect(mockedList.mock.calls[1]![2].pageToken).toBe("tok-p2");
   });
 });
+
+// sync-reliability #05 — subrequest budget guard (list + PATCH accounting,
+// budget stop, progress-gated restart-resume). Budgets are set via the
+// shared SYNC_SUBREQUEST_BUDGET env var; small values keep fixtures tiny.
+describe("runColorRollback — #05 subrequest budget guard", () => {
+  const ctxWithBudget = (budget: number): RollbackContext => ({
+    db: {} as never,
+    env: { SYNC_SUBREQUEST_BUDGET: String(budget) } as never,
+    userId: USER,
+    calendarId: CAL,
+  });
+
+  const ownedEvents = (n: number, prefix = "e"): ReturnType<typeof markedEvent>[] =>
+    Array.from({ length: n }, (_, i) => markedEvent(`${prefix}-${i + 1}`, "9", "9"));
+
+  it("mid-page stop: PATCHes until the budget, flags continuation, warn is counters-only", async () => {
+    // Budget 6 = 1 list + 5 PATCHes; the 6th owned event trips the guard.
+    mockedList.mockResolvedValueOnce({ items: ownedEvents(8) });
+    mockedClear.mockResolvedValue(undefined);
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+
+    const res = await runColorRollback(ctxWithBudget(6), CAT);
+
+    expect(res.ok).toBe(true);
+    if (!res.ok) return;
+    expect(res.summary.cleared).toBe(5);
+    expect(mockedClear).toHaveBeenCalledTimes(5);
+    expect(res.summary.budget_stopped).toBe(true);
+    expect(res.continuation).toBe(true);
+
+    const budgetWarns = warnSpy.mock.calls
+      .map((c) => String(c[0]))
+      .filter((s) => s.includes("rollback subrequest budget"));
+    expect(budgetWarns).toHaveLength(1);
+    const payload = JSON.parse(budgetWarns[0]!) as Record<string, unknown>;
+    expect(payload.used).toBe(6);
+    expect(payload.budget).toBe(6);
+    expect(payload.userId).toBe(USER);
+    // Log redaction contract — no calendarId (primary id is the user's
+    // email), no event ids/content.
+    expect("calendarId" in payload).toBe(false);
+    expect(budgetWarns[0]).not.toContain("e-1");
+    warnSpy.mockRestore();
+  });
+
+  it("page-boundary stop: does not fetch a page that cannot make progress", async () => {
+    // Budget 4: 1 list + 2 PATCHes (used 3); next page would need 1 list +
+    // ≥1 PATCH → 3+2 > 4, so the second list is never issued.
+    mockedList.mockResolvedValueOnce({
+      items: ownedEvents(2),
+      nextPageToken: "tok-p2",
+    });
+    mockedClear.mockResolvedValue(undefined);
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+
+    const res = await runColorRollback(ctxWithBudget(4), CAT);
+
+    expect(res.ok).toBe(true);
+    if (!res.ok) return;
+    expect(mockedList).toHaveBeenCalledTimes(1);
+    expect(res.summary.cleared).toBe(2);
+    expect(res.summary.budget_stopped).toBe(true);
+    expect(res.continuation).toBe(true);
+    warnSpy.mockRestore();
+  });
+
+  it("no-progress budget stop abandons instead of re-enqueueing (termination gate)", async () => {
+    // Budget 3: 1 list + 2 PATCH attempts, both per-event 403 — the marked
+    // set would NOT shrink on restart, so continuation must be absent.
+    mockedList.mockResolvedValueOnce({ items: ownedEvents(4) });
+    mockedClear.mockRejectedValue(
+      new CalendarApiError(
+        "forbidden",
+        403,
+        "forbiddenForNonOrganizer",
+        "events.patch.clear failed: 403",
+      ),
+    );
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+
+    const res = await runColorRollback(ctxWithBudget(3), CAT);
+
+    expect(res.ok).toBe(true);
+    if (!res.ok) return;
+    expect(res.summary.forbidden_events).toBe(2);
+    expect(res.summary.cleared).toBe(0);
+    expect(res.summary.budget_stopped).toBe(true);
+    expect(res.continuation).toBeUndefined();
+    warnSpy.mockRestore();
+  });
+
+  it("not_found counts as progress (deleted events shrink the marked set too)", async () => {
+    // Budget 3: 1 list + 2 PATCH attempts, both 404 — events are gone from
+    // the calendar, so a restart WILL see a smaller set: re-enqueue.
+    mockedList.mockResolvedValueOnce({ items: ownedEvents(3) });
+    mockedClear.mockRejectedValue(
+      new CalendarApiError("not_found", 404, undefined, "events.patch.clear failed: 404"),
+    );
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+
+    const res = await runColorRollback(ctxWithBudget(3), CAT);
+
+    expect(res.ok).toBe(true);
+    if (!res.ok) return;
+    expect(res.summary.not_found).toBe(2);
+    expect(res.summary.budget_stopped).toBe(true);
+    expect(res.continuation).toBe(true);
+    warnSpy.mockRestore();
+  });
+
+  it("restart converges: the re-run sees only still-marked events and completes", async () => {
+    // Large-calendar simulation (AC #3): run 1 budget-stops after 5 of 8
+    // owned events; cleared events lose the marker, so the consumer's
+    // restart lists only the remaining 3 and completes without a stop.
+    mockedList
+      .mockResolvedValueOnce({ items: ownedEvents(8) })
+      .mockResolvedValueOnce({ items: ownedEvents(3, "rest") });
+    mockedClear.mockResolvedValue(undefined);
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+
+    const first = await runColorRollback(ctxWithBudget(6), CAT);
+    expect(first.ok).toBe(true);
+    if (!first.ok) return;
+    expect(first.summary.cleared).toBe(5);
+    expect(first.continuation).toBe(true);
+
+    const second = await runColorRollback(ctxWithBudget(6), CAT);
+    expect(second.ok).toBe(true);
+    if (!second.ok) return;
+    expect(second.summary.cleared).toBe(3);
+    expect(second.summary.budget_stopped).toBeUndefined();
+    expect(second.continuation).toBeUndefined();
+    // 8 owned events fully cleared across the restart chain.
+    expect(mockedClear).toHaveBeenCalledTimes(8);
+    warnSpy.mockRestore();
+  });
+});

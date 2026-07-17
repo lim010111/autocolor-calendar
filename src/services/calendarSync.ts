@@ -165,8 +165,10 @@ const RUN_FIXED_FETCH_COST = 1;
 const PER_EVENT_FETCH_COST = 3;
 
 // Same parse rules as `parseDailyLimit` (llmClassifier.ts): NaN / ≤0 / unset
-// all fall back to the default.
-function parseSubrequestBudget(raw: string | undefined): number {
+// all fall back to the default. Exported for the colorRollback budget guard
+// (sync-reliability #05) — both paths share SYNC_SUBREQUEST_BUDGET so a plan
+// change (#01 Workers Paid) recovers both with one env edit.
+export function parseSubrequestBudget(raw: string | undefined): number {
   const n = raw ? Number.parseInt(raw, 10) : Number.NaN;
   return Number.isFinite(n) && n > 0 ? n : DEFAULT_SUBREQUEST_BUDGET;
 }

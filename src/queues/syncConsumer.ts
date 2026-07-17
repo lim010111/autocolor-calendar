@@ -50,7 +50,7 @@ async function handleOne(
         { db, env, userId: job.userId, calendarId: job.calendarId },
         job.categoryId,
       );
-      await applyRollbackResult(db, msg, job, rollback);
+      await applyRollbackResult(db, env, msg, job, rollback);
       return;
     }
 
@@ -236,6 +236,7 @@ async function handleOne(
 // flag through markReauthRequired so the user's next /me call surfaces it.
 async function applyRollbackResult(
   db: ReturnType<typeof getDb>["db"],
+  env: Bindings,
   msg: Message<SyncJob>,
   job: Extract<SyncJob, { type: "color_rollback" }>,
   result: RollbackResult,
@@ -279,6 +280,32 @@ async function applyRollbackResult(
     });
 
   if (result.ok) {
+    if (result.continuation) {
+      // #05 — budget-stopped with progress: restart the same job (cleared
+      // events dropped out of the marker filter, so page 1 resumes at the
+      // first still-marked event; see colorRollback's budget-guard comment).
+      // Fresh job = attempt counter resets, same as the #02 sync
+      // continuation precedent. Enqueued BEFORE ack — an enqueue failure
+      // escapes to handleOne's catch and the whole (idempotent) rollback
+      // retries.
+      await enqueueSync(env, {
+        type: "color_rollback",
+        userId: job.userId,
+        calendarId: job.calendarId,
+        categoryId: job.categoryId,
+        enqueuedAt: Date.now(),
+      });
+      console.log(
+        JSON.stringify({
+          level: "info",
+          msg: "color_rollback budget stop — continuation re-enqueued",
+          job: safeJob(job),
+          summary: result.summary,
+        }),
+      );
+      msg.ack();
+      return;
+    }
     console.log(
       JSON.stringify({
         level: "info",
