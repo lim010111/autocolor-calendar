@@ -1,4 +1,4 @@
-import { and, asc, eq, inArray, isNull } from "drizzle-orm";
+import { and, asc, eq, inArray, isNull, ne } from "drizzle-orm";
 import type { PostgresJsDatabase } from "drizzle-orm/postgres-js";
 
 import { categories, ruleSeeds, syncState } from "../db/schema";
@@ -671,17 +671,24 @@ export type AddExampleResult =
 // embed-before-mutate: the title is embedded via the frozen-prefix
 // `embedTexts` FIRST; a failure (or a missing embedder — for a direct user
 // action a silent skip would lie to the user) returns `embed_failed` with
-// zero rows touched. Mutations then run in three steps:
-//   1. last-write-wins move — delete this (redacted) title's example rows
-//      anywhere in the tenant (`user_id` + `seed_type='example'` +
-//      `seed_text` — RLS is bypassed on the Worker path, src/AGENTS.md
-//      "Tenant isolation"), so a title is at most one rule's example
-//      (CONTEXT.md). The deleted row is invalidated by the correction
-//      itself, so delete-before-insert cannot lose data the user still
-//      wants — a mid-mutation DB failure leaves the title example-less and
-//      throws to the caller, which surfaces it.
-//   2. insert the fresh `seed_type='example'` row (grade is derived at
-//      read time — example ≡ verified, never stored).
+// zero rows touched. Mutations then run in three steps, insert-before-delete
+// (codex:finding-0 — same discipline as `reconcileKeywordSeeds`: the two
+// statements are separate and non-transactional, so the order decides the
+// mid-mutation failure mode):
+//   1. insert the fresh `seed_type='example'` row under a client-minted id
+//      (grade is derived at read time — example ≡ verified, never stored).
+//   2. last-write-wins move — delete this (redacted) title's OTHER example
+//      rows anywhere in the tenant (`user_id` + `seed_type='example'` +
+//      `seed_text`, excluding the just-minted id — RLS is bypassed on the
+//      Worker path, src/AGENTS.md "Tenant isolation"), so a title is at
+//      most one rule's example (CONTEXT.md). Inserting FIRST means a DB
+//      failure between the statements degrades to a benign transient
+//      DUPLICATE — over-inclusive, self-heals on the next same-title write,
+//      and a same-title duplicate across rules merely degrades Stage 1 to
+//      ambiguous → Stage 2 — instead of losing the user's example (the
+//      delete-before-insert order committed the delete and then dropped
+//      the insert, leaving the title with ZERO example rows). The failure
+//      still throws to the caller, which surfaces it.
 //   3. FIFO cap — keep the newest `EXAMPLES_PER_RULE_CAP` example rows for
 //      this rule; delete the oldest beyond the cap (seed row delete ≡ its
 //      embedding dies with it).
@@ -710,6 +717,19 @@ export async function addExample(
     return { stored: false, reason: "embed_failed" };
   }
 
+  // Client-minted id (the schema's `gen_random_uuid()` default tolerates
+  // explicit ids) so the last-write-wins delete below can exclude the row
+  // this call just inserted — insert-before-delete, codex:finding-0.
+  const newSeedId = crypto.randomUUID();
+  await db.insert(ruleSeeds).values({
+    id: newSeedId,
+    ruleId: example.ruleId,
+    userId: example.userId,
+    seedType: "example",
+    seedText: example.text,
+    embedding,
+  });
+
   await db
     .delete(ruleSeeds)
     .where(
@@ -717,16 +737,9 @@ export async function addExample(
         eq(ruleSeeds.userId, example.userId),
         eq(ruleSeeds.seedType, "example"),
         eq(ruleSeeds.seedText, example.text),
+        ne(ruleSeeds.id, newSeedId),
       ),
     );
-
-  await db.insert(ruleSeeds).values({
-    ruleId: example.ruleId,
-    userId: example.userId,
-    seedType: "example",
-    seedText: example.text,
-    embedding,
-  });
 
   const rows = await db
     .select({ id: ruleSeeds.id, createdAt: ruleSeeds.createdAt })

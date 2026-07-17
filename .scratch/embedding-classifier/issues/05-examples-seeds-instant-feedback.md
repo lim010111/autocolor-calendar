@@ -160,3 +160,19 @@ example durable 저장이 **구조적으로** 일어나지 않는다. 착지 전
   통과 시 DEFAULT v6 범프. 401 노이즈 ledger 행은 append 직후 revert 함.
 - Status `ready-for-human`: 잔여 = eval-gate 재실행(키 재발급 필요) + OAuth
   게이트 4개 AC (동의·법무·UI).
+
+### 2026-07-18 — merge-gate findings pass 1 (agent, ADR-0027)
+
+PR #154 push 의 advisory 리뷰 findings 1건 (codex:finding-0, high/uphold):
+`addExample` delete-then-insert 비원자성.
+
+- **(a) insert 실패 시 example 전멸** — 재현 서브가 오라클
+  (`ruleService.finding0.repro.test.ts`, HEAD 에서 fail) 로 **입증** →
+  분리 fix 서브가 `reconcileKeywordSeeds` 와 동일한 **insert-before-delete**
+  로 수정 (클라이언트 민팅 id + `ne(id)` 제외; 중간 실패 = 일시적 중복
+  over-inclusive 로 완화, 다음 write 자가 치유). 오라클 동결 검증 완료.
+- **(b) 동시 정정 중복 / txn·partial unique index 권고** — 미수정.
+  ADR-0004 #03 이 명시 채택한 eventually-consistent·observed-not-prevented
+  정책과 동일 클래스 (락/제약 없음, 중복 시 ambiguous→Stage 2 degradation).
+  `(user_id, seed_text) WHERE seed_type='example'` partial unique index 는
+  스키마 마이그레이션 — 원하면 별도 이슈로 (사람 판단).

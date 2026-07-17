@@ -95,6 +95,45 @@ export function extractEq(
   return out;
 }
 
+// Walks a drizzle SQL tree to extract `col <> val` constraints — the
+// `ne(...)` companion to `extractEq` (whose " = " separator check deliberately
+// skips these). Needed since the ADR-0004 #05 finding-0 fix: `addExample`'s
+// last-write-wins delete carries `ne(ruleSeeds.id, newSeedId)` to spare the
+// just-inserted row. Behavior is pinned by `fakeDb.guard.test.ts` alongside
+// `extractEq` — a drizzle-orm bump that reshapes the AST fails there.
+export function extractNe(
+  node: unknown,
+  out: Record<string, unknown> = {},
+): Record<string, unknown> {
+  if (!node || typeof node !== "object") return out;
+  const chunks = (node as { queryChunks?: unknown[] }).queryChunks;
+  if (!chunks) return out;
+  for (let i = 0; i < chunks.length; i++) {
+    const c = chunks[i] as { name?: string; queryChunks?: unknown[] };
+    if (
+      c &&
+      typeof c.name === "string" &&
+      !Array.isArray((c as { queryChunks?: unknown }).queryChunks)
+    ) {
+      const nxt = chunks[i + 1] as { value?: unknown };
+      const param = chunks[i + 2] as { value?: unknown };
+      if (
+        typeof (nxt as { value?: unknown[] })?.value !== "undefined" &&
+        Array.isArray((nxt as { value?: unknown[] }).value) &&
+        ((nxt as { value?: string[] }).value ?? [])[0]?.includes(" <> ") &&
+        param &&
+        "value" in param
+      ) {
+        out[c.name] = (param as { value: unknown }).value;
+      }
+    }
+    if (Array.isArray((c as { queryChunks?: unknown }).queryChunks)) {
+      extractNe(c, out);
+    }
+  }
+  return out;
+}
+
 // Collects the scalar values of an IN list from a drizzle SQL subtree.
 // drizzle renders `inArray(col, ["a","b"])` with the JS array placed *directly*
 // as a query chunk (constructor `Array`), so the values are bare primitives —
@@ -433,11 +472,14 @@ export function makeFakeDb(initial: FakeDbInitial = {}): FakeDbHandle {
       // `.returning()`); delete rows matching every eq predicate (any
       // rule_seeds column via SEED_COL_MAP — #05 adds `seed_text` eq) AND
       // the `IN (…)` list on its extracted column (#03 deletes by
-      // `seed_text IN`, #05 FIFO eviction deletes by `id IN`).
+      // `seed_text IN`, #05 FIFO eviction deletes by `id IN`) AND every
+      // `<>` predicate (#05 finding-0 — the last-write-wins delete excludes
+      // the just-inserted row via `id <> new`).
       if (table === ruleSeeds) {
         return {
           where(whereSql: unknown) {
             const eqc = extractEq(whereSql);
+            const nec = extractNe(whereSql);
             const inClause = extractInArray(whereSql);
             const inSet = inClause ? new Set(inClause.values) : null;
             const inField = inClause
@@ -450,8 +492,14 @@ export function makeFakeDb(initial: FakeDbInitial = {}): FakeDbHandle {
               });
               const inMatch =
                 inSet && inField ? inSet.has(r[inField]) : true;
+              // `ne(col, v)` targets rows where col <> v — a row whose
+              // field EQUALS v falls outside the delete and is kept.
+              const neMatch = Object.entries(nec).every(([sqlCol, val]) => {
+                const field = SEED_COL_MAP[sqlCol];
+                return field !== undefined && r[field] !== val;
+              });
               // keep rows that do NOT match every delete predicate
-              return !(eqMatch && inMatch);
+              return !(eqMatch && inMatch && neMatch);
             });
             return Promise.resolve(undefined);
           },
