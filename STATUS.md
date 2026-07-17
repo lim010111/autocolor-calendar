@@ -31,11 +31,14 @@ AGENTS.md ↔ CLAUDE.md canonicalize(AGENTS.md 정본, `@AGENTS.md` 래퍼).
 
 ## Start here next session
 
-**07-17 머지 트레인 완주**: PR #141~#145 전부 main 랜딩 (rebase 포인트
-해소: drizzle 0019 재번호 + reconcile fetch 를 `RUN_FIXED_FETCH_COST` 로
-페이지 크기 파생식에 계상). main 565 tests green. 다음 병목은
-**사람: 배포 + 라이브 검증**.
+**07-17 머지 트레인 완주**: PR #141~#145 전부 main 랜딩(상세는 각 PR
+코멘트), main 565 tests green. 다음 병목 = **사람: OAuth 라운드 2 →
+배포 → 라이브 검증**.
 
+- **사람 — OAuth 검수 라운드 2 (최우선, 07-03 도착·07-17 확인)**: Google이
+  "데모영상에 요청 스코프 미노출" 지적 — 동의 화면 **'2 services' 클릭해
+  스코프 펼친 장면** 포함해 재촬영 → 그 메일에 답장으로 링크 제출. Cloud
+  Console 변경 불필요. 라이브 표면(GAS v55·Worker)은 촬영·검수 끝까지 동결.
 - **사람 — 배포 게이트**: ~~배포 전 `pnpm db:migrate`~~ **done 07-17 —
   dev·prod 모두 20/20** (dev 는 pause 복구 + pgvector 수동 설치 후 0014~0019
   일괄 적용). #144 내용(라벨 쓰기)은 #04 컷오버와 같은 운영 윈도우에 배포하거나
