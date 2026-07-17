@@ -32,13 +32,13 @@ AGENTS.md ↔ CLAUDE.md canonicalize(AGENTS.md 정본, `@AGENTS.md` 래퍼).
 ## Start here next session
 
 **07-17 머지 트레인 완주**: PR #141~#145 전부 main 랜딩(상세는 각 PR
-코멘트), main 565 tests green. 다음 병목 = **사람: OAuth 라운드 2 →
+코멘트), main 565 tests green. 다음 병목 = **Google 재검수 응답 →
 배포 → 라이브 검증**.
 
-- **사람 — OAuth 검수 라운드 2 (최우선, 07-03 도착·07-17 확인)**: Google이
-  "데모영상에 요청 스코프 미노출" 지적 — 동의 화면 **'2 services' 클릭해
-  스코프 펼친 장면** 포함해 재촬영 → 그 메일에 답장으로 링크 제출. Cloud
-  Console 변경 불필요. 라이브 표면(GAS v55·Worker)은 촬영·검수 끝까지 동결.
+- **외부 대기 — OAuth 라운드 2 대응 제출 완료 (07-17)**: '2 services'
+  펼침 장면(0:58) 포함 재편집 영상(youtu.be/oPrznza7KwE, unlisted)을
+  07-03 메일에 답장으로 제출. Cloud Console 무변경. Google 재검수 응답
+  대기 — 라이브 표면(GAS v55·Worker)은 검수 끝까지 동결 유지.
 - **사람 — 배포 게이트**: DB migrate **done 07-17 — dev·prod 20/20**
   (dev 는 pause 복구 + pgvector 수동 설치). Worker 배포는 #04 컷오버
   윈도우로 — 라이브 GAS(colorId 전송)가 manual override 400 을 맞으므로
@@ -77,7 +77,7 @@ AGENTS.md ↔ CLAUDE.md canonicalize(AGENTS.md 정본, `@AGENTS.md` 래퍼).
 - 임계값 `T=(0.30,0.55,0.10)` = **provisional** — `sts` 프리픽스의 Workers-AI
   parity 가 빈 prefix 로만 측정됨(mean 1.0). 승자 `sts` 프리픽스로 WAI 재측정
   후 provisional 해제(ADR-0005 §6). en/zh 는 ko 잠정값 차용·미검증.
-- **외부 게이트 — OAuth 검수**(2026-05-14 재제출): #05/#06 씨앗 출시 + GAS Instant
+- **외부 게이트 — OAuth 검수**(라운드 2 대응 07-17 제출): #05/#06 씨앗 출시 + GAS Instant
   Feedback UI 표면화가 묶임(제목 durable 저장 → 개인정보처리방침/동의 변경). #05 는
   다크-빌드로 백엔드만 pre-OAuth 머지 가능. eval persona/en-zh 확장도 동일 게이트.
 - un-grilled architecture-deepening 후보 (필요 시 별도 grill): CalendarApiError
