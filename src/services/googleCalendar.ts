@@ -128,7 +128,15 @@ async function parseError(res: Response): Promise<GoogleErrorBody> {
   }
 }
 
-async function throwApiError(res: Response, op: string): Promise<never> {
+// Shared error factory (architecture-deepening #07): the ONE place a non-OK
+// Google Calendar API response becomes a CalendarApiError. Also used by
+// src/services/watch/core.ts for channels.watch / channels.stop — keeping
+// `classify` / `parseError` private here means no caller can drift its own
+// status→kind mapping again.
+export async function throwCalendarApiError(
+  res: Response,
+  op: string,
+): Promise<never> {
   const body = await parseError(res);
   const reason = body.error?.errors?.[0]?.reason;
   const retryAfterHeader = res.headers.get("retry-after");
@@ -179,7 +187,7 @@ export async function listEvents(
   const res = await fetch(url, {
     headers: { authorization: `Bearer ${accessToken}` },
   });
-  if (!res.ok) await throwApiError(res, "events.list");
+  if (!res.ok) await throwCalendarApiError(res, "events.list");
   return (await res.json()) as EventsListResponse;
 }
 
@@ -216,7 +224,7 @@ export async function patchEventLabel(
     },
     body: JSON.stringify(body),
   });
-  if (!res.ok) await throwApiError(res, "events.patch");
+  if (!res.ok) await throwCalendarApiError(res, "events.patch");
 }
 
 // Per-event manual override (sidebar "변경사항 저장"), label world
@@ -259,7 +267,7 @@ export async function patchEventLabelManual(
     },
     body: JSON.stringify(body),
   });
-  if (!res.ok) await throwApiError(res, "events.patch.manual");
+  if (!res.ok) await throwCalendarApiError(res, "events.patch.manual");
 }
 
 // §5 후속 B — rule-deletion rollback, label world (ADR-0006). PATCH an
@@ -302,7 +310,7 @@ export async function clearEventLabel(
     },
     body: JSON.stringify(body),
   });
-  if (!res.ok) await throwApiError(res, "events.patch.clear");
+  if (!res.ok) await throwCalendarApiError(res, "events.patch.clear");
 }
 
 // ADR-0006 — calendar-level label definitions (`Calendars.labelProperties`).
@@ -328,7 +336,7 @@ export async function getCalendarLabelProperties(
   const res = await fetch(url, {
     headers: { authorization: `Bearer ${accessToken}` },
   });
-  if (!res.ok) await throwApiError(res, "calendars.get");
+  if (!res.ok) await throwCalendarApiError(res, "calendars.get");
   const body = (await res.json()) as {
     labelProperties?: { eventLabels?: CalendarEventLabel[] };
   };
@@ -349,5 +357,5 @@ export async function patchCalendarLabelProperties(
     },
     body: JSON.stringify({ labelProperties: { eventLabels } }),
   });
-  if (!res.ok) await throwApiError(res, "calendars.patch");
+  if (!res.ok) await throwCalendarApiError(res, "calendars.patch");
 }

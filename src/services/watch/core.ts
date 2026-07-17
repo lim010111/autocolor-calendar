@@ -3,8 +3,11 @@
 // `reRegisterWatch` is the ONE shared core the four registration entry points
 // (bootstrap / selfHeal / renewal / reconnect) compose on top of. It owns the
 // WEBHOOK_BASE_URL guard, the access-token fetch (+ ReauthRequiredError
-// mapping), the stop → register ordering, and the CalendarApiError classify —
-// the ≈15 lines that were duplicated across all four callers.
+// mapping), the stop → register ordering, and the CalendarApiError →
+// ReRegisterResult mapping — the ≈15 lines that were duplicated across all
+// four callers. The HTTP-response → CalendarApiError step itself is the
+// shared `throwCalendarApiError` factory in googleCalendar.ts (#07), so
+// watch ops and event ops can never drift their status→kind mapping apart.
 //
 // `registerWatchChannel` / `stopWatchChannel` are MODULE-PRIVATE: importable by
 // siblings inside `src/services/watch/` only (teardown needs stop), and barred
@@ -22,7 +25,7 @@ import type { PostgresJsDatabase } from "drizzle-orm/postgres-js";
 
 import { syncState } from "../../db/schema";
 import type { Bindings } from "../../env";
-import { CalendarApiError } from "../googleCalendar";
+import { CalendarApiError, throwCalendarApiError } from "../googleCalendar";
 import { getValidAccessToken, ReauthRequiredError } from "../tokenRefresh";
 
 const CALENDAR_BASE = "https://www.googleapis.com/calendar/v3";
@@ -37,48 +40,6 @@ type WatchResponse = {
   resourceId: string;
   expiration?: string; // ms timestamp as string per Google's API
 };
-
-type GoogleErrorBody = {
-  error?: {
-    code?: number;
-    message?: string;
-    errors?: Array<{ reason?: string; message?: string }>;
-  };
-};
-
-function classify(
-  status: number,
-  reason: string | undefined,
-): CalendarApiError["kind"] {
-  if (status === 401) return "auth";
-  if (status === 403) {
-    if (reason === "rateLimitExceeded" || reason === "userRateLimitExceeded") {
-      return "rate_limited";
-    }
-    return "forbidden";
-  }
-  if (status === 404) return "not_found";
-  if (status === 429) return "rate_limited";
-  if (status >= 500) return "server";
-  return "unknown";
-}
-
-async function throwWatchError(res: Response, op: string): Promise<never> {
-  let body: GoogleErrorBody = {};
-  try {
-    body = (await res.json()) as GoogleErrorBody;
-  } catch {
-    // swallow — don't leak response text
-  }
-  const reason = body.error?.errors?.[0]?.reason;
-  const kind = classify(res.status, reason);
-  throw new CalendarApiError(
-    kind,
-    res.status,
-    reason,
-    `${op} failed: ${res.status}${reason ? ` (${reason})` : ""}`,
-  );
-}
 
 export type WatchRegistration = {
   channelId: string;
@@ -125,7 +86,7 @@ export async function registerWatchChannel(
       expiration: String(expirationMs),
     }),
   });
-  if (!res.ok) await throwWatchError(res, "channels.watch");
+  if (!res.ok) await throwCalendarApiError(res, "channels.watch");
   const data = (await res.json()) as WatchResponse;
 
   // Google may clamp expiration — trust the server value when present.
@@ -187,7 +148,7 @@ export async function stopWatchChannel(
     body: JSON.stringify({ id: row.channelId, resourceId: row.resourceId }),
   });
   if (!res.ok && res.status !== 404) {
-    await throwWatchError(res, "channels.stop");
+    await throwCalendarApiError(res, "channels.stop");
   }
 
   await db

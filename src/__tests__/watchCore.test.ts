@@ -239,6 +239,27 @@ describe("reRegisterWatch", () => {
     expect(result).toEqual({ failed: "api_error", kind: "auth" });
   });
 
+  it("classifies a 410 from the register leg as full_sync_required (#07 shared factory)", async () => {
+    // Deliberate delta pinned by architecture-deepening #07: before the
+    // shared throwCalendarApiError factory, watch's local classify lacked
+    // the 410 branch and mapped this to `unknown`. Both kinds land on the
+    // same 502 arm in routes/sync.ts, and renewal/selfHeal/bootstrap use
+    // the kind as a warn-log code only — so unification is log-string-only
+    // on a branch Google effectively never takes for channel ops.
+    mockFetch(async (url) => {
+      if (url.includes("/channels/stop")) return new Response("{}", { status: 200 });
+      return new Response(
+        JSON.stringify({ error: { code: 410, errors: [{ reason: "fullSyncRequired" }] } }),
+        { status: 410 },
+      );
+    });
+
+    const state: DbShape = { calls: [], row: rowWithChannel() };
+    const result = await reRegisterWatch(fakeDb(state), ENV_WITH_WEBHOOK, UID, CAL);
+
+    expect(result).toEqual({ failed: "api_error", kind: "full_sync_required" });
+  });
+
   it("never surfaces Google error body text through the result (no PII/token leak)", async () => {
     mockFetch(async (url) => {
       if (url.includes("/channels/stop")) return new Response("{}", { status: 200 });
