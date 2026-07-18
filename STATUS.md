@@ -18,14 +18,13 @@ editor — PR #128 머지, 남은 건 4로케일 스크린샷(사람) 5/6.** **#
 예산 가드(#02) + syncToken 3-레이어 가드(#04, PR #152) + rollback 예산
 가드(#05, PR #153). 라이브 반영은 OAuth 후 배포 게이트와 함께.
 
-**native-labels (신규 트랙, 07-15 grilling + ADR-0006):** Google Calendar 색
-체계가 라벨 기반으로 재편됨(07-07 API GA, colorId 는 legacy 브리지). 결정:
-분류 출력을 네이티브 라벨로 전환, **정본 = Google `labelProperties`**,
-깨끗한 컷오버. raw API 실측으로 **현행 파이프라인이 라벨/비클래식 색
-이벤트를 "색 없음"으로 오판해 덮어쓰는 결함 재현** — #01 방어 패치가 런칭
-게이트급. 새 OAuth 스코프 불필요. 상세: `.scratch/native-labels/PRD.md` +
-ADR-0006 (PR #139 머지, 07-15). **#04 이행 스크립트 선작업 머지 (PR #156,
-07-18)** — 컷오버 창(OAuth 통과 → Paid 전환) 실행만 남음.
+**native-labels (07-15 grilling + ADR-0006):** Google Calendar 색 체계가
+라벨 기반으로 재편됨(07-07 API GA, colorId 는 legacy 브리지). 결정: 분류
+출력을 네이티브 라벨로 전환, **정본 = Google `labelProperties`**, 깨끗한
+컷오버. 라벨/비클래식 색 이벤트를 "색 없음"으로 오판해 덮어쓰던 결함은
+**#01 방어 패치로 해소(PR #141 머지)**. 새 OAuth 스코프 불필요. 상세:
+`.scratch/native-labels/PRD.md` + ADR-0006. **#04 이행 스크립트 선작업
+머지 (PR #156, 07-18)** — 컷오버 창(OAuth 통과 → Paid 전환) 실행만 남음.
 
 운영 posture: main 에 local merge-gate advisory 활성(보고만, 차단 안 함).
 AGENTS.md ↔ CLAUDE.md canonicalize(AGENTS.md 정본, `@AGENTS.md` 래퍼).
@@ -55,7 +54,8 @@ CalendarApiError)·#156(nl#04 선작업) main 랜딩, **main 618 tests green**.
 - **사람 — embedding-classifier #05 eval-gate**: OPENAI_API_KEY 재발급 →
   eval-gate 3-gate (prompt v6, 절차: #05 Comments).
 - **사람 — 로컬 정리**: 메인 체크아웃 main 복귀(현재 #154 브랜치) +
-  병합된 워크트리 2개 제거 — repo lint 실패 원인.
+  워크트리 **3개** 제거(병합 2 + prework) — 메인 lint 실측 1368 errors
+  전부 워크트리 발원, 3개 모두 지워야 통과.
 - **병행 — architecture-deepening 후보 (ColorOwnershipMarker 등, Open
   decisions 목록)**: grill 선행.
 - **휴면 — #06**: #05 로 blocked, OAuth 게이트 — 건드리지 말 것.
