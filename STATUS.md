@@ -45,17 +45,17 @@ CalendarApiError)·#156(nl#04 선작업) main 랜딩, **main 618 tests green**.
   400 을 맞으므로 GAS labelId 버전 co-deploy 필수 (PR #144 코멘트 참조).
 - **사람 — 라이브 검증 (배포 후)**: native-labels #02 AC 1(라벨 쓰기
   육안 + 클라이언트 mint id), #03 4로케일 스크린샷 + GAS 새 버전(URL 동결,
-  AKfycbxfHV5… deployment 편집) + `#d81b60` hex 실측. GAS 배포 직전
-  PR #145 finding-1 폴드인 권장(actionAddRule reauth 한 줄).
+  AKfycbxfHV5… deployment 편집) + `#d81b60` hex 실측. PR #145 finding-1
+  (actionAddRule reauth)은 main 폴드인 완료 07-18 — 새 버전에 자연 포함.
 - **사람 — embedding-classifier #04**: 4로케일 스크린샷 각 1장 → 6번째 AC.
 - **게이트 대기 — native-labels #04 (컷오버)**: 이행 스크립트 머지 완료
   (PR #156) — 남은 게이트 = OAuth 통과(=Paid 전환) → 컷오버 창에서 실행
   (AC 2·3) + 레거시 제거 PR-B(AC 4·5). ready-for-human.
 - **사람 — embedding-classifier #05 eval-gate**: OPENAI_API_KEY 재발급 →
   eval-gate 3-gate (prompt v6, 절차: #05 Comments).
-- **사람 — 로컬 정리**: 메인 체크아웃 main 복귀(현재 #154 브랜치) +
-  워크트리 **3개** 제거(병합 2 + prework) — 메인 lint 실측 1368 errors
-  전부 워크트리 발원, 3개 모두 지워야 통과.
+- **사람 — 로컬 정리**: 07-18 처리 — 메인 main 복귀, 병합 워크트리 2 제거,
+  머지 브랜치 3 삭제. 잔여 = prework 워크트리 1개(세션 점유 중) 제거,
+  그래야 메인 lint green.
 - **병행 — architecture-deepening 후보 (ColorOwnershipMarker 등, Open
   decisions 목록)**: grill 선행.
 - **휴면 — #06**: #05 로 blocked, OAuth 게이트 — 건드리지 말 것.
