@@ -1265,7 +1265,7 @@ function actionAddRule(e) {
       .setNotification(CardService.newNotification().setText(t('rules.toast.added', null, L)))
       .build();
   } catch (err) {
-    if (err.message === 'AUTH_EXPIRED') {
+    if (err.message === 'AUTH_EXPIRED' || err.message.indexOf('reauth') !== -1) {
       return CardService.newActionResponseBuilder()
         .setNavigation(CardService.newNavigation().popToRoot().updateCard(buildReconnectCard(null, L)))
         .build();
