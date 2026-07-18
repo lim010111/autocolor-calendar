@@ -54,7 +54,7 @@ CalendarApiError)·#156(nl#04 선작업) main 랜딩, **main 618 tests green**.
 - **사람 — embedding-classifier #05 eval-gate**: OPENAI_API_KEY 재발급 →
   eval-gate 3-gate (prompt v6, 절차: #05 Comments).
 - **사람 — 로컬 정리**: 07-18 처리 — 메인 main 복귀, 병합 워크트리 2 제거,
-  머지 브랜치 3 삭제. 잔여 = prework 워크트리 1개(세션 점유 중) 제거,
+  머지 브랜치 3 삭제. 잔여 = prework 워크트리 1개(세션 점유) 제거,
   그래야 메인 lint green.
 - **병행 — architecture-deepening 후보 (ColorOwnershipMarker 등, Open
   decisions 목록)**: grill 선행.
