@@ -272,24 +272,42 @@ describe("buildPrompt", () => {
 // (user-confirmed past titles, merged into `Rule.seeds` by `listRules`) and
 // the v6 system prompt teaches its usage in one field-handling line.
 describe("buildPrompt — examples 구조화 필드 (ADR-0004 #05)", () => {
-  it("Rule.seeds의 example 씨앗이 category JSON의 examples 필드로 합류", () => {
-    const msgs = buildPrompt(ev({ summary: "standup" }), [
-      cat({
-        seeds: [
-          ...synthesizeSeeds({ name: "회의", keywords: ["회의"] }),
-          { text: "주간 스탠드업", type: "example", grade: "verified" },
-          { text: "회의실 잡기", type: "example", grade: "verified" },
-        ],
-      }),
-    ]);
-    const user = msgs.find((m) => m.role === "user")!;
-    const payload = JSON.parse(user.content) as {
-      categories: Array<{ examples: string[] }>;
-    };
-    expect(payload.categories[0]!.examples).toEqual([
+  const withExamples = () =>
+    cat({
+      seeds: [
+        ...synthesizeSeeds({ name: "회의", keywords: ["회의"] }),
+        { text: "주간 스탠드업", type: "example", grade: "verified" },
+        { text: "회의실 잡기", type: "example", grade: "verified" },
+      ],
+    });
+
+  const examplesOf = (msgs: ReturnType<typeof buildPrompt>) =>
+    (
+      JSON.parse(msgs.find((m) => m.role === "user")!.content) as {
+        categories: Array<{ examples: string[] }>;
+      }
+    ).categories[0]!.examples;
+
+  it("Rule.seeds의 example 씨앗이 category JSON의 examples 필드로 합류 (v6)", () => {
+    expect(examplesOf(buildPrompt(ev({ summary: "standup" }), [withExamples()], "v6"))).toEqual([
       "주간 스탠드업",
       "회의실 잡기",
     ]);
+  });
+
+  // ADR-0007 eval-gate 인터록. 이 두 케이스가 #05(동의 기반 저장)와
+  // §5.3(프롬프트 변경은 eval-gate 통과가 전제) 사이의 유일한 방어선이다.
+  // 게이트를 지우면 v2 프롬프트에 설명된 적 없는 필드가 실려 나가고,
+  // 동의한 제목의 사본이 `llm_calls.prompt_summary` 에 남아 철회 시 purge 가
+  // 닿지 못한다. 무조건 map 으로 "단순화" 하지 말 것.
+  it("기본(v2) 프롬프트에서는 example 씨앗이 있어도 examples: [] — eval-gate 인터록", () => {
+    expect(examplesOf(buildPrompt(ev({ summary: "standup" }), [withExamples()]))).toEqual([]);
+  });
+
+  it("필드를 문서화하지 않은 다른 버전(v3)도 examples: []", () => {
+    expect(
+      examplesOf(buildPrompt(ev({ summary: "standup" }), [withExamples()], "v3")),
+    ).toEqual([]);
   });
 
   it("example이 없는 rule은 examples: [] — 필드 자체는 항상 존재 (구조화, 산문 아님)", () => {

@@ -1,14 +1,31 @@
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
+
 import { describe, expect, it } from "vitest";
 
 import type { CalendarEvent } from "../services/googleCalendar";
 import {
   consentExample,
+  consentReceiptFrom,
   isUnfitExample,
   PII_REGEXES,
   PII_TOKENS,
   redactEventForLlm,
   type ConsentReceipt,
 } from "../services/piiRedactor";
+
+const POLICY_V = "example-storage/v1";
+
+// ADR-0007 — 테스트 전역의 유일한 receipt 발급 지점. 프로덕션과 동일한
+// 민터를 타므로, 민터가 깨지면 example 관련 스위트 전체가 함께 깨진다.
+function mintReceipt(): ConsentReceipt {
+  const receipt = consentReceiptFrom(
+    { consentedAt: new Date(), revokedAt: null, policyVersion: POLICY_V },
+    POLICY_V,
+  );
+  if (!receipt) throw new Error("fixture consent must mint");
+  return receipt;
+}
 
 // Group E (골든 acceptance) 는 `JSON.stringify(redacted)` 전체에 대해
 // `/@/`, `/http/i`, phone regex 매치 0건을 단언하므로, fixture의 **non-PII
@@ -372,9 +389,9 @@ describe("isUnfitExample — 과도 redaction drop 기준 (ADR-0004 #05)", () =>
 });
 
 describe("consentExample — durable example 민터 (ADR-0004 #05)", () => {
-  // `ConsentReceipt`에는 프로덕션 민터가 없다(OAuth 게이트) — 테스트 전용
-  // brand 위조. 프로덕션 코드는 절대 cast로 우회하지 않는다 (§5.2).
-  const receipt = {} as ConsentReceipt;
+  // ADR-0007 — 실제 민터로 발급한다. brand 위조 cast 는 더 이상 필요 없고,
+  // 이렇게 두면 이 스위트가 `consentReceiptFrom` 의 통합 가드도 겸한다 (§5.2).
+  const receipt = mintReceipt();
 
   it("PII를 redact한 (trim된) 제목과 ruleId/userId를 브랜드에 싣는다", () => {
     const out = consentExample(
@@ -395,5 +412,70 @@ describe("consentExample — durable example 민터 (ADR-0004 #05)", () => {
       consentExample("https://zoom.us/j/123", "rule-1", "user-1", receipt),
     ).toBeNull();
     expect(consentExample("   ", "rule-1", "user-1", receipt)).toBeNull();
+  });
+});
+
+describe("consentReceiptFrom — ConsentReceipt 유일 민터 (ADR-0007)", () => {
+  const now = new Date();
+
+  it("동의한 적이 없으면 null — fail-closed", () => {
+    expect(
+      consentReceiptFrom(
+        { consentedAt: null, revokedAt: null, policyVersion: null },
+        POLICY_V,
+      ),
+    ).toBeNull();
+  });
+
+  it("철회됐으면 null (동의 시각이 남아 있어도)", () => {
+    expect(
+      consentReceiptFrom(
+        { consentedAt: now, revokedAt: now, policyVersion: POLICY_V },
+        POLICY_V,
+      ),
+    ).toBeNull();
+  });
+
+  it("동의한 정책 버전이 현행과 다르면 null — §12 재동의 게이트", () => {
+    expect(
+      consentReceiptFrom(
+        { consentedAt: now, revokedAt: null, policyVersion: "example-storage/v0" },
+        POLICY_V,
+      ),
+    ).toBeNull();
+  });
+
+  it("살아 있는 동의는 receipt 를 발급하고, 그 receipt 로 example 이 민팅된다", () => {
+    const receipt = consentReceiptFrom(
+      { consentedAt: now, revokedAt: null, policyVersion: POLICY_V },
+      POLICY_V,
+    );
+    expect(receipt).not.toBeNull();
+    const example = consentExample("주간회의", "rule-1", "user-1", receipt!);
+    expect(example?.text).toBe("주간회의");
+  });
+});
+
+// §5.2 "unique minter" 불변항의 소스 레벨 강제. 세 brand 각각의 `as` cast 가
+// piiRedactor.ts 안에 정확히 1회만 존재해야 한다 — 형제 redactor 나 파일 밖
+// cast 가 생기면 "consented AND redacted" 조인트 불변항이 깨진다.
+// (accountRoute.test.ts 의 cascade-count 가드와 같은 계열의 방어선.)
+describe("§5.2 brand 민터 유일성 (소스 레벨 가드)", () => {
+  // Comments are stripped first: the §5.2 doc comments in that file name all
+  // three casts in prose, and counting those would make the guard assert on
+  // documentation rather than on code.
+  const source = readFileSync(
+    fileURLToPath(new URL("../services/piiRedactor.ts", import.meta.url)),
+    "utf8",
+  )
+    .replace(/\/\*[\s\S]*?\*\//g, "")
+    .replace(/^[ \t]*\/\/.*$/gm, "");
+
+  it.each([
+    ["as RedactedEvent", /as RedactedEvent/g],
+    ["as ConsentedExample", /as ConsentedExample/g],
+    ["as ConsentReceipt", /as ConsentReceipt/g],
+  ])("%s cast 는 정확히 1회", (_label, re) => {
+    expect(source.match(re)?.length ?? 0).toBe(1);
   });
 });

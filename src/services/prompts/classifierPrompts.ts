@@ -45,6 +45,33 @@ export type ClassifierPromptVersion =
 // examples.
 export const DEFAULT_CLASSIFIER_PROMPT_VERSION: ClassifierPromptVersion = "v2";
 
+// ADR-0004 #05 / ADR-0007 — which system prompts actually *document* the
+// category `examples` field. `buildPrompt` sends the field only for these
+// versions; every other version receives `examples: []`.
+//
+// This is the eval-gate interlock, not a feature flag. Before #05 the field
+// was inert for an accidental reason — the dark build stored zero examples —
+// and turning storage on would have started shipping a populated field under
+// the v2 system prompt, which never mentions it. That is a material change to
+// model input, and src/CLAUDE.md §5.3 requires the 3-gate eval run for
+// exactly that. Keying on the version makes the gate mechanical: the field
+// can only go live by bumping `DEFAULT_CLASSIFIER_PROMPT_VERSION` to a
+// version listed here, which §5.3 already forbids without a passing gate.
+//
+// The eval runner is unaffected — it passes `--prompt-version v6` explicitly
+// (`evals/scripts/run-classification-eval.ts`), so the examples delta is
+// measurable before the flip, which is what #05's remaining AC needs.
+//
+// Add a version here in the same PR that authors it, never later.
+const PROMPT_VERSIONS_WITH_EXAMPLES_FIELD: ReadonlySet<ClassifierPromptVersion> =
+  new Set<ClassifierPromptVersion>(["v6"]);
+
+export function promptVersionSendsExamples(
+  version: ClassifierPromptVersion,
+): boolean {
+  return PROMPT_VERSIONS_WITH_EXAMPLES_FIELD.has(version);
+}
+
 export function loadClassifierPrompt(
   version: ClassifierPromptVersion = DEFAULT_CLASSIFIER_PROMPT_VERSION,
 ): string {

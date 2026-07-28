@@ -86,14 +86,47 @@ export type ConsentedExample = {
   readonly [ConsentedExampleBrand]: "consented-example";
 };
 
-// Required arg to `consentExample`. No exported minter exists yet — the
-// consent log + receipt issuance flow (Instant Feedback UI, ADR-0004 #05
-// OAuth-gated slice) lands after the OAuth re-verification gate clears, so
-// example durable storage is structurally impossible until then even though
-// the `addExample` write path below it is live (dark build).
+// Required arg to `consentExample`. Minted exclusively by
+// `consentReceiptFrom` below (ADR-0007 one-time storage consent).
 export type ConsentReceipt = {
   readonly [ConsentReceiptBrand]: "consent-receipt";
 };
+
+// The consent state `consentReceiptFrom` validates — the three
+// `users.example_consent_*` columns. Deliberately structural rather than a
+// drizzle row type so this file stays DB-free and the minter is a pure,
+// unit-testable function.
+export type ExampleConsentRecord = {
+  readonly consentedAt: Date | null;
+  readonly revokedAt: Date | null;
+  readonly policyVersion: string | null;
+};
+
+// **Unique minter for `ConsentReceipt`.** Pure — the DB read that produces
+// `record` lives in `src/services/consentService.ts`, but the brand cast
+// lives here so all three §5.2 brands keep a single minting file.
+//
+// Returns `null` — making `consentExample()` uncallable, and therefore
+// example storage unreachable — when consent was never given, has been
+// revoked, or was given under a superseded disclosure version. That last
+// clause is the code-level enforcement of privacy-policy §12's
+// "중대한 변경 → 재동의" obligation.
+//
+// Fail-closed by construction: every NULL / unknown state yields `null`.
+// There is no permissive default and none must be added.
+export function consentReceiptFrom(
+  record: ExampleConsentRecord,
+  currentPolicyVersion: string,
+): ConsentReceipt | null {
+  if (record.consentedAt === null) return null;
+  if (record.revokedAt !== null) return null;
+  if (record.policyVersion !== currentPolicyVersion) return null;
+  // The brand is a phantom `unique symbol` intersection with zero runtime
+  // footprint (see the `declare const` block above), so the receipt carries
+  // no data — it is purely a compile-time capability token. `consentExample`
+  // never reads it.
+  return {} as ConsentReceipt;
+}
 
 export const PII_TOKENS = {
   EMAIL: "[email]",
@@ -197,9 +230,10 @@ export function isUnfitExample(redactedTitle: string): boolean {
 // FIFO eviction lives in `ruleService.addExample`, which only accepts the
 // branded value this function produces.
 //
-// The `consent` parameter has no exposed minter yet; the OAuth-gated
-// Instant Feedback slice introduces the consent log + receipt issuance, at
-// which point the only callers of `consentExample` will be that flow.
+// The `consent` parameter is minted by `consentReceiptFrom` above; its only
+// caller is the Instant Feedback flow (`src/routes/examples.ts`), which
+// obtains the receipt from `consentService.issueExampleConsentReceipt`
+// before it ever reaches this function.
 export function consentExample(
   title: string,
   ruleId: string,

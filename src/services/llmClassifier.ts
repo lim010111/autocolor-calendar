@@ -9,6 +9,7 @@ import type { RedactedEvent } from "./piiRedactor";
 import {
   DEFAULT_CLASSIFIER_PROMPT_VERSION,
   loadClassifierPrompt,
+  promptVersionSendsExamples,
   type ClassifierPromptVersion,
 } from "./prompts/classifierPrompts";
 
@@ -214,14 +215,24 @@ export function buildPrompt(
   // (seed_type='example', already redacted at mint time by
   // `consentExample`). Bounded by the per-rule lifecycle cap
   // (`EXAMPLES_PER_RULE_CAP` = 10), so the field cannot blow up the prompt.
-  // Empty array until the OAuth-gated Instant Feedback flow ships (dark
-  // build stores zero examples).
+  //
+  // ADR-0007 — the field is sent ONLY for system-prompt versions that
+  // document it (`promptVersionSendsExamples`); every other version gets an
+  // empty array even when the rules carry example seeds. Before #05 this was
+  // inert for an accidental reason (the dark build stored zero examples);
+  // once consent-gated storage went live, keying on the version is what keeps
+  // a populated field from reaching the v2 prompt — which never mentions it —
+  // without the §5.3 eval-gate. Do not "simplify" this back to an
+  // unconditional map: that ships an un-eval-gated model-input change, and it
+  // also puts consented titles into `llm_calls.prompt_summary`, which the
+  // consent-revocation purge does not reach.
+  const sendExamples = promptVersionSendsExamples(version);
   const categoryList = categories.slice(0, LLM_MAX_CATEGORIES).map((c) => ({
     name: c.name,
     keywords: c.keywords,
-    examples: c.seeds
-      .filter((s) => s.type === "example")
-      .map((s) => s.text),
+    examples: sendExamples
+      ? c.seeds.filter((s) => s.type === "example").map((s) => s.text)
+      : [],
   }));
 
   // System prompt body lives under `prompts/classifier/system.<version>.md`
