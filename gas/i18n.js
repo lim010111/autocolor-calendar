@@ -205,7 +205,7 @@ var MESSAGES = {
     'rules.toast.nameRequired': 'Please enter a rule name.',
     'rules.toast.colorFirst': 'Please pick a color first.',
     'rules.toast.colorPicked': 'Color selected.',
-    'rules.toast.added': 'New rule saved.',
+    'rules.toast.added': "New rule saved. Refresh Calendar to see it in Google's color list.",
     'rules.toast.duplicate': 'A rule with the same name already exists.',
     'rules.toast.saveFailed': 'Failed to save rule: {{message}}',
 
@@ -379,7 +379,7 @@ var MESSAGES = {
     'rules.toast.nameRequired': '규칙 이름을 입력해주세요.',
     'rules.toast.colorFirst': '색상을 먼저 선택해주세요.',
     'rules.toast.colorPicked': '색상이 선택되었습니다.',
-    'rules.toast.added': '새 규칙이 저장되었습니다.',
+    'rules.toast.added': '새 규칙이 저장되었습니다. Google 색상 목록에는 캘린더를 새로고침하면 나타납니다.',
     'rules.toast.duplicate': '이미 같은 이름의 규칙이 있습니다.',
     'rules.toast.saveFailed': '규칙 저장 실패: {{message}}',
 
@@ -546,7 +546,7 @@ var MESSAGES = {
     'rules.toast.nameRequired': '请输入规则名称。',
     'rules.toast.colorFirst': '请先选择颜色。',
     'rules.toast.colorPicked': '已选择颜色。',
-    'rules.toast.added': '新规则已保存。',
+    'rules.toast.added': '新规则已保存。刷新日历后即可在 Google 颜色列表中看到。',
     'rules.toast.duplicate': '已存在同名规则。',
     'rules.toast.saveFailed': '保存规则失败: {{message}}',
 
@@ -713,7 +713,7 @@ var MESSAGES = {
     'rules.toast.nameRequired': '請輸入規則名稱。',
     'rules.toast.colorFirst': '請先選擇顏色。',
     'rules.toast.colorPicked': '已選擇顏色。',
-    'rules.toast.added': '新規則已儲存。',
+    'rules.toast.added': '新規則已儲存。重新整理日曆後即可在 Google 顏色清單中看到。',
     'rules.toast.duplicate': '已有相同名稱的規則。',
     'rules.toast.saveFailed': '儲存規則失敗: {{message}}',
 
