@@ -107,3 +107,14 @@ AC 4·5(colorId 레거시 제거·§5.4 개정)는 컷오버 창(OAuth 통과 �
 9. **테스트 배치** — vitest include 가 `src/**` 한정이므로 테스트는
    `src/__tests__/cutoverLabels.test.ts` 에 두고 `../../scripts/` 임포트
    (tsconfig rootDir 제약 없음 실측). vitest.config 무변경.
+
+### 2026-07-24 — 컷오버 창 개방 (OAuth 승인)
+
+OAuth 검수 승인(`script.external_request`/`calendar`/`calendar.events`)으로
+"실사용자 유입 전 창" 게이트 해제. 실행 순서 확정:
+
+1. Workers Free → Paid 전환 + `SYNC_SUBREQUEST_BUDGET` ~900 (sync-reliability #01).
+2. Worker 배포 + **GAS labelId 버전 co-deploy** (라이브 GAS 는 colorId 를 보내
+   manual override 400 — 단독 배포 금지). GAS 는 `AKfycbxfHV5…` deployment 편집.
+3. `pnpm tsx scripts/cutover-labels.ts --env .prod.vars` dry-run → `--execute`.
+4. full resync → AC 2·3 육안 → PR-B(레거시 제거, AC 4·5).

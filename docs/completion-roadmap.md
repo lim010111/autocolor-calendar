@@ -61,12 +61,14 @@ AutoColor for Calendar를 **Workspace Marketplace public listing 활성** 상태
   카테고리, support email/URL.
 - 최종 스크린샷은 게이트 2(prod 활성화) 이후 촬영.
 
-### 6. OAuth Consent Screen + Restricted Scope 검수
+### 6. OAuth Consent Screen + Restricted Scope 검수 ✓
 
 - 정본: [`TODO.md` §7 line 131](../TODO.md), [`marketplace-readiness.md` §2 row 126-130](marketplace-readiness.md).
-- 입력: scope justifications (현 `초안`), 제한 스코프 데모 영상, Privacy URL, ToS URL.
-- 게이트 4·5(부분) 충족 후 제출 가능.
-- **Google 측 검수 통상 4-6주** — critical path의 최장 비-코드 구간.
+- **통과 2026-07-24** — `script.external_request` / `calendar` / `calendar.events`.
+  제출(05-09)부터 승인까지 11주, 반려 3라운드(brand → demo video → 스코프 불일치).
+- **CASA 미트리거** (2026-07-28 Console 실측) — restricted 스코프 0행, `calendar` 는
+  sensitive 분류. 게이트 8 앞에 CASA 종속 없음. 100-user cap 도 실효 해제.
+- 신규 스코프 또는 consent screen *설정* 변경은 이 게이트를 다시 연다(재검수).
 
 ### 7. 백업/복구 정책
 

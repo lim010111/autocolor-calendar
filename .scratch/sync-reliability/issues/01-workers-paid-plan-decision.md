@@ -40,3 +40,7 @@ None — can start immediately.
   느려짐(invocation당 ~12이벤트 페이지) — 전환 시
   `SYNC_SUBREQUEST_BUDGET` env 를 ~900 으로 올리면 자동 회복. 전환 후
   검증 절차는 AC 2 그대로 수행.
+
+- **2026-07-24: Paid 전환 트리거 발화.** OAuth 검수 승인 → native-labels #04
+  컷오버 창 개방. 위 보류 결정의 트리거 조건이 충족됐으므로 컷오버 직전에
+  Paid 전환 + `SYNC_SUBREQUEST_BUDGET` ~900 상향 + AC 2 검증 절차를 수행할 것.

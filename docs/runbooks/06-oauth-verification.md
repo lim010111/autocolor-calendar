@@ -261,14 +261,31 @@ publish 전에는 영향 없음.
 
 ## Step 5 — 통과 후 / 거절 시
 
-### 통과
+### 통과 — **달성 (2026-07-24), Console 실측 확인 (2026-07-28)**
 
-- GCP Console → OAuth consent screen → "Verification status: Verified"
-  표시.
-- 검수 통과 메일 수신 (Subject: "Your OAuth Consent Screen has been
-  approved" 또는 유사).
-- 100명 사용자 제한 자동 해제 — Restricted scope 무제한 사용 가능.
+승인 메일(Trust & Safety, 스레드 `19e215f0cb6d1fdf`)로 `script.external_request`
+/ `calendar` / `calendar.events` 3종 승인. Console 실측 결과:
+
+- [x] Verification Center → "Your branding has been verified" +
+      "Your app's data access has been verified".
+- [x] Data Access → "Your sensitive scopes" 3행 전부 `This scope is verified`.
+- [x] 검수 통과 메일 수신 (실제 subject 는 기존 스레드와 같은
+      "[Action Needed] OAuth Verification Request Acknowledgement" — 본문 첫 줄이
+      "We've approved your OAuth App Verification request". 제목으로 판별하지 말 것).
+- [x] 100명 사용자 제한 — Audience 페이지에 `4 users / 100 user cap` 이 계속
+      표시되지만, 같은 페이지 안내문("Verified apps will still display the user cap
+      ... but the user cap does not apply if you are requesting only approved
+      sensitive or restricted scopes")대로 **실효 해제**. 숫자가 남아 있다고 해서
+      미해제로 읽지 말 것.
+- [x] **CASA 미트리거** — "Your restricted scopes" 표가 0행. `calendar` 는 현
+      Console 분류상 *sensitive* 이며 restricted 가 아니므로 CASA 연례 평가 대상이
+      아니다. restricted 스코프를 추가하면 되살아난다.
 - 다음 게이트: G7 (백업/복구) → G8 (Marketplace 등록) 순.
+
+> **관측 메모 (2026-07-28)**: Data Access 페이지의 justification 입력란이
+> `0 / 1000`, YouTube link 입력란이 빈 값으로 보인다. 승인 후 *새* 검수 요청용
+> 빈 폼으로 보이며 제출본이 지워졌다는 증거는 아니다. **Save 를 누르지 말 것** —
+> 빈 값 저장은 consent screen 설정 변경으로 재검수를 유발할 수 있다.
 
 ### 거절
 

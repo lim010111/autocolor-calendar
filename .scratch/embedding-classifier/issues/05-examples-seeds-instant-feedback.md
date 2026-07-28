@@ -176,3 +176,16 @@ PR #154 push 의 advisory 리뷰 findings 1건 (codex:finding-0, high/uphold):
   정책과 동일 클래스 (락/제약 없음, 중복 시 ambiguous→Stage 2 degradation).
   `(user_id, seed_text) WHERE seed_type='example'` partial unique index 는
   스키마 마이그레이션 — 원하면 별도 이슈로 (사람 판단).
+
+### 2026-07-24 — OAuth 게이트 해제 (외부)
+
+Google Trust & Safety 승인 통보(project `autocolor-dev`): `script.external_request`
+/ `calendar` / `calendar.events` 3종. 위 "OAuth 게이트 — 다크 빌드 후 해제"
+절의 외부 조건이 **충족** — 동의·법무·UI 4개 AC 착수 가능.
+
+- 동결 해제: oauthScopes / consent / redirect / GAS deploy URL 동결은 종료.
+  단 GAS `/exec` URL 안정성은 별개 프로젝트 룰이라 계속 유지(AGENTS.md).
+- **신규 제약**: 승인 메일 조건 — 신규 스코프 요청 또는 consent screen *설정*
+  변경 시 재검수 필요. 본 이슈의 개인정보처리방침 *본문* 갱신은 URL 이 그대로면
+  consent screen 설정 변경이 아니므로 재검수 트리거 아님(URL 을 바꾸면 트리거).
+- 잔여 non-OAuth 게이트는 그대로: eval-gate 3-gate (OPENAI_API_KEY 재발급 필요).

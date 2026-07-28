@@ -160,13 +160,14 @@
 - **그 다음**: Google 응답 4-6주 대기. 추가 정보 요청 메일 오면 빠르게 응답 (지연 시 검수 큐 뒤로 밀림)
 - **왜 사용자만**: GCP 프로젝트 owner 권한
 - **상세**: `docs/runbooks/06-oauth-verification.md` Step 3-4
-- [ ] App Configuration 입력 완료
-- [ ] Submit 버튼 클릭 + 접수 메일 수신 확인
-- [ ] (회신 시) 추가 정보 요청 응답 / 재제출
+- [x] App Configuration 입력 완료
+- [x] Submit 버튼 클릭 + 접수 메일 수신 확인
+- [x] (회신 시) 추가 정보 요청 응답 / 재제출 — 3라운드(brand 05-09 / demo video 07-03 / 스코프 불일치 07-20) 대응
+- [x] **G6 통과 (2026-07-24)** — `script.external_request`·`calendar`·`calendar.events` 승인
 
 ---
 
-## 🚀 마지막 — G6 검수 통과 후
+## 🚀 마지막 — G6 검수 통과 후 ← **여기부터 시작 (2026-07-24 해제)**
 
 ### ⑨ Marketplace Publish (30분 + 검수 1-3주)
 
