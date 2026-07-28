@@ -63,3 +63,40 @@ GitHub: #147
 ## Blocked by
 
 None — #01 (판정 로직 기반) 해소됨, can start.
+
+## Comments
+
+### 2026-07-28 — 라벨 생성이 라이브에서 전면 실패했음 (PR #162 로 수정)
+
+배포 후 첫 실사용에서 규칙 생성이 100% 실패했다. 애드온 표시:
+`Failed to save rule: … SERVER_ERROR: 502 - {"error":"upstream_unavailable"}`
+
+**원인**: `calendars.patch` 가 `primary` 별칭을 **404 notFound** 로 거부한다
+(실측: 본문 무관, 빈 `{}` no-op 도 404 / resolved id 로는 200 / `calendars.get`
+은 별칭 200). `appendEventLabel` 의 read-modify-write 가 read 만 성공하고
+write 에서 죽는 형태였다. Google discovery 문서는 이 메서드의 `calendarId`
+에도 primary 를 허용한다고 적혀 있어 **문서와 실동작이 다르다**.
+
+07-15 프로브(`spike/label-probe.ts`)가 P3 = *이벤트* PATCH 만 실측했고
+**`Calendars.patch` 라벨 생성 경로는 라이브에서 한 번도 안 돌려본 표면**
+이었던 것이 놓친 지점이다. 설계 노트의 "실측: 현행 스코프로 HTTP 200" 은
+이벤트 쓰기에 대한 것이지 라벨 정의 쓰기에 대한 것이 아니었다.
+
+**수정**(PR #162): 이미 수행하는 read 의 fields 마스크에 `id` 추가 →
+`getCalendarLabelProperties` 가 `{calendarId, eventLabels}` 반환 → 쓰기가
+resolved id 사용. 추가 fetch 없음(런당 +1 계약 유지). id 미해소 시에는
+폴백하지 않고 `UnresolvedCalendarIdError` 로 쓰기 거부.
+
+**AC 1 관련 진전**: Resolution 에 "라이브 검증 항목" 으로 남겨둔
+**클라이언트 mint UUID 는 확인됨** — append 200 + 읽기 왕복 일치, discovery
+도 `id` 를 "must be unique within the calendar and follow UUID format" 로
+명시. `eventLabels.ts` 의 write-then-re-read-diff 헤지 주석 제거. 다만 AC 1
+의 나머지 절반(분류 적용이 `eventLabelVersion=1`+`eventLabelId` 로 나가고
+마커 v2 가 각인되는 **육안 확인**)은 여전히 사람 단계로 남는다.
+
+**#04 에 미친 영향**: `scripts/cutover-labels.ts` 도 같은 리더/쓰기 경로라
+동일 결함이었다 — **이 수정 전에 컷오버를 실행했으면 전부 실패했을 것.**
+
+**후속(범위 밖)**: 404 → `not_found` → 라우트 `default:` → 502
+`upstream_unavailable` 매핑이 "업스트림 장애" 라는 잘못된 신호를 준다.
+진단을 느리게 만든 실제 원인이므로 라우트 계약 차원에서 재검토할 것.
