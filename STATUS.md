@@ -118,13 +118,13 @@ OAuth AC(동의·법무·UI) → #06. ③ Marketplace 출시
 
 ## native-labels
 
-`████████████████░░░░░░` 18/25 acceptance criteria met (72%)
+`██████████████████░░░░` 20/25 acceptance criteria met (80%)
 
 | # | Issue | Triage | Criteria | State | Blocked by |
 |---|-------|--------|----------|-------|-----------|
 | 01 | Label aware manual skip | `done` | 7/7 | ✅ done | — |
-| 02 | Label write migration | `ready-for-human` | 6/7 | 🔵 in-progress | — |
-| 03 | Editor a2 rewire | `ready-for-human` | 4/6 | 🔵 in-progress | #02 |
+| 02 | Label write migration | `ready-for-human` | 7/7 | ✅ done | — |
+| 03 | Editor a2 rewire | `ready-for-human` | 5/6 | 🔵 in-progress | #02 |
 | 04 | Cutover migration | `ready-for-human` | 1/5 | 🔵 in-progress | #02, #03 |
 
 ## sync-reliability
