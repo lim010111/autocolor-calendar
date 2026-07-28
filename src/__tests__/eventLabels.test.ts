@@ -22,12 +22,21 @@ import {
   appendEventLabel,
   CALENDAR_EVENT_LABEL_CAP,
   EventLabelCapError,
+  UnresolvedCalendarIdError,
 } from "../services/eventLabels";
 
 const AT = "access-token";
 const CAL = "primary";
 const mockedGet = vi.mocked(getCalendarLabelProperties);
 const mockedPatch = vi.mocked(patchCalendarLabelProperties);
+
+// The read resolves `primary` to the calendar's real id — `calendars.patch`
+// 404s on the alias, so the writer must carry the resolved value through.
+const RESOLVED_CAL = "owner@example.com";
+const labelsRead = (eventLabels: CalendarEventLabel[]) => ({
+  calendarId: RESOLVED_CAL,
+  eventLabels,
+});
 
 beforeEach(() => {
   mockedGet.mockReset();
@@ -47,7 +56,7 @@ describe("appendEventLabel — append-only labelProperties writer (ADR-0006)", (
       { id: "user-1", backgroundColor: "#ad1457", name: "운동" },
       { id: "foreign-new", backgroundColor: "#123456", name: "동시편집" },
     ];
-    mockedGet.mockResolvedValueOnce(fresh);
+    mockedGet.mockResolvedValueOnce(labelsRead(fresh));
 
     const { id } = await appendEventLabel(AT, CAL, {
       name: "회의",
@@ -68,8 +77,32 @@ describe("appendEventLabel — append-only labelProperties writer (ADR-0006)", (
     });
   });
 
+  // Regression (2026-07-28): the writer used to forward the caller's
+  // `primary` alias straight to `calendars.patch`, which Google answers with
+  // 404 for ANY body — surfacing to the Add-on as 502 upstream_unavailable
+  // and making rule creation impossible. The resolved id from the re-read is
+  // what must reach the write.
+  it("PATCHes the resolved calendar id, never the `primary` alias", async () => {
+    mockedGet.mockResolvedValueOnce(labelsRead([]));
+    await appendEventLabel(AT, "primary", {
+      name: "개발",
+      backgroundColor: "#039be5",
+    });
+    expect(mockedPatch.mock.calls[0]![1]).toBe(RESOLVED_CAL);
+    expect(mockedPatch.mock.calls[0]![1]).not.toBe("primary");
+  });
+
+  it("refuses to write when the read could not resolve a calendar id", async () => {
+    mockedGet.mockResolvedValueOnce({ calendarId: null, eventLabels: [] });
+    await expect(
+      appendEventLabel(AT, "primary", { name: "개발", backgroundColor: "#039be5" }),
+    ).rejects.toBeInstanceOf(UnresolvedCalendarIdError);
+    // The whole point: no blind full-replace against the known-404 alias.
+    expect(mockedPatch).not.toHaveBeenCalled();
+  });
+
   it("returns a uuid-shaped id for the new entry", async () => {
-    mockedGet.mockResolvedValueOnce([]);
+    mockedGet.mockResolvedValueOnce(labelsRead([]));
     const { id } = await appendEventLabel(AT, CAL, {
       name: "x",
       backgroundColor: "#fbd75b",
@@ -80,12 +113,12 @@ describe("appendEventLabel — append-only labelProperties writer (ADR-0006)", (
   });
 
   it("throws EventLabelCapError at the 200 cap without writing", async () => {
-    mockedGet.mockResolvedValueOnce(
+    mockedGet.mockResolvedValueOnce(labelsRead(
       Array.from({ length: CALENDAR_EVENT_LABEL_CAP }, (_, i) => ({
         id: `slot-${i}`,
         backgroundColor: "#e1e1e1",
       })),
-    );
+    ));
     await expect(
       appendEventLabel(AT, CAL, { name: "넘침", backgroundColor: "#ffffff" }),
     ).rejects.toBeInstanceOf(EventLabelCapError);

@@ -36,6 +36,12 @@ const AT = "acc-token";
 const mockedLabels = vi.mocked(getCalendarLabelProperties);
 const mockedSeed = vi.mocked(writeNameSeed);
 
+// Reconcile is read-only, so the resolved calendarId the reader now returns
+// alongside the labels is irrelevant here — it exists for the write path.
+const labelsRead = (
+  eventLabels: Awaited<ReturnType<typeof getCalendarLabelProperties>>["eventLabels"],
+) => ({ calendarId: "owner@example.com", eventLabels });
+
 type RuleRow = {
   id: string;
   name: string;
@@ -100,9 +106,9 @@ describe("nearestClassicColorId", () => {
 
 describe("reconcileLabels — Google labelProperties is canonical (ADR-0006)", () => {
   it("rename: updates the name cache and re-embeds the name seed", async () => {
-    mockedLabels.mockResolvedValueOnce([
+    mockedLabels.mockResolvedValueOnce(labelsRead([
       { id: "L1", backgroundColor: "#ad1457", name: "새이름" },
-    ]);
+    ]));
     const { db, updates, inserts } = makeDb([
       { id: "r1", name: "옛이름", labelId: "L1", labelDeletedAt: null },
     ]);
@@ -121,7 +127,7 @@ describe("reconcileLabels — Google labelProperties is canonical (ADR-0006)", (
   });
 
   it("delete: stamps labelDeletedAt when the backing label vanished", async () => {
-    mockedLabels.mockResolvedValueOnce([]);
+    mockedLabels.mockResolvedValueOnce(labelsRead([]));
     const { db, updates } = makeDb([
       { id: "r1", name: "운동", labelId: "L1", labelDeletedAt: null },
     ]);
@@ -133,9 +139,9 @@ describe("reconcileLabels — Google labelProperties is canonical (ADR-0006)", (
   });
 
   it("un-name: a label that lost its name also deactivates its rule", async () => {
-    mockedLabels.mockResolvedValueOnce([
+    mockedLabels.mockResolvedValueOnce(labelsRead([
       { id: "L1", backgroundColor: "#ad1457" }, // name removed
-    ]);
+    ]));
     const { db, updates } = makeDb([
       { id: "r1", name: "운동", labelId: "L1", labelDeletedAt: null },
     ]);
@@ -147,9 +153,9 @@ describe("reconcileLabels — Google labelProperties is canonical (ADR-0006)", (
   });
 
   it("no revival: a deactivated rule stays deactivated even if its label is back", async () => {
-    mockedLabels.mockResolvedValueOnce([
+    mockedLabels.mockResolvedValueOnce(labelsRead([
       { id: "L1", backgroundColor: "#ad1457", name: "운동" },
-    ]);
+    ]));
     const { db, updates, inserts } = makeDb([
       {
         id: "r1",
@@ -167,9 +173,9 @@ describe("reconcileLabels — Google labelProperties is canonical (ADR-0006)", (
   });
 
   it("new named label: auto-creates a Rule with [name] keyword fallback + name seed", async () => {
-    mockedLabels.mockResolvedValueOnce([
+    mockedLabels.mockResolvedValueOnce(labelsRead([
       { id: "L9", backgroundColor: "#dc2127", name: "긴급" },
-    ]);
+    ]));
     const { db, updates, inserts } = makeDb([]);
 
     await reconcileLabels({ db, userId: USER, calendarId: CAL, accessToken: AT, embed });
@@ -192,10 +198,10 @@ describe("reconcileLabels — Google labelProperties is canonical (ADR-0006)", (
   });
 
   it("unnamed palette slots never become rules", async () => {
-    mockedLabels.mockResolvedValueOnce([
+    mockedLabels.mockResolvedValueOnce(labelsRead([
       { id: "slot-1", backgroundColor: "#a4bdfc" },
       { id: "slot-2", backgroundColor: "#7ae7bf", name: "  " },
-    ]);
+    ]));
     const { db, updates, inserts } = makeDb([]);
 
     await reconcileLabels({ db, userId: USER, calendarId: CAL, accessToken: AT, embed });
@@ -206,9 +212,9 @@ describe("reconcileLabels — Google labelProperties is canonical (ADR-0006)", (
   });
 
   it("link: a new named label pairs with a same-named pre-cutover rule (labelId null)", async () => {
-    mockedLabels.mockResolvedValueOnce([
+    mockedLabels.mockResolvedValueOnce(labelsRead([
       { id: "L2", backgroundColor: "#5484ed", name: "운동" },
-    ]);
+    ]));
     const { db, updates, inserts } = makeDb([
       { id: "r1", name: "운동", labelId: null, labelDeletedAt: null },
     ]);

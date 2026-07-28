@@ -113,7 +113,10 @@ export async function reconcileLabels(args: {
   };
   try {
     // The sync run's single extra fetch (subrequest budget: +1 per run).
-    const labels = await getCalendarLabelProperties(accessToken, calendarId);
+    const { eventLabels: labels } = await getCalendarLabelProperties(
+      accessToken,
+      calendarId,
+    );
     summary.labels = labels.length;
 
     const rules = await db

@@ -326,23 +326,48 @@ export type CalendarEventLabel = {
   name?: string;
 };
 
+// Returns the label set AND the calendar's real id. The id is not a
+// convenience: `calendars.patch` rejects the `primary` alias (see
+// `patchCalendarLabelProperties`), so the writer needs a resolved id and
+// this read is the only place to get one for free — `fields=id,...` adds no
+// subrequest, keeping the "+1 fetch per sync run" budget in `AGENTS.md`
+// ("Label reconciliation fetch budget") intact.
+// `calendarId` is `null` when Google answered without an `id` despite the
+// mask asking for one. It is deliberately NOT defaulted back to the caller's
+// argument: that argument is typically the `primary` alias, and quietly
+// returning it would route the writer straight into the 404 path below.
+// Read-only callers ignore this field; the writer must refuse to write.
 export async function getCalendarLabelProperties(
   accessToken: string,
   calendarId: string,
-): Promise<CalendarEventLabel[]> {
+): Promise<{ calendarId: string | null; eventLabels: CalendarEventLabel[] }> {
   const url = `${CALENDAR_BASE}/calendars/${encodeURIComponent(
     calendarId,
-  )}?fields=labelProperties`;
+  )}?fields=id,labelProperties`;
   const res = await fetch(url, {
     headers: { authorization: `Bearer ${accessToken}` },
   });
   if (!res.ok) await throwCalendarApiError(res, "calendars.get");
   const body = (await res.json()) as {
+    id?: string;
     labelProperties?: { eventLabels?: CalendarEventLabel[] };
   };
-  return body.labelProperties?.eventLabels ?? [];
+  return {
+    calendarId: body.id ?? null,
+    eventLabels: body.labelProperties?.eventLabels ?? [],
+  };
 }
 
+// `calendarId` MUST be a resolved calendar id, never the `primary` alias.
+// Measured 2026-07-28 against the live API with a `calendar`-scoped token:
+// `PATCH /calendars/primary` returns **404 notFound** for ANY body (an empty
+// `{}` no-op 404s too), while the same request against the resolved id
+// returns 200. `GET /calendars/primary` accepts the alias, so a
+// read-modify-write that reuses the caller's id silently succeeds on read
+// and dies on write. Google's discovery doc documents `primary` as valid for
+// this method's `calendarId` param, so this is undocumented API behavior —
+// do not "simplify" the resolved id back to the alias on the strength of the
+// docs. Callers get the resolved id from `getCalendarLabelProperties`.
 export async function patchCalendarLabelProperties(
   accessToken: string,
   calendarId: string,

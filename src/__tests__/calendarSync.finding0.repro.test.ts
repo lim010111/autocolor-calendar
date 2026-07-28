@@ -138,7 +138,7 @@ function mockFetchQueue(responses: Response[]) {
   globalThis.fetch = vi.fn(async (input: RequestInfo | URL) => {
     const url = typeof input === "string" ? input : input.toString();
     // ADR-0006 label reconcile probe — served out-of-band (empty label set).
-    if (url.includes("fields=labelProperties")) {
+    if (url.includes("labelProperties")) {
       return new Response("{}", { status: 200 });
     }
     const r = queue.shift();

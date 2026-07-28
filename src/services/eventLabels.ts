@@ -21,12 +21,24 @@ import {
 // - **200 cap**: Google caps a calendar at 200 event labels; we check
 //   before writing so the user gets a typed error instead of an opaque 400.
 //
-// The label id is minted client-side (`crypto.randomUUID()`): the entry
-// shape documents `id` as a field of the entry and full-replace has no
-// server-side "new entry" marker. Flagged for live validation (#02 AC 1's
-// 육안 확인) — if Google turns out to reject client-minted ids, mint via
-// write-then-re-read diff instead (callers keep the same signature).
+// The label id is minted client-side (`crypto.randomUUID()`). **Validated
+// live 2026-07-28**: an append carrying a client-minted UUID returned 200 and
+// the entry read back verbatim, and the discovery doc is explicit — `id` is
+// "Optional when inserting a new label… If provided, the ID must be unique
+// within the calendar and follow UUID format." The write-then-re-read-diff
+// fallback this comment used to hedge on is therefore not needed.
 export const CALENDAR_EVENT_LABEL_CAP = 200;
+
+// `calendars.get` returned 200 but no `id`, so there is no safe target for
+// the full-replace write (see `appendEventLabel`). Distinct from
+// `EventLabelCapError` — that one is a user-facing 422, this one is a bug
+// signal and deliberately has no typed HTTP mapping.
+export class UnresolvedCalendarIdError extends Error {
+  constructor(public readonly requestedCalendarId: string) {
+    super(`calendars.get returned no id for "${requestedCalendarId}"`);
+    this.name = "UnresolvedCalendarIdError";
+  }
+}
 
 export class EventLabelCapError extends Error {
   constructor(public readonly count: number) {
@@ -41,7 +53,18 @@ export async function appendEventLabel(
   input: { name: string; backgroundColor: string },
 ): Promise<{ id: string }> {
   // Re-read immediately before write — see the append-only contract above.
-  const existing = await getCalendarLabelProperties(accessToken, calendarId);
+  // The read also resolves the calendar id: `calendars.patch` 404s on the
+  // `primary` alias that callers pass, so the write below MUST use the
+  // resolved id (see `patchCalendarLabelProperties`'s header).
+  const { calendarId: resolvedCalendarId, eventLabels: existing } =
+    await getCalendarLabelProperties(accessToken, calendarId);
+  if (resolvedCalendarId === null) {
+    // Google answered the read but omitted `id`. Falling back to the caller's
+    // argument would PATCH the `primary` alias — the exact 404 this resolution
+    // exists to avoid, resurfacing as a misleading 502. Fail loudly instead:
+    // an unresolvable id is our bug or an API shape change, not a user error.
+    throw new UnresolvedCalendarIdError(calendarId);
+  }
   if (existing.length >= CALENDAR_EVENT_LABEL_CAP) {
     throw new EventLabelCapError(existing.length);
   }
@@ -50,7 +73,7 @@ export async function appendEventLabel(
     backgroundColor: input.backgroundColor,
     name: input.name,
   };
-  await patchCalendarLabelProperties(accessToken, calendarId, [
+  await patchCalendarLabelProperties(accessToken, resolvedCalendarId, [
     ...existing,
     entry,
   ]);
