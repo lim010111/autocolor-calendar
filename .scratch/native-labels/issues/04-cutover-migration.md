@@ -32,8 +32,10 @@ ADR-0006 Decision 4 (깨끗한 컷오버, 이중 모드 없음).
       멱등 *(scripts/cutover-labels{,-core}.ts + 테스트 15개 — pre-OAuth
       선작업 완료, 2026-07-18)*
 - [ ] 기존 카테고리 전부 `labelId` 보유 + Google 색 창에 칩 노출 (육안)
-      *(컷오버 창 — 사람)*
-- [ ] full resync 후 표본 이벤트의 마커 v2 재각인 확인 *(컷오버 창)*
+      *(기계 검증 절반 완료 2026-07-28 — 규칙 3/3 이 named chip 으로 실재.
+      남은 것은 육안 확인뿐 — 사람)*
+- [ ] full resync 후 표본 이벤트의 마커 v2 재각인 확인
+      *(**v1 마커 이벤트 121건 잔존 실측** — no-op 아님, 실행 필요)*
 - [ ] colorId 레거시(CHECK·Zod·regex·v1 판정) 제거, `pnpm test`/`typecheck`
       통과 *(컷오버 창 — PR-B)*
 - [ ] §5.4 문서 v2 개정 + `python3 scripts/check-context-paths.py` 통과
@@ -54,6 +56,54 @@ ADR-0006 Decision 4 (깨끗한 컷오버, 이중 모드 없음).
 - sync-reliability #01 또는 #02 — 해소 (#02 예산 가드 머지, 트랙 24/24)
 
 ## Comments
+
+### 2026-07-28 — 컷오버 dry-run + 읽기 프로브 실측 (PR #162 이후 코드)
+
+**① 이행 스크립트는 no-op 이다 — `--execute` 는 불필요.**
+
+```
+pnpm tsx scripts/cutover-labels.ts --env .prod.vars
+→ DRY-RUN (.prod.vars) — users with pending rules: 0
+  ✓ cutover clean
+```
+
+prod 규칙 3개(`개발` / `운동` / `식사`)가 전부 이미 `label_id` 링크 상태라
+`label_id IS NULL AND label_deleted_at IS NULL` 대상이 0건이다. **`--execute`
+를 돌려도 마이그레이션할 행이 없으므로 실행하지 않았다** — 대칭성을 위해
+쓰기 명령을 돌리는 것은 근거 없는 prod 변경이다. 스크립트 자체의 검증은
+AC 1(테스트 15개)과 이 dry-run 으로 충분하다.
+
+**② AC 2 의 기계 검증 절반 통과.** `calendars.get labelProperties` 실측:
+
+| 규칙 | labelId | 칩 |
+|---|---|---|
+| 개발 | `c868634d-…` | name="개발" `#3f51b5` |
+| 운동 | `31ca3596-…` | name="운동" `#c0ca33` |
+| 식사 | `607e362d-…` | name="식사" `#795548` |
+
+3/3 이 **named chip** 으로 실재. 남은 것은 Google 색 창 육안 확인(사람).
+
+**③ AC 3 는 no-op 이 아니다 — v1 마커 이벤트 121건이 남아 있다.**
+
+```
+autocolor_v=1: 121 events   (label + colorId 동반 — v1 소유권 판정 대상)
+autocolor_v=2:  35 events   (colorId=(absent) — ADR-0006 의도대로)
+```
+
+세션 시작 시 세운 "v1 이 0이면 full resync 는 no-op" 가설은 **반증**됐다.
+121건은 여전히 **colorId 동등성**으로 소유권이 판정되는 상태이고
+(`src/AGENTS.md` §5.4 `autocolor_color`), full resync 로 v2 재각인이 끝나야
+PR-B 의 v1 읽기 경로 제거가 안전해진다. **즉 AC 3 는 PR-B(AC 4·5)의 실질
+선행조건**이며, full resync 는 prod 쓰기이므로 사람 승인이 필요하다.
+
+**④ `#d81b60` 는 이 프로브로 해소되지 않았다.** 슬롯 덤프 결과 **26개**(고유
+색 22 + 앱이 만든 named 라벨 4개가 기존 hex 재사용). 목록에 `#d81b60` 은
+**없다**. 24색 가정 자체가 부정확했던 것으로 보이며, nl#03 의
+`scripts/gen-swatch-assets.py` TODO 는 **여전히 미해결**이다. 가장 가까운
+값은 `#ad1457`(자홍) 이지만 동일 색이라는 근거가 없어 추측하지 않는다.
+
+프로브 원본: `.scratch/native-labels/spike/cutover-verify.ts` (읽기 전용 —
+`calendars.get` + `events.list`, 쓰기 0).
 
 ### 2026-07-18 grill 결론 (pre-OAuth 선작업 세션, 코드베이스 실측 기반)
 
