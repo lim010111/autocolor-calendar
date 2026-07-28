@@ -332,10 +332,15 @@ export type CalendarEventLabel = {
 // this read is the only place to get one for free — `fields=id,...` adds no
 // subrequest, keeping the "+1 fetch per sync run" budget in `AGENTS.md`
 // ("Label reconciliation fetch budget") intact.
+// `calendarId` is `null` when Google answered without an `id` despite the
+// mask asking for one. It is deliberately NOT defaulted back to the caller's
+// argument: that argument is typically the `primary` alias, and quietly
+// returning it would route the writer straight into the 404 path below.
+// Read-only callers ignore this field; the writer must refuse to write.
 export async function getCalendarLabelProperties(
   accessToken: string,
   calendarId: string,
-): Promise<{ calendarId: string; eventLabels: CalendarEventLabel[] }> {
+): Promise<{ calendarId: string | null; eventLabels: CalendarEventLabel[] }> {
   const url = `${CALENDAR_BASE}/calendars/${encodeURIComponent(
     calendarId,
   )}?fields=id,labelProperties`;
@@ -348,7 +353,7 @@ export async function getCalendarLabelProperties(
     labelProperties?: { eventLabels?: CalendarEventLabel[] };
   };
   return {
-    calendarId: body.id ?? calendarId,
+    calendarId: body.id ?? null,
     eventLabels: body.labelProperties?.eventLabels ?? [],
   };
 }

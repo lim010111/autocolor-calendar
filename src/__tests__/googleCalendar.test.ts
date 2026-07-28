@@ -371,9 +371,11 @@ describe("googleCalendar — labelProperties primitives (ADR-0006)", () => {
     expect(calendarId).toBe("owner@example.com");
   });
 
-  it("getCalendarLabelProperties falls back to the requested id when Google omits `id`", async () => {
+  // Must NOT fall back to the requested id: that is the `primary` alias, and
+  // handing it to the writer re-opens the 404 path above.
+  it("getCalendarLabelProperties reports null when Google omits `id`", async () => {
     mockFetch(async () => new Response("{}", { status: 200 }));
-    expect((await getCalendarLabelProperties(AT, CAL)).calendarId).toBe(CAL);
+    expect((await getCalendarLabelProperties(AT, CAL)).calendarId).toBeNull();
   });
 
   it("patchCalendarLabelProperties PATCHes the full eventLabels array", async () => {

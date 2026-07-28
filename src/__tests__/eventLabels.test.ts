@@ -22,6 +22,7 @@ import {
   appendEventLabel,
   CALENDAR_EVENT_LABEL_CAP,
   EventLabelCapError,
+  UnresolvedCalendarIdError,
 } from "../services/eventLabels";
 
 const AT = "access-token";
@@ -89,6 +90,15 @@ describe("appendEventLabel — append-only labelProperties writer (ADR-0006)", (
     });
     expect(mockedPatch.mock.calls[0]![1]).toBe(RESOLVED_CAL);
     expect(mockedPatch.mock.calls[0]![1]).not.toBe("primary");
+  });
+
+  it("refuses to write when the read could not resolve a calendar id", async () => {
+    mockedGet.mockResolvedValueOnce({ calendarId: null, eventLabels: [] });
+    await expect(
+      appendEventLabel(AT, "primary", { name: "개발", backgroundColor: "#039be5" }),
+    ).rejects.toBeInstanceOf(UnresolvedCalendarIdError);
+    // The whole point: no blind full-replace against the known-404 alias.
+    expect(mockedPatch).not.toHaveBeenCalled();
   });
 
   it("returns a uuid-shaped id for the new entry", async () => {

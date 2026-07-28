@@ -29,6 +29,17 @@ import {
 // fallback this comment used to hedge on is therefore not needed.
 export const CALENDAR_EVENT_LABEL_CAP = 200;
 
+// `calendars.get` returned 200 but no `id`, so there is no safe target for
+// the full-replace write (see `appendEventLabel`). Distinct from
+// `EventLabelCapError` — that one is a user-facing 422, this one is a bug
+// signal and deliberately has no typed HTTP mapping.
+export class UnresolvedCalendarIdError extends Error {
+  constructor(public readonly requestedCalendarId: string) {
+    super(`calendars.get returned no id for "${requestedCalendarId}"`);
+    this.name = "UnresolvedCalendarIdError";
+  }
+}
+
 export class EventLabelCapError extends Error {
   constructor(public readonly count: number) {
     super(`calendar event label cap reached (${count}/${CALENDAR_EVENT_LABEL_CAP})`);
@@ -47,6 +58,13 @@ export async function appendEventLabel(
   // resolved id (see `patchCalendarLabelProperties`'s header).
   const { calendarId: resolvedCalendarId, eventLabels: existing } =
     await getCalendarLabelProperties(accessToken, calendarId);
+  if (resolvedCalendarId === null) {
+    // Google answered the read but omitted `id`. Falling back to the caller's
+    // argument would PATCH the `primary` alias — the exact 404 this resolution
+    // exists to avoid, resurfacing as a misleading 502. Fail loudly instead:
+    // an unresolvable id is our bug or an API shape change, not a user error.
+    throw new UnresolvedCalendarIdError(calendarId);
+  }
   if (existing.length >= CALENDAR_EVENT_LABEL_CAP) {
     throw new EventLabelCapError(existing.length);
   }
