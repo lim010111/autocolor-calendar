@@ -6,73 +6,68 @@ outside the narrative block; mechanical sections are regenerated every run._
 <!-- narrative:start -->
 ## Current focus
 
-embedding-classifier (ADR-0004) — Stage 1 = 임베딩 kNN. **#01~#03 done**,
-잠정 gemma(768)·`T=(0.30,0.55,0.10)` = ADR-0005 provisional. **#04 rule
-editor 5/6** — 남은 건 4로케일 스크린샷(사람). **#05** 잔여 = eval-gate
-(키 재발급) + OAuth 4 AC(**게이트 해제, 착수 가능**). #06 은 #05 대기.
+**배포 창 종료 (2026-07-28).** Workers Paid 전환 → Worker prod 배포
+(`8bcac9d7`, `SYNC_SUBREQUEST_BUDGET=900`, 큐 `max_batch_size=1`) → GAS
+설치본 `AKfycbxfHV5…` **@57** co-deploy. 라이브 검증 진행 중.
 
-**card-latency — 전 트랙 done (24/24), 라이브 검증 완료.**
+**라벨 생성이 라이브에서 전면 실패했고 수정됨 (PR #162).**
+`calendars.patch` 가 `primary` 별칭을 **404 로 거부**(본문 무관, 빈 `{}` 도
+404 / resolved id 는 200 / `calendars.get` 은 별칭 허용). read-modify-write
+의 read 만 성공하고 write 에서 죽었다. **discovery 문서와 실동작이 다르므로
+resolved id 를 별칭으로 되돌리지 말 것**(코드 주석에 실측 고정). 07-15
+프로브가 이벤트 PATCH 만 봤고 `Calendars.patch` 는 미검증 표면이었던 것이
+놓친 지점 — 같은 결함이 `scripts/cutover-labels.ts` 에도 있었다.
 
-**sync-reliability — 전 트랙 done (24/24).** Workers Free 50캡 대응 완결
-(예산·syncToken·rollback 3중 가드). 라이브 반영은 배포와 함께.
+**native-labels — nl#02 AC1 · nl#03 AC2 실측 완료.** 분류 적용 6건 전부
+`eventLabelId` + 마커 v2 각인(colorId absent), §5.4 수동 보호 실증(사용자가
+직접 고른 라벨 이벤트는 마커 없음·미변경), 클라이언트 mint UUID 수용 확인.
 
-**native-labels (ADR-0006):** Google Calendar 색 체계가 라벨 기반으로
-재편(07-07 API GA, colorId 는 legacy 브리지). 분류 출력을 네이티브 라벨로
-전환, **정본 = Google `labelProperties`**, 깨끗한 컷오버. 새 OAuth 스코프
-불필요. 상세: `.scratch/native-labels/PRD.md` + ADR-0006. **#04 이행
-스크립트 머지 (PR #156)** — 컷오버 창 실행만 남음.
+**embedding-classifier #07 신설 — LLM leg 과잉 배정.** 라이브 오분류 4건은
+전부 **Stage 2 히트**로 확인되어 "임계값이 낮다" 가설은 반증. hit 56 중 52
+가 단일 카테고리로 쏠리고 **동일 프롬프트에 정반대 판정**(비결정성) 관측.
+`callOpenAi` 에 `temperature`/`seed` 미지정 확인.
 
-**OAuth 검수 통과 (2026-07-24)** — `script.external_request`·`calendar`·
-`calendar.events` 3종 승인(project `autocolor-dev`). **라이브 표면 동결
-해제.** 신규 게이트: 스코프 추가 또는 consent screen *설정* 변경 시 재검수
-필요(개인정보처리방침 본문 갱신은 URL 동일하면 해당 없음).
+**card-latency / sync-reliability — 전 트랙 done.**
 
-**출시 로드맵:** ① 지금 = **배포+검증 창** — Workers Paid → Worker/GAS
-co-deploy → 라이브 육안·4로케일 → #04 컷오버 → PR-B 레거시 제거. ② #05
-OAuth AC(동의·법무·UI) → #06. ③ Marketplace 출시
-(`docs/marketplace-readiness.md`).
+**OAuth 검수 통과 (07-24)** — 라이브 표면 동결 해제. 재검수 트리거는 스코프
+추가·consent screen *설정* 변경뿐.
 
-운영 posture: main 에 local merge-gate advisory 활성(보고만, 차단 안 함).
+**출시 로드맵:** ① 라이브 검증 마무리(4로케일) → #04 컷오버 → PR-B 레거시
+제거. ② #07 + #05 OAuth AC → #06. ③ Marketplace 출시.
+
+운영 posture: main 에 local merge-gate advisory(보고만, 차단 안 함).
 
 ## Start here next session
 
-**main 618 tests green.** 병목 = **배포 → 라이브 검증 → 컷오버**.
+**main 622 tests green.** 병목 = **분류 품질(#07)** + **4로케일 스크린샷**.
 
-- **Console 실측 완료 (07-28)**: Verification Center = branding verified +
-  data access verified. sensitive 3종 전부 "This scope is verified",
-  **restricted scopes = 0행** → `calendar` 가 sensitive 로 분류되어 **CASA
-  트리거 안 됨**. Audience = In production, 4/100 cap 이나 승인 스코프만
-  요청하므로 **cap 미적용**. 남은 외부 게이트 없음.
-- **사람 — 배포 창 (게이트 해제)**: Workers Free→Paid 전환 +
-  `SYNC_SUBREQUEST_BUDGET`~900 → Worker 배포 → **GAS labelId 버전
-  co-deploy 필수**(라이브 GAS 는 colorId 전송 → manual override 400).
-  GAS 는 `AKfycbxfHV5…` deployment 편집(URL 동결).
-- **사람 — 라이브 검증 (배포 후)**: nl#02 AC1(라벨 쓰기 육안 + 클라이언트
-  mint id), nl#03 AC2(생성 라벨이 Google 색 창 칩) + 4로케일 스크린샷 +
-  `#d81b60` hex 실측, ec#04 4로케일 스크린샷.
-- **사람 — native-labels #04 컷오버**: `pnpm tsx scripts/cutover-labels.ts
-  --env .prod.vars` dry-run → `--execute` → full resync → AC 2·3 육안 →
-  PR-B(colorId 레거시 제거, AC 4·5).
-- **사람 — embedding-classifier #05 eval-gate**: OPENAI_API_KEY 재발급 →
-  eval-gate 3-gate (prompt v6, 절차: #05 Comments).
-- **에이전트 — #05 OAuth AC 4건 (해제됨)**: 1회 동의 모델 + 사이드바
-  Instant Feedback UI 표면화 + 개인정보처리방침 durable-storage 명시
-  (`legal-reviewer` 게이트) + 동의 모델 결정 기록 → #06 unblock.
+- **사람 — 4로케일 스크린샷 4장**: 애드온 패널 en/ko/zh-CN/zh-TW.
+  nl#03 과 ec#04 의 마지막 AC 를 동시에 닫는다. `#d81b60` hex 실측 병행.
+- **사람 — OPENAI_API_KEY 재발급**: #05 eval-gate 와 **#07 이 같은 블로커를
+  공유**. 프롬프트 수정은 §5.3 상 eval 통과가 전제라 키 없이 #07 AC 3·4 를
+  못 닫는다.
+- **에이전트 — #07 1차**: 모델이 `temperature`/`seed` 를 받는지 1회 호출로
+  실측(gpt-5 계열 nano 는 파라미터 거부 전례 — 단정 금지). 거부되면
+  프롬프트(none 편향 강화)로 방향 전환.
+- **에이전트 — #04 컷오버 dry-run**: 현재 규칙 3개 전부 labelId 링크라
+  no-op 예상. dry-run 무해하므로 먼저 확인 후 `--execute`.
+- **에이전트 — #05 OAuth AC 4건**: 1회 동의 모델 + Instant Feedback UI
+  표면화 + 개인정보처리방침 durable-storage 명시(`legal-reviewer`) + 결정 기록.
 - **병행 — 로컬 정리**: prework 워크트리 1개 제거 → 메인 lint green.
-- **병행 — architecture-deepening 후보**: grill 선행.
 
 ## Open decisions
 
-- **Workers Free → Paid($5/월) — 트리거 발화(OAuth 통과).** 컷오버 직전
-  전환, `SYNC_SUBREQUEST_BUDGET` ~900 상향 + sync-reliability #01 AC 2
-  검증 절차 수행. 상세: sync-reliability #01 Comments.
-- **#04 keyword optional ↔ backend `keywords.min(1)`** — 편집기는 keyword 를
-  0..N·선택으로 노출하나 `POST /api/categories` 는 `keywords.min(1)` 요구.
-  #04 는 `keywords=[name]` 폴백으로 우회. Zod `.min(1)` 완화 — 미결.
-- 벡터 차원 **동결** 미확정 — 잠정 gemma(768), *동결*은 멀티 persona/다국어
-  골드셋까지 연기(ADR-0005 §8). 1024 로 뒤집히면 스키마 마이그레이션.
-- 임계값 `T=(0.30,0.55,0.10)` = **provisional** — 승자 `sts` 프리픽스로
-  Workers-AI parity 재측정 후 해제(ADR-0005 §6). en/zh 는 미검증.
+- **404 → 502 매핑** — `not_found` 가 `upstream_unavailable` 로 나가
+  "업스트림 장애" 라는 잘못된 신호를 준다. PR #162 진단을 늦춘 실제 원인.
+  라우트 계약 변경이라 별도 판단 — 미결.
+- **호스트 탭 캐시** — 새 규칙 직후 미새로고침 탭은 자동 채색을 못 그린다
+  (백엔드는 정상, API 실측으로 확정). 애드온에 호스트 갱신 API 가 **없음을
+  문서로 확인**. 토스트 안내로 대응 — 추가 대응 여부 미결.
+- **#04 keyword optional ↔ backend `keywords.min(1)`** — `keywords=[name]`
+  폴백으로 우회 중이나 **이 폴백이 #07 의 씨앗 빈약을 키운다**. Zod 완화 미결.
+- 벡터 차원 **동결** 미확정 — 잠정 gemma(768). 1024 로 뒤집히면 마이그레이션.
+- 임계값 `T=(0.30,0.55,0.10)` = provisional. 단 #07 로 **Stage 1 이 보수적**
+  (184건 중 128건이 LLM 까지 하강)임이 드러나 하향은 후보 아님.
 - un-grilled architecture-deepening 후보: ColorOwnershipMarker,
   ResultHandler, ObservabilityRecorder, route-test-harness, GAS
   `fetchBackendEndpoint`. Claim primitive 은 보류 확정.
