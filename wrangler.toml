@@ -122,7 +122,19 @@ queue = "autocolor-sync-prod"
 
 [[env.prod.queues.consumers]]
 queue = "autocolor-sync-prod"
-max_batch_size = 10
+# 1 (was 10) — REQUIRED by the SYNC_SUBREQUEST_BUDGET=900 above. The #02
+# budget guard calls itself "per-invocation" but `runPagedList` allocates
+# `fetches = { used: 0 }` per JOB, while `handleSyncBatch` runs every message
+# of a batch inside ONE Worker invocation. With batch_size=10 a burst of two
+# large jobs would attempt 900+900 counted subrequests against Paid's
+# 1000-per-invocation cap and resurrect the exact "Too many subrequests"
+# failure the guard exists to prevent. Pinning one job per invocation makes
+# per-job == per-invocation, restoring the guard's stated invariant.
+# Throughput is unaffected: handleSyncBatch is strictly sequential, so
+# batching never bought parallelism — only fewer invocations, which is the
+# cheap axis on Paid. The alternative (thread one shared counter through the
+# batch) is the more thorough fix and is tracked in sync-reliability #01.
+max_batch_size = 1
 # Mirrors env.dev — see comment there for the latency/cost trade-off.
 max_batch_timeout = 2
 max_concurrency = 5
