@@ -39,8 +39,31 @@
 
 | 자원 | 식별자 | 비고 |
 |---|---|---|
-| Web app `/exec` URL | `https://script.google.com/macros/s/AKfycbzmpZKgeaXn4QDsUdYpXsKl8IiJSvUWpAzk8j2wiHMSNNAghyZ-8BfNw73HMr5GxUsYlA/exec` | **URL must stay stable** — 재배포는 "Manage deployments → Edit existing → New Version → Deploy" 로만. 새 deployment 생성 금지 ([`src/CLAUDE.md`](../src/CLAUDE.md) "GAS deployment URL must stay stable") |
 | Script ID | `13puaHq87p_yvDhDoVk9JDW6RHUxvHyXwIiuSKkY8wbdCkXjTIlkKBrbc` | `gas/.clasp.json` |
+
+### Deployment 3종 — 역할이 다르다 (2026-07-28 실측 정정)
+
+하나의 스크립트에 deployment 가 셋이고 **각각 다른 소비자**를 가진다. 예전
+표기(“`/exec` URL” 한 줄 + “`AKfycbxKZ…` 는 무관”)는 **틀렸다** — dev 웹앱
+URL 을 유일한 `/exec` 인 것처럼 적어 두어 prod 리다이렉트 대상을 가렸다.
+정본은 `.dev.vars` / `.prod.vars` 의 `GAS_REDIRECT_URL` 이다.
+
+| Deployment ID | 역할 | 정본 | 버전 |
+|---|---|---|---|
+| `AKfycbxfHV5JvpRF…` | **설치본 Add-on** — 사용자가 Calendar 에서 실행하는 코드 | 2026-07-07 v49 잔류 사고로 확인 | @56 (2026-07-28) |
+| `AKfycbxKZDXL9_vy…` | **prod 웹앱** — Worker 가 OAuth 결과를 되던지는 `/exec` | `.prod.vars` `GAS_REDIRECT_URL` | @54 |
+| `AKfycbzmpZKgeaXn…` | **dev 웹앱** — dev Worker 의 `/exec` | `.dev.vars` `GAS_REDIRECT_URL` | — |
+
+- **URL must stay stable** — 세 개 모두. 재배포는 `clasp deploy -i <위 ID> -V <n>`
+  (또는 "Manage deployments → Edit existing → New Version → Deploy") 로만.
+  **새 deployment 생성 금지** ([`src/CLAUDE.md`](../src/CLAUDE.md) "GAS deployment URL must stay stable").
+- **코드 변경 시 무엇을 올려야 하나**: 애드온 UI(카드·i18n·액션 핸들러)만 바뀌면
+  설치본 하나로 충분하다. `doGet` / `auth.js` / `authCallback.html` /
+  `authError.html` / `config.js` 처럼 **OAuth 콜백 경로**가 바뀌면 prod 웹앱도
+  같이 올려야 한다 — 안 그러면 애드온과 콜백이 서로 다른 버전을 돈다.
+- 2026-07-28 배포 시점의 드리프트: 설치본 @56 vs prod 웹앱 @54. 콜백 경로
+  파일은 `e5cd859`(PR #71) 이후 무변경이라 **기능적 문제 없음**. 정렬하고
+  싶으면 `clasp deploy -i AKfycbxKZDXL9_vy… -V 56` 한 줄.
 
 ## 자격증명 회전 이력
 
