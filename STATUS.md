@@ -53,7 +53,6 @@ resolved id 를 별칭으로 되돌리지 말 것**(코드 주석에 실측 고�
   no-op 예상. dry-run 무해하므로 먼저 확인 후 `--execute`.
 - **에이전트 — #05 OAuth AC 4건**: 1회 동의 모델 + Instant Feedback UI
   표면화 + 개인정보처리방침 durable-storage 명시(`legal-reviewer`) + 결정 기록.
-- **병행 — 로컬 정리**: prework 워크트리 1개 제거 → 메인 lint green.
 
 ## Open decisions
 
@@ -119,7 +118,7 @@ resolved id 를 별칭으로 되돌리지 말 것**(코드 주석에 실측 고�
 | # | Issue | Triage | Criteria | State | Blocked by |
 |---|-------|--------|----------|-------|-----------|
 | 01 | Label aware manual skip | `done` | 7/7 | ✅ done | — |
-| 02 | Label write migration | `ready-for-human` | 7/7 | ✅ done | — |
+| 02 | Label write migration | `done` | 7/7 | ✅ done | — |
 | 03 | Editor a2 rewire | `ready-for-human` | 5/6 | 🔵 in-progress | #02 |
 | 04 | Cutover migration | `ready-for-human` | 1/5 | 🔵 in-progress | #02, #03 |
 

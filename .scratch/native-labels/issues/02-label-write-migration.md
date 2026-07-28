@@ -1,4 +1,4 @@
-Status: ready-for-human
+Status: done
 GitHub: #147
 
 ## What to build
