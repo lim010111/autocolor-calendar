@@ -105,7 +105,7 @@ OAuth AC(동의·법무·UI) → #06. ③ Marketplace 출시
 
 ## embedding-classifier
 
-`██████████████████░░░░` 64/78 acceptance criteria met (82%)
+`█████████████████░░░░░` 64/84 acceptance criteria met (76%)
 
 | # | Issue | Triage | Criteria | State | Blocked by |
 |---|-------|--------|----------|-------|-----------|
@@ -115,6 +115,7 @@ OAuth AC(동의·법무·UI) → #06. ③ Marketplace 출시
 | 04 | Rule editor redesign | `ready-for-human` | 5/6 | 🔵 in-progress | #03 |
 | 05 | Examples seeds instant feedback | `ready-for-human` | 14/19 | 🔵 in-progress | #03 |
 | 06 | History based rule suggestions | `ready-for-agent` | 0/8 | ⛔ blocked | #05 |
+| 07 | Llm leg over assignment | `needs-triage` | 0/6 | ⬜ todo | — |
 
 ## native-labels
 
