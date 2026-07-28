@@ -94,9 +94,11 @@ GOOGLE_OAUTH_REDIRECT_URI = "https://autocolorcal.app/oauth/google/callback"
 # Cost guardrail (§5/§6 후속) — see dev block above. Same default for the
 # initial Marketplace launch; bump (or split per-env) once we have signal.
 LLM_GLOBAL_DAILY_LIMIT = "10000"
-# sync-reliability #02 — see dev block above. Free-plan default; bump toward
-# ~900 if #01 moves the account to Workers Paid.
-SYNC_SUBREQUEST_BUDGET = "40"
+# sync-reliability #02 — see dev block above. Workers Paid 전환(#01 트리거 =
+# OAuth 검수 통과 2026-07-24)에 맞춘 상향. Paid 는 invocation 당 1000
+# subrequest 이므로 900 이 토큰 갱신 / DB / 큐 트래픽 몫을 남긴다. dev 는
+# Free 유지이므로 40 그대로 — 두 값이 갈라진 것은 의도.
+SYNC_SUBREQUEST_BUDGET = "900"
 # ↑ G1 verified 도메인. GCP prod Web Client의 Authorized redirect URIs 등록은
 # G2 runbook Step 4에서 client 생성 시 같이 처리된다.
 # WEBHOOK_BASE_URL은 G2 runbook Step 14에서 시크릿으로 주입한다
