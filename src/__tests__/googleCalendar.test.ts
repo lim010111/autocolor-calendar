@@ -346,15 +346,34 @@ describe("googleCalendar — labelProperties primitives (ADR-0006)", () => {
         { status: 200 },
       );
     });
-    const labels = await getCalendarLabelProperties(AT, CAL);
-    expect(seen[0]).toContain("/calendars/primary?fields=labelProperties");
-    expect(labels).toHaveLength(2);
-    expect(labels[0]).toEqual({ id: "uuid-1", backgroundColor: "#ad1457", name: "운동" });
+    const { eventLabels } = await getCalendarLabelProperties(AT, CAL);
+    expect(seen[0]).toContain("/calendars/primary?fields=id,labelProperties");
+    expect(eventLabels).toHaveLength(2);
+    expect(eventLabels[0]).toEqual({ id: "uuid-1", backgroundColor: "#ad1457", name: "운동" });
   });
 
   it("getCalendarLabelProperties returns [] when the calendar has no labelProperties", async () => {
     mockFetch(async () => new Response("{}", { status: 200 }));
-    expect(await getCalendarLabelProperties(AT, CAL)).toEqual([]);
+    expect((await getCalendarLabelProperties(AT, CAL)).eventLabels).toEqual([]);
+  });
+
+  // Regression: `calendars.patch` 404s on the `primary` alias (measured
+  // 2026-07-28), so the reader must surface the real id for the writer.
+  it("getCalendarLabelProperties resolves the `primary` alias to the real calendar id", async () => {
+    mockFetch(
+      async () =>
+        new Response(
+          JSON.stringify({ id: "owner@example.com", labelProperties: { eventLabels: [] } }),
+          { status: 200 },
+        ),
+    );
+    const { calendarId } = await getCalendarLabelProperties(AT, "primary");
+    expect(calendarId).toBe("owner@example.com");
+  });
+
+  it("getCalendarLabelProperties falls back to the requested id when Google omits `id`", async () => {
+    mockFetch(async () => new Response("{}", { status: 200 }));
+    expect((await getCalendarLabelProperties(AT, CAL)).calendarId).toBe(CAL);
   });
 
   it("patchCalendarLabelProperties PATCHes the full eventLabels array", async () => {

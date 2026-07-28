@@ -127,10 +127,10 @@ function mockFetchQueue(responses: Response[]) {
   globalThis.fetch = vi.fn(async (input: RequestInfo | URL) => {
     const url = typeof input === "string" ? input : input.toString();
     // ADR-0006 — the default classifier's label reconcile issues one
-    // calendars.get?fields=labelProperties per run. Serve it out-of-band
+    // calendars.get?fields=id,labelProperties per run. Serve it out-of-band
     // (empty label set) so queue-based tests keep their token→list→…
     // ordering regardless of whether the test uses the default classifier.
-    if (url.includes("fields=labelProperties")) {
+    if (url.includes("labelProperties")) {
       return new Response("{}", { status: 200 });
     }
     const r = queue.shift();
@@ -225,7 +225,7 @@ describe("calendarSync.runIncrementalSync", () => {
           { status: 200 },
         );
       }
-      if (url.includes("fields=labelProperties")) {
+      if (url.includes("labelProperties")) {
         // ADR-0006 label reconcile probe — empty label set.
         return new Response("{}", { status: 200 });
       }
@@ -287,7 +287,7 @@ describe("calendarSync.runIncrementalSync", () => {
           { status: 200 },
         );
       }
-      if (url.includes("fields=labelProperties")) {
+      if (url.includes("labelProperties")) {
         // ADR-0006 label reconcile probe — empty label set.
         return new Response("{}", { status: 200 });
       }
@@ -344,7 +344,7 @@ describe("calendarSync.runIncrementalSync", () => {
           { status: 200 },
         );
       }
-      if (url.includes("fields=labelProperties")) {
+      if (url.includes("labelProperties")) {
         // ADR-0006 label reconcile probe — empty label set.
         return new Response("{}", { status: 200 });
       }
@@ -396,7 +396,7 @@ describe("calendarSync.runIncrementalSync", () => {
           { status: 200 },
         );
       }
-      if (url.includes("fields=labelProperties")) {
+      if (url.includes("labelProperties")) {
         // ADR-0006 label reconcile probe — empty label set.
         return new Response("{}", { status: 200 });
       }
@@ -1183,7 +1183,7 @@ describe("calendarSync.runFullResync chunking", () => {
           { status: 200 },
         );
       }
-      if (url.includes("fields=labelProperties")) {
+      if (url.includes("labelProperties")) {
         // ADR-0006 label reconcile probe — empty label set.
         return new Response("{}", { status: 200 });
       }
@@ -1256,7 +1256,7 @@ describe("calendarSync.runFullResync chunking", () => {
           { status: 200 },
         );
       }
-      if (url.includes("fields=labelProperties")) {
+      if (url.includes("labelProperties")) {
         // ADR-0006 label reconcile probe — empty label set.
         return new Response("{}", { status: 200 });
       }
@@ -1321,7 +1321,7 @@ describe("calendarSync — §6 Wave A observability hooks", () => {
           { status: 200 },
         );
       }
-      if (url.includes("fields=labelProperties")) {
+      if (url.includes("labelProperties")) {
         // ADR-0006 label reconcile probe — empty label set.
         return new Response("{}", { status: 200 });
       }
@@ -1455,7 +1455,7 @@ describe("calendarSync — #02 subrequest budget guard", () => {
       const url = typeof input === "string" ? input : input.toString();
       if (url.includes("oauth2.googleapis.com/token")) return tokenResponse();
       // ADR-0006 label reconcile — the run's fixed extra fetch, not events.list.
-      if (url.includes("fields=labelProperties")) {
+      if (url.includes("labelProperties")) {
         return new Response("{}", { status: 200 });
       }
       listUrls.push(url);
@@ -1651,7 +1651,7 @@ describe("calendarSync — #02 subrequest budget guard", () => {
       if (url.includes("oauth2.googleapis.com/token")) return tokenResponse();
       // ADR-0006 label reconcile — one calendars.get per invocation; counts
       // toward the simulated cap exactly like it does in prod.
-      if (url.includes("fields=labelProperties")) {
+      if (url.includes("labelProperties")) {
         return new Response("{}", { status: 200 });
       }
       if (url.includes("api.openai.com")) {

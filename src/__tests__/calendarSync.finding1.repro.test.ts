@@ -126,7 +126,7 @@ function mockFetchQueue(responses: Response[]) {
   const queue = [...responses];
   globalThis.fetch = vi.fn(async (input: RequestInfo | URL) => {
     const url = typeof input === "string" ? input : input.toString();
-    if (url.includes("fields=labelProperties")) {
+    if (url.includes("labelProperties")) {
       return new Response("{}", { status: 200 });
     }
     const r = queue.shift();

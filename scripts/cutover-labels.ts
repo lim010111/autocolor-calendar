@@ -163,7 +163,10 @@ async function main(): Promise<void> {
 
       let plan: CutoverPlan;
       try {
-        const labels = await getCalendarLabelProperties(accessToken, CALENDAR_ID);
+        const { eventLabels: labels } = await getCalendarLabelProperties(
+          accessToken,
+          CALENDAR_ID,
+        );
         const pending: PendingCategory[] = pendingRows.map((r) => ({
           id: r.id,
           name: r.name,
