@@ -44,3 +44,25 @@ None — can start immediately.
 - **2026-07-24: Paid 전환 트리거 발화.** OAuth 검수 승인 → native-labels #04
   컷오버 창 개방. 위 보류 결정의 트리거 조건이 충족됐으므로 컷오버 직전에
   Paid 전환 + `SYNC_SUBREQUEST_BUDGET` ~900 상향 + AC 2 검증 절차를 수행할 것.
+
+- **2026-07-28: 전환 절차의 결함 발견 (merge-gate finding, PR #161).** 위
+  "`SYNC_SUBREQUEST_BUDGET` 를 ~900 으로 올리면 자동 회복" 은 **그것만으로는
+  불충분**하다. #02 예산 가드는 주석상 "per-invocation" 이지만 실제로는
+  **per-job** 이다 — `runPagedList` 가 `fetches = { used: 0 }` 를 run 마다
+  새로 만드는데(`calendarSync.ts:449`), `handleSyncBatch` 는 배치의 모든
+  메시지를 **한 invocation 안에서** 순차 처리한다(`syncConsumer.ts:31`).
+  `max_batch_size = 10` 이므로 큰 job 두 개가 한 배치에 들어오면 900+900 을
+  시도해 Paid 의 1000/invocation 캡을 그대로 넘고, 가드가 막으려던 "Too many
+  subrequests" 가 되살아난다. colorRollback 도 같은 큐·같은 env 값을 쓰므로
+  sync 1 + rollback 1 조합에서도 동일.
+  - **성질**: 신규 결함이 아니라 **기존 잠복 결함**. Free/40 에서도 10×40=400
+    > 50 으로 이미 깨져 있었고, 실사용자 1명·캘린더 1개라 claim 코얼레싱이
+    대부분의 배치를 흡수해 드러나지 않았을 뿐이다. 멀티테넌트로 가면 터진다.
+  - **PR #161 의 조치**: prod sync consumer `max_batch_size` 10 → **1**.
+    `handleSyncBatch` 가 어차피 순차라 배치는 병렬성을 준 적이 없고 invocation
+    수만 아꼈다 — Paid 에서는 싼 축이다. per-job == per-invocation 이 되어
+    가드의 선언된 불변식이 복구된다.
+  - **남은 잔여 (별도 이슈 후보)**: ① dev 도 동일 잠복 결함(40×10 vs Free 50)
+    — 배포 대상이 아니라 이번 PR 범위 밖으로 뒀다. ② 근본 수정 = 배치 전체를
+    관통하는 **공유 카운터**를 스레딩해 남은 예산을 각 job 에 넘기기. 이게
+    되면 `max_batch_size` 를 다시 올려도 안전하다.
