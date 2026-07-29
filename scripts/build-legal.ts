@@ -143,7 +143,15 @@ function escapeHtml(s: string): string {
 
 async function buildPage(page: Page): Promise<void> {
   const md = await readFile(join(srcDir, page.src), "utf8");
-  const html = await marked.parse(md, { gfm: true, breaks: false });
+  // 내부 검토 주석(`<!-- LEGAL-REVIEW: … -->`)은 게시본에 싣지 않는다.
+  // marked 는 HTML 주석을 그대로 통과시키므로, 스트립하지 않으면 공개
+  // 페이지 소스에 "…의무 트리거를 차단", "OAuth 검수 차단 위험" 같은 내부
+  // 표현이 노출된다 — 법적 효력은 없으나 감독기관·리뷰어가 소스를 열었을 때
+  // 최악의 톤이다. 주석은 소스 md 에만 남는다.
+  const html = await marked.parse(md.replace(/<!--[\s\S]*?-->/g, ""), {
+    gfm: true,
+    breaks: false,
+  });
   const out = template(page.title, html, page.slug);
   const outPath = join(outDir, `${page.slug}.html`);
   await writeFile(outPath, out, "utf8");

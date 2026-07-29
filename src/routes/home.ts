@@ -124,7 +124,7 @@ const LANDING_HTML = `<!DOCTYPE html>
   <h2>Two-stage classifier · 두 단계 분류 엔진</h2>
   <p>
     <strong>Stage 1 (Rules)</strong> — Looks up your keywords against the
-    event title, description, and location. Data never leaves Calendar.
+    event title, description, and location. Titles are sent to our embedding model to compute rule similarity; nothing else leaves your Google account at this step.
     1단계는 사용자가 등록한 키워드를 일정의 제목·설명·위치에서 찾아 색상을
     적용합니다. 데이터는 캘린더 밖으로 나가지 않습니다.
   </p>
@@ -139,7 +139,7 @@ const LANDING_HTML = `<!DOCTYPE html>
 
   <h2>Privacy &amp; data handling · 개인정보 보호</h2>
   <ul>
-    <li>Event content (title, description, location) is never written to logs, dashboards, or admin views. 일정 본문은 로그·대시보드·관리자 화면 어디에도 기록되지 않습니다.</li>
+    <li>Event content is never written to logs. Redacted prompt text is retained only for misclassification diagnostics and is deleted with your account. 일정 본문은 로그에 기록되지 않으며, 마스킹된 프롬프트 기록만 오분류 진단 목적으로 보관되어 계정 삭제 시 함께 파기됩니다.</li>
     <li>Google-issued refresh tokens are stored encrypted with AES-256-GCM. Google 갱신 토큰은 AES-256-GCM으로 암호화해 저장됩니다.</li>
     <li>"Delete account" wipes all user data (rules, tokens, sync state, observability logs) in a single transaction, revokes the Google OAuth grant, and stops the Watch channel. "계정 삭제"는 모든 사용자 데이터를 단일 트랜잭션으로 삭제하며 Google OAuth 권한 회수와 Watch 채널 정리도 함께 실행됩니다.</li>
     <li>Only events whose color was applied by AutoColor are re-evaluated on the next sync. Events you re-color manually are excluded. AutoColor가 직접 색상을 입힌 일정만 다음 동기화에서 재평가합니다.</li>
