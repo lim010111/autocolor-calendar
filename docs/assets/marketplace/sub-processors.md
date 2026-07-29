@@ -57,8 +57,8 @@ Out of scope (intentionally):
 
 | Sub-processor | Role | Data envelope | Region |
 |---|---|---|---|
-| **Cloudflare** | Edge runtime + DB connection broker (Hyperdrive) + queue substrate (Queues + DLQ) + scheduled-trigger runner | Calendar event payloads in transit only; queue messages are job descriptors; DLQ rows are Google API error envelopes | See §3 `Processing region` row |
-| **Supabase** | Managed PostgreSQL — OAuth tokens (encrypted at rest), sync state, observability counters, sessions | Aggregate counters / sync state / categories / encrypted refresh tokens / error envelopes; no calendar event content | See §3 `Processing region` row |
+| **Cloudflare** | Edge runtime + DB connection broker (Hyperdrive) + queue substrate (Queues + DLQ) + scheduled-trigger runner + embedding inference (Workers AI) | Calendar event payloads in transit only; queue messages are job descriptors; DLQ rows are Google API error envelopes; Workers AI receives event titles and consented correction titles as embedding input (not retained) | See §3 `Processing region` row |
+| **Supabase** | Managed PostgreSQL — OAuth tokens (encrypted at rest), sync state, observability counters, sessions, rule seed vectors | Aggregate counters / sync state / categories / encrypted refresh tokens / error envelopes; plus two durable surfaces carrying **redacted** event-derived text: `llm_calls` diagnostic columns and, with per-user consent, `rule_seeds` correction examples | See §3 `Processing region` row |
 | **OpenAI** | Optional LLM fallback (`gpt-5.4-nano`) for the rule-miss path of the classifier | Three whitelisted fields only (`summary` / `description` / `location`) after PII redaction; not invoked when `OPENAI_API_KEY` is unset | See §3 `Processing region` row |
 
 ## §1 — Cloudflare
@@ -68,7 +68,8 @@ Out of scope (intentionally):
 Edge runtime hosting the Worker (`autocolor-{dev,prod}`); DB connection
 broker (Hyperdrive); queue substrate (Cloudflare Queues — one primary
 sync queue plus one dead-letter queue); scheduled-trigger runner
-(cron-driven watch-channel renewal).
+(cron-driven watch-channel renewal); embedding inference (Workers AI —
+`@cf/google/embeddinggemma-300m`).
 
 ### Data handled
 
@@ -77,6 +78,12 @@ during sync (rule evaluation, PII redaction, LLM dispatch); event
 content is never persisted to Cloudflare-owned storage. Queue message
 bodies are job descriptors only — no event content. DLQ rows carry
 Google API error envelopes only (`status` / `reason` / op name).
+
+**Workers AI** additionally receives text as embedding input: event
+titles on the sync read path, and — for users who granted the §2.5
+storage consent — the redacted correction titles written by Instant
+Feedback. Vectors are returned to the Worker and stored in Supabase;
+Cloudflare retains neither the input text nor the vectors.
 Hyperdrive proxies DB traffic — origin DB credentials live in
 Hyperdrive config and are not visible to the Worker. Operator log
 access (`wrangler tail`) returns redacted request metadata only;
@@ -121,7 +128,19 @@ enumeration lives at the canonical pointer
 
 `oauth_tokens.encrypted_refresh_token` is encrypted at rest with
 `TOKEN_ENCRYPTION_KEY`. Other tables hold aggregate counters / sync
-state / categories / error envelopes — no calendar event content. RLS
+state / categories / error envelopes. Two surfaces do hold **redacted**
+event-derived text and are called out explicitly rather than folded into
+"no event content":
+
+- `llm_calls.prompt_summary` / `raw_response` / `available_categories` /
+  `event_id` — the per-call LLM debugging columns. `prompt_summary` is
+  the user message actually sent to the model, i.e. post-redaction
+  `summary`/`description`/`location`.
+- `rule_seeds` rows with `seed_type='example'` — user-corrected titles,
+  redacted and stored only under the per-user consent described in
+  privacy policy §2.5, deleted in full when that consent is withdrawn.
+
+RLS
 policies exist on every table as defense-in-depth; the Worker connects
 through Hyperdrive as the `postgres` role (`BYPASSRLS`), so the
 application-layer `where(user_id)` predicate is the live tenant

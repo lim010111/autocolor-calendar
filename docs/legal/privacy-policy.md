@@ -38,8 +38,11 @@
 정보주체가 빠르게 확인할 수 있도록 본 정책의 핵심 사항을 요약한다.
 
 - **수집 항목**: Google 계정 식별자(`sub`, 이메일, 이름 일부), Google
-  Calendar 이벤트 메타데이터(in-transit 처리, 영구 미저장), 사용자가 입력한
-  카테고리/키워드/색상.
+  Calendar 이벤트 메타데이터(in-transit 처리, 원칙적으로 영구 미저장),
+  사용자가 입력한 카테고리/키워드/색상.
+- **선택 항목(별도 동의)**: 사용자가 사이드바에서 분류를 직접 정정하면서
+  저장에 동의한 경우에 한해, **PII 마스킹된 일정 제목만** durable 저장된다
+  (§2.5). 동의하지 않아도 자동 색상 분류는 그대로 동작한다.
 - **수집 목적**: Google Calendar 이벤트의 자동 색상 분류, 사용자 인증·세션
   관리, 서비스 안전성 확보 및 통계.
 - **법적 근거**:
@@ -47,6 +50,8 @@
     필수 처리.
   - PIPA §15 1항 1호 — 정보주체 동의(OAuth 동의 + 본 처리방침 동의 시점).
   - GDPR Art. 6(1)(b) — 계약 이행. LLM 분류 옵션은 Art. 6(1)(a) 동의 기반.
+  - PIPA §15①1호 / GDPR Art. 6(1)(a) — 정정 예시(Example) 저장(§2.5).
+    이 처리의 유일한 근거는 동의이며, 철회 시 저장분은 즉시 전량 파기된다.
 - **보유·이용기간**: 계정 활성 기간 또는 정보주체 삭제 요청 시까지(아래 §6
   표 참조).
 - **제3자 제공**: 제공하지 않음. 단, 처리위탁(§4)으로 Google LLC, Cloudflare,
@@ -95,8 +100,9 @@ H2 제목을 "수집·이용 항목"으로 명시화. -->
 ### 1.2 Google Calendar 이벤트 메타데이터 (필수, 일시적 처리)
 
 서비스는 분류 처리 목적의 범위 내에서 다음 이벤트 메타데이터를 Google
-Calendar API로부터 일시적으로 읽어들인다. **본 데이터는 영구 저장되지
-않으며**, 분류·색상 적용 직후 Cloudflare Workers 메모리에서 폐기된다(§2.1).
+Calendar API로부터 일시적으로 읽어들인다. **본 데이터는 §2.5 의 별도 동의
+경로를 제외하고 영구 저장되지 않으며**, 분류·색상 적용 직후 Cloudflare
+Workers 메모리에서 폐기된다(§2.1).
 
 - `summary` (이벤트 제목)
 - `description` (이벤트 본문)
@@ -152,6 +158,19 @@ GPS·기지국 자동수집이 아니라 사용자 입력 텍스트라는 점을
 <!-- LEGAL-REVIEW: 미수집 항목의 명시는 PIPA 표준 처리방침 양식 권장사항이며,
 GDPR Art. 9 / CCPA Sensitive PI 의 처리 미해당을 분명히 해 둔다. -->
 
+### 1.7 정정 예시(Example) — 선택, 별도 동의
+
+사용자가 사이드바에서 자동 분류 결과를 직접 정정하면서 "이 정정을 기억"에
+동의한 경우, 해당 일정의 **제목만** PII 마스킹을 거쳐 저장된다. 상세 조건·
+보유량·철회 효과는 §2.5 에 규정한다.
+
+| 수집 항목                     | 출처                        | 수집 시점                  |
+| ----------------------------- | --------------------------- | -------------------------- |
+| PII 마스킹된 이벤트 제목      | 사용자의 사이드바 정정 행위 | 저장 동의 후 각 정정 시점  |
+
+본 항목은 **선택** 항목이며, 동의를 거부하거나 철회해도 자동 색상 분류를
+포함한 서비스의 모든 기능이 정상 동작한다(PIPA §22 ⑤항 필수/선택 구분).
+
 ## 1A. 개인정보의 처리 목적 및 법적 근거
 
 서비스는 수집한 개인정보를 다음 목적의 범위 내에서만 이용하며, 목적이 변경
@@ -164,6 +183,7 @@ GDPR Art. 9 / CCPA Sensitive PI 의 처리 미해당을 분명히 해 둔다. --
 | (3) LLM 기반 보조 분류 (선택 기능)        | PII 마스킹된 `summary`/`description`/`location` | PIPA §15①1호(동의) / GDPR Art. 6(1)(a) — 사용자가 사이드바 "AI로 분류" 버튼을 누른 시점에 동의로 간주 |
 | (4) 서비스 안전성 확보 및 부정 사용 방지  | 동기화·LLM·롤백 카운터(집계)                    | PIPA §15①7호(정당한 이익) / GDPR Art. 6(1)(f)                                                         |
 | (5) 법령상 의무 이행 (이용내역 보관 등)   | 동의 이력, 처리 카운터                          | PIPA §15①2호(법률 의무) / GDPR Art. 6(1)(c)                                                           |
+| (6) 사용자 정정 예시 기반 분류 개인화 (선택) | PII 마스킹된 이벤트 제목 및 그 임베딩 벡터   | PIPA §15①1호(동의) / GDPR Art. 6(1)(a) — 사이드바 전용 동의 화면에서 1회 수집, 철회 시 즉시 파기(§2.5) |
 
 서비스는 위 목적을 벗어난 마케팅·광고·프로파일링·자동화된 결정에는 사용
 자 데이터를 사용하지 않으며, Google API에서 받은 사용자 데이터를 광고 목적
@@ -177,11 +197,13 @@ GDPR Art. 9 / CCPA Sensitive PI 의 처리 미해당을 분명히 해 둔다. --
 
 ## 2. 정보의 처리 및 저장
 
-### 2.1 캘린더 이벤트 본문은 저장하지 않는다
+### 2.1 캘린더 이벤트 본문은 원칙적으로 저장하지 않는다
 
 이벤트 metadata는 동기화 처리 중 **in-transit**으로만 다뤄진다 — Cloudflare
 Workers의 메모리에서 분류·색상 변경 후 즉시 폐기되며, 영구 저장소(데이터
 베이스 / 로그 / 큐 메시지)에 저장되지 않는다 (`docs/assets/marketplace/sub-processors.md` §1).
+단, (a) §2.5 의 별도 동의를 받은 **정정 예시(제목 한정)** 와 (b) §2.3 의
+`llm_calls` LLM 디버깅 컬럼은 이 원칙의 명시적 예외다.
 
 ### 2.2 OAuth 토큰은 암호화 후 저장한다
 
@@ -192,13 +214,19 @@ Supabase PostgreSQL의 `oauth_tokens` 테이블에 저장된다. 키 회전 절�
 
 ### 2.3 관측성 카운터만 저장한다
 
-서비스는 다음 집계 카운터만 저장하며 이벤트 내용은 포함하지 않는다
-(`src/CLAUDE.md` "Observability tables (§6 Wave A)" / "(§6 Wave B)"):
+서비스는 다음 관측성 데이터를 저장한다(`src/CLAUDE.md` "Observability
+tables (§6 Wave A)" / "(§6 Wave B)"). 아래 `llm_calls` 의 디버깅 컬럼을
+제외한 나머지는 모두 집계 카운터이며 이벤트 내용을 포함하지 않는다:
 
 - `sync_runs` — 동기화 1회당 결과 (성공/실패 outcome, 처리 이벤트 수,
   업데이트/스킵 카운터).
 - `llm_calls` — LLM 호출 1회당 결과 (outcome, latency, 카테고리 수, 시도 수,
-  카테고리 이름).
+  카테고리 이름). **LLM 오분류 진단을 위해 다음 4개 컬럼이 추가로 저장된다**:
+  `event_id`, `prompt_summary`(모델에 실제로 전달된 user 메시지 —
+  §5 의 PII 마스킹을 이미 거친 `summary`/`description`/`location`),
+  `raw_response`(모델 응답 본문), `available_categories`(사용자 카테고리 이름).
+  즉 `prompt_summary` 는 **마스킹된 이벤트 메타데이터를 durable 저장**하며,
+  이는 §2.1 원칙의 예외다. 보유 기간은 §6 표를 따른다.
 - `rollback_runs` — 카테고리 삭제 시 색상 롤백 작업의 outcome 로그.
 - `sync_failures.summary_snapshot` — DLQ 이송 시 마지막 실패 요약 (집계
   카운터 + Google API 에러 envelope, 이벤트 본문 없음).
@@ -210,6 +238,46 @@ Supabase PostgreSQL의 `oauth_tokens` 테이블에 저장된다. 키 회전 절�
 `authorization`, `token`, `code`, `state`, `refresh_token`, `access_token`,
 `id_token`, `email`, `sub`, `password`. 요청 / 응답 body, Authorization
 헤더는 구조적으로 로그에 들어가지 않는다.
+
+### 2.5 정정 예시(Example)의 durable 저장 — 별도 동의 기반
+
+본 절은 서비스가 캘린더 제목을 **영구 저장하는 유일한 경로**를 규정한다.
+
+**무엇을 저장하는가.** 사용자가 정정한 일정의 **제목만** 저장한다. §5 의 PII
+마스킹(이메일/URL/전화번호 → 토큰 치환)을 먼저 거치며, 마스킹 결과가 빈
+문자열이거나 문자의 50% 이상이 마스킹 토큰인 제목은 **저장하지 않고
+폐기**한다. 설명(`description`)·장소(`location`)·참석자·시간은 저장하지
+않는다.
+
+**어디에 저장하는가.** Supabase PostgreSQL(일본 Tokyo)의 `rule_seeds`
+테이블에, 해당 제목의 임베딩 벡터와 함께 저장된다. 임베딩 생성은 Cloudflare
+Workers AI 가 수행한다(§4). 제목과 벡터는 **해당 정보주체 본인의 규칙 매칭
+정확도 향상에만** 사용되며, 다른 사용자의 분류나 운영자·제3자의 ML/AI 모델
+학습에는 사용되지 않는다(§5.2).
+
+**얼마나 저장하는가.** 규칙당 최대 10건. 11번째 정정이 들어오면 가장 오래된
+것부터 자동 삭제된다. 동일한 제목은 최대 한 개 규칙의 예시로만 존재한다.
+
+**동의 모델(1회 동의).** 최초 정정 시 전용 동의 화면에서 저장 동의를 **1회**
+수집하며, 이후 정정에 대해 다시 묻지 않는다. 동의 시점과 동의한 고지 버전이
+함께 기록되고, 본 절의 고지 내용이 실질적으로 변경되면 기존 동의는 효력을
+잃어 **재동의 전까지 저장이 중단**된다(§12).
+
+**철회.** 정보주체는 사이드바 설정에서 언제든 본 동의를 철회할 수 있다.
+**철회 시 회사는 신규 저장을 즉시 중단하며, 그 시점까지 저장된 정정 예시
+전건을 즉시 삭제한다(복구 불가).** 본 저장의 유일한 법적 근거가 동의이므로
+근거 소멸 시 보관할 수 없다(GDPR Art. 17(1)(b), PIPA §37 ④). 철회는 이미
+적용된 색상이나 자동 분류 기능 자체에는 영향을 주지 않는다.
+
+**거부 가능.** 본 동의는 선택이며, 동의하지 않아도 규칙 기반 분류와 자동
+색상 적용은 완전히 동일하게 동작한다.
+
+<!-- LEGAL-REVIEW: PIPA §15①1호 동의 기반 처리 + §22 ③항 분리 동의(정정
+전송과 동의 수집을 별도 요청으로 분리) + §22 ⑤항 필수/선택 구분. 저장 전
+마스킹·부적합 폐기 기준은 GDPR Art. 5(1)(c) data minimisation 대응.
+철회 시 전량 삭제는 Art. 7(3) 철회 후 처리중단 + Art. 17(1)(b) 삭제권의
+결합 이행. 구현 정본: docs/adr/0007-instant-feedback-consent-model.md,
+`src/CLAUDE.md` "Example storage consent (§5.2)". -->
 
 ## 3. 개인정보의 처리 위치 (Region)
 
@@ -227,6 +295,9 @@ Supabase PostgreSQL의 `oauth_tokens` 테이블에 저장된다. 키 회전 절�
   개인정보보호위원회의 PIPA §28의8 ②항 기준 적정성 인정 국가는 아니나,
   Supabase 표준 DPA + SCCs 및 본 정책의 포괄 동의(§4.1) 에 의해 이전
   근거가 충족된다. region 변경 시 본 정책 §12 의 절차로 사전 통지한다.
+- **Cloudflare Workers AI**: 임베딩 생성(이벤트 제목 및 §2.5 정정 예시)은
+  Cloudflare 의 글로벌 엣지 추론 인프라에서 처리된다. 생성된 벡터는 Supabase
+  (일본)에 저장되며 Cloudflare 측에는 보관되지 않는다.
 - **OpenAI `gpt-5.4-nano`**: OpenAI L.L.C. 의 미국 데이터센터에서 처리된다
   (`OPENAI_API_KEY` 미설정 시 어떤 요청도 발생하지 않는다).
 
@@ -240,8 +311,8 @@ Supabase PostgreSQL의 `oauth_tokens` 테이블에 저장된다. 키 회전 절�
 | 수탁자           | 위탁업무                                                                            | 처리 데이터 envelope                                                                           | 처리 국가                                                                                                                                               | 보관기간                             |
 | ---------------- | ----------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------ |
 | Google LLC       | OAuth 인증, Calendar API, Workspace Add-on 런타임                                   | OAuth 동의 정보, 이벤트 메타                                                                   | 미국 외 글로벌                                                                                                                                          | 회원탈퇴 시까지                      |
-| Cloudflare, Inc. | 엣지 런타임(Workers) + DB 연결 broker(Hyperdrive) + 큐(Queues + DLQ)                | in-transit 이벤트 페이로드 / DLQ는 Google API 에러 envelope만                                  | 글로벌 엣지(미국 본사)                                                                                                                                  | 회원탈퇴 시까지                      |
-| Supabase, Inc.   | 관리형 PostgreSQL (OAuth 토큰 암호화 저장, 동기화 상태, 관측 카운터, 세션)          | 집계 카운터 / 동기화 상태 / 카테고리 / 암호화 refresh token / 에러 envelope (이벤트 본문 없음) | 일본 (Tokyo `ap-northeast-1`) — 모든 거주국 정보주체의 영구 저장 데이터가 본 region 에 저장됨 (한국 거주 정보주체에 대해서도 한국 → 일본 국외이전 발생) | 회원탈퇴 시까지                      |
+| Cloudflare, Inc. | 엣지 런타임(Workers) + DB 연결 broker(Hyperdrive) + 큐(Queues + DLQ) + 임베딩 추론(Workers AI) | in-transit 이벤트 페이로드 / DLQ는 Google API 에러 envelope만 / 임베딩 입력 텍스트(이벤트 제목 및 §2.5 정정 예시, 미보관) | 글로벌 엣지(미국 본사)                                                                                                                                  | 회원탈퇴 시까지                      |
+| Supabase, Inc.   | 관리형 PostgreSQL (OAuth 토큰 암호화 저장, 동기화 상태, 관측 카운터, 세션)          | 집계 카운터 / 동기화 상태 / 카테고리 / 암호화 refresh token / 에러 envelope / §2.5 동의 시 PII 마스킹된 정정 예시 제목 및 그 임베딩 벡터 / `llm_calls` 진단 컬럼(§2.3) | 일본 (Tokyo `ap-northeast-1`) — 모든 거주국 정보주체의 영구 저장 데이터가 본 region 에 저장됨 (한국 거주 정보주체에 대해서도 한국 → 일본 국외이전 발생) | 회원탈퇴 시까지                      |
 | OpenAI, L.L.C.   | 선택적 LLM fallback (`gpt-5.4-nano`) — 사용자가 "AI로 분류" 기능 활성화 시에만 호출 | PII 마스킹된 `summary`/`description`/`location` 3개 필드만                                     | 미국                                                                                                                                                    | 보관하지 않음 (요청 단위 in-transit) |
 
 정본 disclosure는 [`docs/assets/marketplace/sub-processors.md`](../assets/marketplace/sub-processors.md)에 있다.
@@ -271,8 +342,8 @@ LLM 분류(OpenAI 위탁) 는 사용자가 사이드바의 "AI로 분류" 기능
 | 이전받는 자      | 이전 국가                                                                                                                                                    | 이전 일시·방법                                            | 이전 항목                                                | 이용 목적              | 보유·이용 기간  | 적정성·이전 근거                                                                                    |
 | ---------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ | --------------------------------------------------------- | -------------------------------------------------------- | ---------------------- | --------------- | --------------------------------------------------------------------------------------------------- |
 | Google LLC       | 미국 외 글로벌                                                                                                                                               | OAuth 동의 시 / API 호출 시점에 TLS 1.2+ 네트워크 전송    | OAuth 동의 정보, 이벤트 메타                             | 인증 IdP, Calendar API | 회원탈퇴 시까지 | EU 적정성 결정(2023, EU-US Data Privacy Framework) / Google 표준 DPA                                |
-| Cloudflare, Inc. | 미국 (본사) + 글로벌 엣지                                                                                                                                    | 모든 요청 시점 / TLS 1.2+                                 | in-transit 이벤트 페이로드                               | 엣지 런타임            | 회원탈퇴 시까지 | EU 적정성 결정(EU-US DPF) / Cloudflare 표준 DPA + SCCs                                              |
-| Supabase, Inc.   | 일본 (Tokyo `ap-northeast-1`) — 한국 거주 정보주체에 대해서는 한국 → 일본 국외이전에 해당, EU·미국 거주 정보주체에 대해서는 거주국 → 일본 으로의 이전에 해당 | 회원가입·이용 시점 / TLS 1.2+                             | 집계 카운터, 암호화 refresh token, 카테고리, 동기화 상태 | 관리형 DB              | 회원탈퇴 시까지 | EU 적정성 결정(2019, EU-Japan 양국 상호 적정성) / Supabase 표준 DPA + SCCs / 본 정책 §4.1 포괄 동의 |
+| Cloudflare, Inc. | 미국 (본사) + 글로벌 엣지                                                                                                                                    | 모든 요청 시점 / TLS 1.2+                                 | in-transit 이벤트 페이로드, 임베딩 입력 텍스트(미보관)   | 엣지 런타임            | 회원탈퇴 시까지 | EU 적정성 결정(EU-US DPF) / Cloudflare 표준 DPA + SCCs                                              |
+| Supabase, Inc.   | 일본 (Tokyo `ap-northeast-1`) — 한국 거주 정보주체에 대해서는 한국 → 일본 국외이전에 해당, EU·미국 거주 정보주체에 대해서는 거주국 → 일본 으로의 이전에 해당 | 회원가입·이용 시점 / TLS 1.2+                             | 집계 카운터, 암호화 refresh token, 카테고리, 동기화 상태, §2.5 정정 예시 제목·벡터(동의 시), `llm_calls` 진단 컬럼 | 관리형 DB              | 회원탈퇴 시까지 | EU 적정성 결정(2019, EU-Japan 양국 상호 적정성) / Supabase 표준 DPA + SCCs / 본 정책 §4.1 포괄 동의 |
 | OpenAI, L.L.C.   | 미국                                                                                                                                                         | 사용자가 "AI 분류" 기능을 트리거하는 시점에 TLS 1.2+ 전송 | PII 마스킹된 3개 필드                                    | LLM 분류               | 보관하지 않음   | EU 적정성 결정(EU-US DPF) / OpenAI Enterprise DPA + SCCs                                            |
 
 ### 4.2 처리위탁에 대한 정보주체의 거부권
@@ -300,7 +371,7 @@ disclosure 의무 충족. 본 서비스는 광고 식별자 수집·판매·공�
 Sale/Share 미발생을 명시하는 부정적 disclosure 가 적절. 향후 광고 도입 시
 재검토 트리거. -->
 
-## 5. PII 마스킹 (LLM 처리 전)
+## 5. PII 마스킹 (LLM 처리 전 및 정정 예시 저장 전)
 
 규칙 기반 매칭이 실패한 이벤트만 LLM 단계로 진입하며, 진입 **전**에 다음
 redaction이 mandatory 적용된다(우회 경로 없음 — `src/services/piiRedactor.ts`,
@@ -314,6 +385,11 @@ redaction이 mandatory 적용된다(우회 경로 없음 — `src/services/piiRe
 
 prompt 빌더는 `summary` / `description` / `location` 3개 필드만 whitelist
 하며, 그 외 필드는 LLM에 도달하지 않는다.
+
+§2.5 의 정정 예시 저장도 **동일한 마스킹을 저장 전에** 통과한다. 나아가
+마스킹 결과가 빈 문자열이거나 문자의 50% 이상이 마스킹 토큰인 제목은 저장
+자체가 거부된다(`isUnfitExample`) — 신호가 남지 않은 제목을 보관하지 않기
+위한 추가 최소수집 장치다.
 
 ### 5.1 자동화된 결정 / 프로파일링 미해당
 
@@ -341,6 +417,9 @@ Calendar API 로부터 받은 사용자 데이터를 다음 목적으로는 사�
   한 경우, (b) 보안 목적, (c) 법령상 의무 이행, (d) 익명·집계 처리는 예외.
 - 서비스의 사용자에게 제공하는 사용자 대면 기능 외의 목적.
 
+§2.5 의 정정 예시와 그 임베딩 벡터 역시 **해당 정보주체 본인의 분류에만**
+사용되며, 서비스 운영자 또는 제3자의 ML/AI 모델 학습에 사용되지 않는다.
+
 <!-- LEGAL-REVIEW: Google API Services User Data Policy → Limited Use
 Requirements 4개 항목을 본문에 명시. 이는 OAuth Restricted Scope 검수
 통과의 핵심 요건이며, Marketplace Listing 의 Privacy Policy URL 본문에서
@@ -358,6 +437,8 @@ Requirements 4개 항목을 본문에 명시. 이는 OAuth Restricted Scope 검�
 | 카테고리 / 키워드 / 동기화 상태                                                 | 회원탈퇴 시까지                                       | 계정 삭제 시 즉시 파기                             |
 | 관측성 카운터 (`sync_runs` / `llm_calls` / `rollback_runs` / `llm_usage_daily`) | 회원탈퇴 시까지 (집계 카운터, 이벤트 본문 미포함)     | 계정 삭제 시 cascade 파기                          |
 | DLQ 실패 요약 (`sync_failures.summary_snapshot`)                                | 회원탈퇴 시까지                                       | 계정 삭제 시 cascade 파기                          |
+| 정정 예시 (`rule_seeds` `seed_type='example'` — 제목 + 임베딩 벡터)             | 동의 철회 또는 회원탈퇴 시까지 (규칙당 10건 초과분은 자동 삭제) | **동의 철회 시 즉시 전건 삭제** / 규칙 삭제 시 cascade / 계정 삭제 시 cascade |
+| 정정 예시 저장 동의 상태 (동의·철회 시각, 동의한 고지 버전)                     | 회원탈퇴 시까지                                       | 계정 삭제 시 cascade 파기                          |
 | 동의 이력 (회원가입·약관 동의 시점·본 정책 버전)                                | 회원탈퇴 후 3년                                       | 보존기간 경과 후 즉시 파기                         |
 
 본 서비스는 무료 서비스로서 「전자상거래 등에서의 소비자보호에 관한 법률」
@@ -384,10 +465,11 @@ Requirements 4개 항목을 본문에 명시. 이는 OAuth Restricted Scope 검�
    장애 시에도 본 서비스 측 삭제는 진행).
 2. 활성 watch 채널 stop (Google 측 재시도 가능 — 미스톱 채널은 7일 내
    Google에 의해 자동 만료).
-3. `DELETE FROM users WHERE id = ?` — 외래키 cascade로 9개 사용자 스코프
+3. `DELETE FROM users WHERE id = ?` — 외래키 cascade로 10개 사용자 스코프
    테이블(`oauth_tokens` / `sessions` / `categories` / `sync_state` /
    `llm_usage_daily` / `sync_failures` / `llm_calls` / `rollback_runs` /
-   `sync_runs`)이 즉시 일괄 파기된다.
+   `sync_runs` / `rule_seeds`)이 즉시 일괄 파기된다. `rule_seeds` 에는
+   §2.5 의 정정 예시와 그 임베딩 벡터가 포함된다.
 4. 세션 무효화(cascade로 이미 파기됨; defense-in-depth 로 명시 revoke).
 
 <!-- LEGAL-REVIEW: 종전 "best-effort" 표현은 한국 법률 문서 부적합. 정보주체
@@ -410,7 +492,7 @@ revoke / channels.stop) 실패가 본 서비스 측 파기를 차단하지 않�
 | 처리정지 요구권                | PIPA §37                      | Art. 18, 21 | §1798.120       | Google 계정 보안 페이지의 OAuth 권한 회수 또는 support 이메일 |
 | 자동화된 결정 거부·설명 요구권 | PIPA §37의2                   | Art. 22     | —               | 사이드바에서 "AI 분류" 모드 끄기 (규칙 기반 분류로만 운영)    |
 | 개인정보 이동권                | — (한국법상 일반 의무 미정립) | Art. 20     | —               | support 이메일 — JSON 형식 export 제공 (요청 후 30일 이내)    |
-| 동의 철회권                    | PIPA §37                      | Art. 7(3)   | §1798.135       | OAuth 권한 회수 또는 계정 삭제                                |
+| 동의 철회권                    | PIPA §37                      | Art. 7(3)   | §1798.135       | OAuth 권한 회수 / 계정 삭제 / 사이드바 설정 → "정정 예시 저장 동의 철회"(§2.5 — 기존 예시 즉시 전건 삭제) |
 | Sale/Share 옵트아웃            | —                             | —           | §1798.120, .135 | 처리행위 부재(§4.3) — 별도 옵트아웃 채널 미운영               |
 | 차별 금지 (Non-Discrimination) | —                             | —           | §1798.125       | 권리 행사를 이유로 서비스 차별·불이익 제공 금지 (§7.1)        |
 
@@ -683,15 +765,27 @@ Attorney General) 또는 California Privacy Protection Agency 에 CCPA/CPRA
 
 ---
 
-**시행일**: 2026-05-05.
-**최종 개정일**: 2026-05-05.
-**버전**: v1.0 (Round 2 self-publish).
+**시행일**: 2026-05-05 (v1.0). v1.1 시행일은 §12 의 30일 사전 통지 절차
+완료 시점에 확정·게시한다.
+**최종 개정일**: 2026-07-28.
+**버전**: v1.1 — 정정 예시(Example)의 durable 저장 및 1회 동의 모델 신설
+(§1.7 / §2.5), `llm_calls` 진단 컬럼 기재 시정(§2.3), Cloudflare Workers AI
+수탁 기재 추가(§3 / §4).
+
+> **§12 중대한 변경 고지.** v1.1 은 수집 항목·목적의 확장(§12 1호), 보유
+> 기간 항목 추가(2호), 국외이전 항목 변경(3호)에 해당하는 **중대한 변경**
+> 이다. 따라서 시행 30일 전 사전 통지 + 등록 이메일 별도 통지가 선행되며,
+> §2.5 의 정정 예시 저장은 정보주체가 사이드바 전용 동의 화면에서 **명시적
+> 재동의**를 하기 전까지 어떤 경우에도 개시되지 않는다(구조적 보장 —
+> 동의 없이는 저장 경로가 호출 불가).
 
 ## Cross-references
 
 - 본 정책 본문이 인용한 코드 ground truth 위치:
   - `src/config/constants.ts` — OAuth scope 목록
-  - `src/services/piiRedactor.ts` — PII 마스킹 구현
+  - `src/services/piiRedactor.ts` — PII 마스킹 구현 + 동의 receipt 민터
+  - `src/CLAUDE.md` "Example storage consent (§5.2)" — 정정 예시 저장 불변항
+  - `docs/adr/0007-instant-feedback-consent-model.md` — 1회 동의 모델 결정 기록
   - `src/CLAUDE.md` "Account deletion (§3 row 179)" — 계정 삭제 절차
   - `src/CLAUDE.md` "Token rotation (§3 후속)" — 토큰 암호화 회전
   - `src/CLAUDE.md` "Observability tables (§6 Wave A)" / "(§6 Wave B)" —

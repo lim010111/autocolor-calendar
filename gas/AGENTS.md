@@ -68,6 +68,20 @@ Reviewer-walkthrough scripts under [../docs/assets/marketplace/reviewer-demo/](.
   `match.llm.quotaExceeded` line so the user can distinguish "한도 소진"
   from "AI가 매칭 못 찾음" — both are functionally `no_match`. See
   [../src/AGENTS.md](../src/AGENTS.md) "Preview LLM (§5 후속)".
+- **Lockstep:** `ACFC_CONFIG.EXAMPLE_CONSENT_POLICY_VERSION` (`config.js`)
+  must stay byte-identical to `EXAMPLE_CONSENT_POLICY_VERSION` in
+  [../src/config/consent.ts](../src/config/consent.ts). The backend rejects a
+  consent grant whose echoed version differs (409
+  `policy_version_mismatch`), so on drift **every** grant fails — loudly, by
+  design: a stale deployment must not record consent against example-storage
+  disclosure text the user never saw. Bump both together only when that
+  disclosure materially changes (ADR-0007).
+- **Note:** the event card never fetches consent state. It learns it from
+  `POST /api/examples` returning 403 `consent_required` and pushes
+  `buildExampleConsentCard` at that point. Do not add a consent probe to the
+  `onEventOpen` render path — it would put a `users` read on the sidebar hot
+  path for state needed only on a rare action, and the backend's 403 is the
+  only authority that honours a withdrawal made on another device.
 - **Gotcha:** `CardService` cannot render arbitrary HTML — every card is
   rebuilt on every action, so do NOT cache view state in module-level vars.
   Per-user state belongs in `storage.js`; per-render state belongs in the
