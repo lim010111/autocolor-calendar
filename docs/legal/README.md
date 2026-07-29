@@ -11,9 +11,17 @@ legal-reviewer 의 Round 1 redline + Round 2 self-publish 보완을 거쳐
 있다.
 
 **중요 (Important):** 본 산출물은 외부 변호사 의견에 갈음하지 못한다.
-self-publish 결정의 근거와 잔존 자문 9건은 [`legal-review-opinion.md`](./legal-review-opinion.md)
-Round 2 본문 결정 트리에 전부 박혀 있으니 publish 전 그 항목들을
-검토하라.
+self-publish 결정의 근거는 [`legal-review-opinion.md`](./legal-review-opinion.md)
+에 라운드별로 박혀 있다 — Round 1·2 는 초안 결정 트리, **Round 3
+(2026-07-29)** 은 코드 실측 기반 사실 정합성 회복 + 과잉 기재 정리이며
+publish 전 확인할 잔존 항목은 Round 3 말미의 4건이다.
+
+**게시본과 소스는 다르다.** `pnpm legal:build` 는 `<!-- LEGAL-REVIEW -->`
+주석과 `<!-- BUILD-STRIP-START/END -->` 블록(도입부 검토 이력 blockquote,
+Cross-references, 운영자 publish 체크리스트) 을 제거한 뒤 HTML 을 만든다.
+저장소 내부 사정(검토 방식, 코드 경로, 운영자 TODO) 은 정보주체·감독기관·
+Marketplace 리뷰어가 읽을 문서에 실리지 않아야 하므로, 본문에 내부 참조를
+추가할 때는 반드시 두 마커 중 하나 안에 넣어라.
 
 ## Publish & verification commands
 

@@ -1,5 +1,6 @@
 # AutoColor for Calendar — 서비스 이용약관
 
+<!-- BUILD-STRIP-START -->
 > 본 문서는 운영자가 self-publish 하는 서비스 이용약관의 publish-ready
 > 본문이며, 2026-05-05 자 Legal Reviewer Round 1 redline + Round 2
 > self-publish 보완이 반영되어 있다. 본 약관은 코드 / 아키텍처 ground
@@ -8,8 +9,13 @@
 > 관한 법률」(약관규제법), 「전자상거래 등에서의 소비자보호에 관한
 > 법률」, 「전자문서 및 전자거래 기본법」 등의 표준 약관 형식을 충족
 > 한다. 본 약관은 외부 변호사 검토를 받지 않은 sub-agent self-review
-> 산출물이며, 운영자가 publish 전 §12 표의 식별 정보 (사업자 등록 정보,
-> 대표자명, 주소) 만 본인 정보로 교체하면 된다.
+> 산출물이며, 운영자가 publish 전 아래 "운영자 publish 체크리스트" 만
+> 확인·교체하면 된다.
+>
+> **v1.1 (2026-07-29)** — Round 3 정리 반영. 상세는
+> [`legal-review-opinion.md`](./legal-review-opinion.md) Round 3.
+> 본 blockquote 는 `<!-- BUILD-STRIP -->` 로 게시본에서 제외된다.
+<!-- BUILD-STRIP-END -->
 
 ## 0. 목적 및 정의 (Purpose & Definitions)
 
@@ -53,7 +59,9 @@ Google 계정 로그인을 진행하면 본 약관에 동의한 것으로 본다
 본 서비스는 Google Workspace Add-on으로 동작하며, Google Calendar 이벤트에
 사용자 정의 규칙(키워드 매칭) 또는 AI(LLM) 분류로 자동 색상을 부여한다.
 Cloudflare Workers 기반 백엔드와 Supabase PostgreSQL을 사용하며, AI 단계는
-선택적 OpenAI `gpt-5.4-nano` 호출로 수행된다 (`docs/project-overview.md`).
+규칙 매칭이 실패한 일정에 한해 OpenAI `gpt-5.4-nano` 호출로 수행된다. AI
+단계의 사용 여부는 서비스 운영자가 정하며 이용자별 선택 항목이 아니다
+(개인정보처리방침 §4.2).
 
 ## 2. 이용자격 및 회원가입
 
@@ -99,14 +107,14 @@ enumeration 명확화.
 Add-on 실행 권한은 Marketplace 설치 시 요청되며 정보주체는 그 합집합을
 동의 화면에서 확인한다.
 
-**백엔드 동기화 권한** (`src/config/constants.ts`)
+**백엔드 동기화 권한** — 로그인 시 요청
 
 - `openid` — OpenID Connect 인증.
 - `email` — 사용자 이메일.
 - `https://www.googleapis.com/auth/calendar` — 캘린더 읽기.
 - `https://www.googleapis.com/auth/calendar.events` — 이벤트 색상 변경.
 
-**Add-on 실행 권한** (`gas/appsscript.json`)
+**Add-on 실행 권한** — Marketplace 설치 시 요청
 
 - `.../auth/script.external_request` — 사이드바에서 본 서비스 백엔드 호출.
 - `.../auth/script.locale` — 사용자 언어에 맞춘 화면 표시.
@@ -116,9 +124,9 @@ Add-on 실행 권한은 Marketplace 설치 시 요청되며 정보주체는 그 
   적용.
 - `.../auth/userinfo.email` — 로그인 상태 표시.
 
-각 권한이 왜 필요한지에 대한 사용자용 설명은 [`docs/assets/marketplace/scope-justifications.md`](../assets/marketplace/scope-justifications.md)에 정리되어 있다.
-서비스는 본 목록 외의 scope을 opportunistic하게 요청하지 않는다 (Principle
-3 — Scope Minimization, `docs/security-principles.md`).
+각 권한이 왜 필요한지에 대한 사용자용 설명은 Google Workspace Marketplace
+등록 정보의 권한 설명에 정리되어 있다. 서비스는 본 목록 외의 scope 을
+임의로 추가 요청하지 아니한다.
 
 ## 4. 사용자 의무
 
@@ -137,7 +145,7 @@ Add-on 실행 권한은 Marketplace 설치 시 요청되며 정보주체는 그 
 드 통신 실패 시 해당 이벤트의 색상 처리는 ~~silent skip~~ **자동으로 보류**
 되며, 다음 동기화 주기에 재시도된다. 본 서비스는 이용자 단말 측의 로컬
 fallback 을 제공하지 않으며, 이는 PII 가 우회 경로로 처리되지 않도록 하기
-위한 보안상 설계이다(`docs/architecture-guidelines.md` "Halt on Failure").
+위한 보안상 설계이다.
 
 OAuth `invalid_grant`(refresh token 회수) 사유 발생 시에만 예외적으로 이용
 자에게 재로그인 안내가 표시된다.
@@ -149,24 +157,21 @@ risk 가 있다. 실제 코드 동작은 보존하되 표현만 정리. -->
 
 ### 5.2 수동 색상 변경의 보존
 
-이용자가 캘린더에서 직접 변경한 이벤트 색상은 본 서비스가 덮어쓰지 않는다
-(`docs/architecture-guidelines.md` §5.4 / `src/CLAUDE.md` "Color ownership
-marker (§5.4)"). 색상 소유권은 `extendedProperties.private` 에 저장된 3-key
-marker 로 판별된다.
+이용자가 캘린더에서 직접 변경한 이벤트 색상은 본 서비스가 덮어쓰지 않는다.
+색상 소유권은 이벤트의 비공개 확장 속성에 저장된 3-key marker 로 판별된다.
 
 ### 5.3 LLM 일일 quota
 
 LLM 분류는 이용자별 일일 호출 한도(기본 200회/일, 운영상 변경 가능)에 의해
-제한된다(`src/services/llmClassifier.ts`). 한도 초과 시 해당 이벤트는 색상
-변경 없이 다음 동기화 주기까지 대기하며, 회사는 이 한도 내에서 합리적
+제한된다. 한도 초과 시 해당 이벤트는 색상 변경 없이 다음 동기화 주기까지
+대기하며, 회사는 이 한도 내에서 합리적
 서비스 수준을 유지한다.
 
 ### 5.4 재시도 / DLQ
 
 일시적 오류(네트워크 / API 5xx / 429) 는 자동 재시도되며(Exponential
 backoff), 영구 실패는 Dead Letter Queue 로 이송되어 운영자 진단 대상이
-된다(`src/services/calendarSync.ts`). 이용자 측 처리는 다음 동기화 시점에
-자동 재개된다.
+된다. 이용자 측 처리는 다음 동기화 시점에 자동 재개된다.
 
 ### 5.5 책임 제한 (Limitation of Liability)
 
@@ -196,11 +201,6 @@ backoff), 영구 실패는 Dead Letter Queue 로 이송되어 운영자 진단 �
 조항은 「약관의 규제에 관한 법률」 §7 의 무효 사유에 해당하지 않는 범위
 내에서만 효력을 갖는다(고의·중과실 면책은 절대 무효).
 
-본 서비스가 향후 유료로 전환되는 경우 회사는 §9 의 약관 개정 절차에 따라
-별도의 정량적 손해배상 한도(예: 직전 12개월 이용자가 회사에 결제한 금액
-또는 통상의 손해 중 적은 금액) 를 도입할 수 있으며, 무료 서비스 단계에
-서는 정량적 cap 을 미리 도입하지 아니한다.
-
 #### 5.5.3 외부 서비스 종속 리스크의 면책 범위
 
 회사는 본 서비스가 Google Calendar API, OAuth IdP, Workspace Marketplace
@@ -213,9 +213,8 @@ backoff), 영구 실패는 Dead Letter Queue 로 이송되어 운영자 진단 �
 
 ## 6. 데이터 처리
 
-데이터 수집 / 처리 / 저장 / 삭제 정책은 [`docs/legal/privacy-policy.md`](./privacy-policy.md)
-"개인정보처리방침"으로 위임한다. 본 약관과 충돌하면 개인정보처리방침이
-우선한다.
+데이터 수집 / 처리 / 저장 / 삭제 정책은 [개인정보처리방침](./privacy-policy.md)
+으로 위임한다. 본 약관과 충돌하면 개인정보처리방침이 우선한다.
 
 ## 7. 서비스의 가용성 및 점검
 
@@ -255,8 +254,7 @@ backoff), 영구 실패는 Dead Letter Queue 로 이송되어 운영자 진단 �
 - GAS Add-on 제거 → Google 측 OAuth 권한 자동 회수.
 - `POST /api/account/delete` 호출 또는 사이드바 "계정 삭제" 메뉴 → 10개
   사용자 스코프 테이블 cascade 삭제 + Google refresh token revoke + 활성
-  watch 채널 stop(`src/CLAUDE.md` "Account deletion (§3 row 179)" /
-  개인정보처리방침 §6.2). 본 작업은 즉시·완전 삭제이며 복구 불가하다.
+  watch 채널 stop(개인정보처리방침 §6.2). 본 작업은 즉시·완전 삭제이며 복구 불가하다.
 
 ### 8.2 회사에 의한 해지 (이용제한·해지)
 
@@ -462,6 +460,7 @@ backoff), 영구 실패는 Dead Letter Queue 로 이송되어 운영자 진단 �
 > 방침 §6 의 "회원탈퇴 후 무보관" 원칙과 정합화했다. 어느 항목도 이용자
 > 에게 불리한 변경이 아니므로 §9.1 의 일반 변경 절차(7일) 를 따른다.
 
+<!-- BUILD-STRIP-START -->
 ## Cross-references
 
 - 본 약관 본문이 인용한 코드 ground truth 위치:
@@ -498,3 +497,5 @@ backoff), 영구 실패는 Dead Letter Queue 로 이송되어 운영자 진단 �
 약관 변경 통지·동의 간주 절차, 집단소송 포기·강제 중재 미도입 정책,
 가용성 SLA 부재, 외부 서비스 종속 면책 등) 은 본 약관 본문에 결정문
 형태로 반영되어 있다.
+<!-- BUILD-STRIP-END -->
+
