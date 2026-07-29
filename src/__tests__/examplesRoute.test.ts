@@ -131,6 +131,36 @@ describe("POST /api/examples — 게이트", () => {
     expect(res.headers.get("Retry-After")).toBe("2");
     expect(await res.json()).toMatchObject({ error: "example_throttled" });
   });
+
+  // 순서 오라클: throttle 은 consent/ownership 게이트 **뒤**에 있어야 한다.
+  // 앞에 두면 최초 정정(403 → 동의 카드 → 동의 → 같은 쓰기 재생)이 방금
+  // 자기가 잡은 2초 창에 걸려 429 로 죽는다 — 가장 중요한 경로가 깨진다.
+  // 아래 두 케이스는 "거부된 요청은 창을 소비하지 않는다" 를 고정한다.
+  it("consent_required 는 throttle 창을 소비하지 않는다 (403 이 429 를 이긴다)", async () => {
+    useDb({
+      users: [user()], // 미동의
+      categories: [rule()],
+      userUpdateMatchesNone: true, // 창이 닫혀 있어도
+    });
+    const res = await post(
+      { ruleId: RULE_A, title: "주간회의" },
+      { userToken: "token-a" },
+    );
+    expect(res.status).toBe(403);
+  });
+
+  it("not_found 도 throttle 창을 소비하지 않는다", async () => {
+    useDb({
+      users: [consented()],
+      categories: [rule({ userId: USER_B })],
+      userUpdateMatchesNone: true,
+    });
+    const res = await post(
+      { ruleId: RULE_A, title: "주간회의" },
+      { userToken: "token-a" },
+    );
+    expect(res.status).toBe(404);
+  });
 });
 
 // §5.2 타입 게이트가 라우트 표면에서 실제로 닫혀 있는지 — 세 가지 원인 각각.

@@ -65,6 +65,34 @@ examplesRoutes.post("/", async (c) => {
 
   const { db, close } = getDb(c.env);
   try {
+    // §5.2 type gate — no receipt, no `ConsentedExample`, no storage.
+    const receipt = await issueExampleConsentReceipt(db, userId);
+    if (receipt === null) {
+      return c.json(
+        {
+          error: "consent_required",
+          policyVersion: EXAMPLE_CONSENT_POLICY_VERSION,
+        },
+        403,
+      );
+    }
+
+    // Ownership is proven here, tenant-scoped. The body's `ruleId` is never
+    // trusted as an authorization claim.
+    const rule = await getRule(db, userId, ruleId);
+    if (!rule || rule.labelDeletedAt !== null) {
+      return c.json({ error: "not_found" }, 404);
+    }
+
+    // Throttle sits AFTER the consent and ownership gates, deliberately.
+    //
+    // It guards the Workers AI embed below, which is the only expensive step;
+    // the two gates above are plain DB reads. Stamping earlier would also
+    // break the first-ever correction: that request is answered 403, the
+    // Add-on pushes the consent card, and the grant immediately replays the
+    // same write — which would land inside the window this request had just
+    // claimed and 429 on the one path that matters most. Rejected requests
+    // must not consume the window.
     const intervalSec = Math.ceil(EXAMPLE_MIN_INTERVAL_MS / 1000);
     const stamped = await db
       .update(users)
@@ -88,25 +116,6 @@ examplesRoutes.post("/", async (c) => {
         429,
         { "Retry-After": String(intervalSec) },
       );
-    }
-
-    // §5.2 type gate — no receipt, no `ConsentedExample`, no storage.
-    const receipt = await issueExampleConsentReceipt(db, userId);
-    if (receipt === null) {
-      return c.json(
-        {
-          error: "consent_required",
-          policyVersion: EXAMPLE_CONSENT_POLICY_VERSION,
-        },
-        403,
-      );
-    }
-
-    // Ownership is proven here, tenant-scoped. The body's `ruleId` is never
-    // trusted as an authorization claim.
-    const rule = await getRule(db, userId, ruleId);
-    if (!rule || rule.labelDeletedAt !== null) {
-      return c.json({ error: "not_found" }, 404);
     }
 
     const example = consentExample(title, ruleId, userId, receipt);
