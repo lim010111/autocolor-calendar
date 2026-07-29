@@ -13,8 +13,9 @@ legal-reviewer 의 Round 1 redline + Round 2 self-publish 보완을 거쳐
 **중요 (Important):** 본 산출물은 외부 변호사 의견에 갈음하지 못한다.
 self-publish 결정의 근거는 [`legal-review-opinion.md`](./legal-review-opinion.md)
 에 라운드별로 박혀 있다 — Round 1·2 는 초안 결정 트리, **Round 3
-(2026-07-29)** 은 코드 실측 기반 사실 정합성 회복 + 과잉 기재 정리이며
-publish 전 확인할 잔존 항목은 Round 3 말미의 4건이다.
+(2026-07-29)** 은 코드 실측 기반 사실 정합성 회복 + 과잉 기재 정리,
+**Round 4 (2026-07-29)** 는 그 수정본을 다시 읽힌 게시 직전 재검증이다.
+publish 전 확인할 잔존 항목은 Round 4 말미에 있다.
 
 **게시본과 소스는 다르다.** `pnpm legal:build` 는 `<!-- LEGAL-REVIEW -->`
 주석과 `<!-- BUILD-STRIP-START/END -->` 블록(도입부 검토 이력 blockquote,
@@ -48,11 +49,10 @@ publish 절차:
    (`welcome.legal.*`) 를 렌더링하며, 이용약관 §0.3 은 그 절차의 존재를
    자기 발효요건으로 삼는다. 링크가 404 인 상태로 배포하면 약관이 발효
    되지 않는다 — publish 와 GAS 새 version 배포는 같은 창에서 처리한다.
-5. **privacy-policy §4.1.1 의 수탁자 정보관리책임자 연락처 4건**의
-   현행성 재확인 (PIPA §28의8②3호 필수 고지사항).
-6. **privacy-policy §8.2 의 접속기록 보관 절차** 가동 확인 — Cloudflare ·
-   Supabase 콘솔 감사 로그의 요금제상 보존기간이 1년에 미치지 못하면
-   정기 내려받기·보관 루틴을 publish 전에 시작한다.
+5. **privacy-policy §4.1.1 의 수탁자 정보관리책임자 연락처 4건** — 각
+   수탁자의 공개 창구를 그대로 옮긴 값이므로, 수탁자가 창구를 바꾸면
+   따라가야 한다 (PIPA §28의8②3호 필수 고지사항). 최종 실측 2026-07-29
+   (Round 4): Supabase 는 `.io` → `.com` 으로 이미 한 번 바뀌었다.
 
 **주의:** 본 디렉터리에는 외부 vendor URL 을 인라인하지 않는다
 ([`../assets/marketplace/sub-processors.md`](../assets/marketplace/sub-processors.md) §4 정책).
