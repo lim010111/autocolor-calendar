@@ -127,6 +127,17 @@
     드리프트 시 모든 grant 가 409 로 떨어진다 — 조용한 실패가 아니라 의도된
     시끄러운 실패.
 
+  > **[개정 2026-07-29] 30일 통지 창을 코드로 강제한다.** 위 "30일 사전 통지"
+  > 는 문서상 약속일 뿐이어서, Worker 를 하루라도 일찍 배포하면 게시된
+  > 처리방침이 조용히 거짓이 된다. `EXAMPLE_STORAGE_OPENS_AT`
+  > (`src/config/consent.ts`, 2026-08-28 = 게시일 + 30일) 를 두고 창이 열리기
+  > 전의 grant 를 409 `storage_not_open_yet` 으로 거절한다. 게이트는 grant 한
+  > 곳이면 충분하다 — 살아 있는 동의가 없으면 `consentReceiptFrom` 이 receipt
+  > 를 발행하지 않으므로 `POST /api/examples` 도 `addExample` 에 닿지 못한다.
+  > `gas/config.js` 는 같은 날짜를 미러링해 눌리지 않는 컨트롤을 그리지 않게만
+  > 하고, 권위는 백엔드에 있다. `promptVersionSendsExamples` 와 같은 계열의
+  > 인터록이다 — 사람의 기억이 아니라 구조가 약속을 지킨다.
+
   스키마: `users` +4 컬럼 (`drizzle/0020_*.sql`). 새 테이블 없음 → §3 row 179
   cascade 계약(10건)과 그 정규식 가드는 그대로다.
 

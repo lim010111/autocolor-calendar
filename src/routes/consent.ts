@@ -1,7 +1,11 @@
 import { Hono } from "hono";
 import { z } from "zod";
 
-import { EXAMPLE_CONSENT_POLICY_VERSION } from "../config/consent";
+import {
+  EXAMPLE_CONSENT_POLICY_VERSION,
+  EXAMPLE_STORAGE_OPENS_AT,
+  exampleStorageIsOpen,
+} from "../config/consent";
 import { getDb } from "../db";
 import type { HonoEnv } from "../env";
 import { authMiddleware } from "../middleware/auth";
@@ -58,6 +62,20 @@ consentRoutes.post("/examples", async (c) => {
     return c.json(
       { error: "invalid_request", details: parsed.error.flatten() },
       400,
+    );
+  }
+  // privacy-policy §12 — the 30-day notice window. Refusing the grant is the
+  // whole gate: with no live consent `consentReceiptFrom` mints nothing, so
+  // `POST /api/examples` cannot store either. Checked before the version
+  // comparison so an early call gets the accurate reason rather than a
+  // misleading version mismatch.
+  if (!exampleStorageIsOpen()) {
+    return c.json(
+      {
+        error: "storage_not_open_yet",
+        opensAt: new Date(EXAMPLE_STORAGE_OPENS_AT).toISOString(),
+      },
+      409,
     );
   }
   if (parsed.data.policyVersion !== EXAMPLE_CONSENT_POLICY_VERSION) {

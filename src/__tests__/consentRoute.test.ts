@@ -3,7 +3,10 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 vi.mock("../db", () => ({ getDb: vi.fn() }));
 vi.mock("../services/sessionService", () => ({ verifySession: vi.fn() }));
 
-import { EXAMPLE_CONSENT_POLICY_VERSION } from "../config/consent";
+import {
+  EXAMPLE_CONSENT_POLICY_VERSION,
+  EXAMPLE_STORAGE_OPENS_AT,
+} from "../config/consent";
 import { getDb } from "../db";
 import { app } from "../index";
 import { verifySession } from "../services/sessionService";
@@ -69,6 +72,10 @@ beforeEach(() => {
   vi.mocked(verifySession).mockImplementation(async (_db, _pep, token) =>
     token === "token-a" ? { userId: USER_A, email: "a@test" } : null,
   );
+  // Default the suite to a clock past the §12 30-day notice window so the
+  // grant tests exercise their own subject. The window itself is pinned by
+  // the dedicated test below.
+  vi.spyOn(Date, "now").mockReturnValue(EXAMPLE_STORAGE_OPENS_AT + 86_400_000);
 });
 
 describe("consent routes — auth gate", () => {
@@ -113,6 +120,22 @@ describe("POST /api/consent/examples", () => {
       error: "policy_version_mismatch",
       expected: V,
     });
+  });
+
+  // 처리방침 §12 는 "게시일부터 30일이 경과한 뒤에만 저장을 개시한다" 고
+  // 스스로를 구속한다. 그 약속을 사람의 기억이 아니라 코드가 지킨다 — 창이
+  // 열리기 전에는 동의 자체가 기록되지 않으므로 receipt 도, 저장도 없다.
+  it("409 storage_not_open_yet — §12 30일 통지 창이 열리기 전", async () => {
+    vi.spyOn(Date, "now").mockReturnValue(EXAMPLE_STORAGE_OPENS_AT - 1);
+    const res = await invoke("/api/consent/examples", {
+      method: "POST",
+      userToken: "token-a",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ policyVersion: V }),
+    });
+    expect(res.status).toBe(409);
+    expect(await res.json()).toMatchObject({ error: "storage_not_open_yet" });
+    expect(currentDb.state.users[0]?.exampleConsentAt).toBeNull();
   });
 
   it("200 + granted:true 이고 컬럼에 각인된다", async () => {

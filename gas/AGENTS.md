@@ -76,6 +76,14 @@ Reviewer-walkthrough scripts under [../docs/assets/marketplace/reviewer-demo/](.
   design: a stale deployment must not record consent against example-storage
   disclosure text the user never saw. Bump both together only when that
   disclosure materially changes (ADR-0007).
+- **Time-gated surface:** the `rememberExample` checkbox on the event card and
+  the settings card's example-consent section are both wrapped in
+  `exampleStorageIsOpen()` (`config.js`). Before
+  `ACFC_CONFIG.EXAMPLE_STORAGE_OPENS_AT` the backend answers every grant with
+  409 `storage_not_open_yet` (privacy-policy §12's 30-day notice), so
+  rendering them would produce dead controls — the same defect the
+  `policy_settings` checkboxes were removed for. Remove the guards only
+  together with the backend constant.
 - **Load-bearing:** `buildWelcomeCard` renders `welcome.legal.notice` plus the
   Terms / Privacy links **above** the sign-in button. Terms of Service §0.3
   makes its own effect conditional on "회사의 안내 절차에 따라 본 약관에

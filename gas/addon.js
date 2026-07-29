@@ -739,11 +739,16 @@ function onEventOpen(e) {
   // override without a per-item affirmative act is the riskier default.
   // Form inputs do not survive a CardService re-render, so the current
   // state rides the action parameters (see actionSelectColor).
-  var rememberChecked = readRememberExample(e);
-  overrideSection.addWidget(CardService.newSelectionInput()
-    .setType(CardService.SelectionInputType.CHECK_BOX)
-    .setFieldName("rememberExample")
-    .addItem(t('feedback.remember.label', null, L), "on", rememberChecked));
+  // Hidden until the privacy-policy §12 notice window opens — see
+  // ACFC_CONFIG.EXAMPLE_STORAGE_OPENS_AT. The backend refuses the grant
+  // before then, so rendering the checkbox would only produce a dead control.
+  var rememberChecked = exampleStorageIsOpen() && readRememberExample(e);
+  if (exampleStorageIsOpen()) {
+    overrideSection.addWidget(CardService.newSelectionInput()
+      .setType(CardService.SelectionInputType.CHECK_BOX)
+      .setFieldName("rememberExample")
+      .addItem(t('feedback.remember.label', null, L), "on", rememberChecked));
+  }
 
   overrideSection.addWidget(CardService.newTextButton()
     .setText(t('event.btn.exclude', null, L))
@@ -1678,28 +1683,33 @@ function buildSettingsCard(L) {
   // checkbox.
 
   // ADR-0007 — example-storage consent state + withdrawal entry point.
-  var examplesSection = CardService.newCardSection()
-    .setHeader(t('settings.section.examples', null, L));
-  var consent = fetchExampleConsentOrError();
-  if (consent && consent.granted === true) {
-    var when = '';
-    try {
-      when = consent.grantedAt ? new Date(consent.grantedAt).toLocaleDateString() : '';
-    } catch (_err) {}
-    examplesSection.addWidget(CardService.newDecoratedText()
-      .setText(t('settings.examples.granted', { date: when }, L))
-      .setWrapText(true));
-    examplesSection.addWidget(CardService.newTextButton()
-      .setText(t('settings.btn.revokeExamples', null, L))
-      .setOnClickAction(CardService.newAction().setFunctionName("actionGoToExampleConsentRevokeConfirm")));
-  } else {
-    // Covers "never granted", "withdrawn" and a fetch failure alike — the
-    // withdrawal button is only meaningful against a confirmed live consent.
-    examplesSection.addWidget(CardService.newDecoratedText()
-      .setText(t('settings.examples.notGranted', null, L))
-      .setWrapText(true));
+  // Skipped entirely before the §12 notice window opens: no consent can exist
+  // yet, so the section would render "동의한 적 없음" and spend a backend
+  // round-trip to learn it.
+  if (exampleStorageIsOpen()) {
+    var examplesSection = CardService.newCardSection()
+      .setHeader(t('settings.section.examples', null, L));
+    var consent = fetchExampleConsentOrError();
+    if (consent && consent.granted === true) {
+      var when = '';
+      try {
+        when = consent.grantedAt ? new Date(consent.grantedAt).toLocaleDateString() : '';
+      } catch (_err) {}
+      examplesSection.addWidget(CardService.newDecoratedText()
+        .setText(t('settings.examples.granted', { date: when }, L))
+        .setWrapText(true));
+      examplesSection.addWidget(CardService.newTextButton()
+        .setText(t('settings.btn.revokeExamples', null, L))
+        .setOnClickAction(CardService.newAction().setFunctionName("actionGoToExampleConsentRevokeConfirm")));
+    } else {
+      // Covers "never granted", "withdrawn" and a fetch failure alike — the
+      // withdrawal button is only meaningful against a confirmed live consent.
+      examplesSection.addWidget(CardService.newDecoratedText()
+        .setText(t('settings.examples.notGranted', null, L))
+        .setWrapText(true));
+    }
+    builder.addSection(examplesSection);
   }
-  builder.addSection(examplesSection);
 
   var accountSection = CardService.newCardSection()
     .setHeader(t('settings.section.account', null, L));

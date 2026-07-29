@@ -155,6 +155,16 @@ the `users.last_preview_at` discipline. **NULL here is fail-closed** ("never
 consented"), the opposite of `last_preview_at`'s permissive NULL; do not
 carry that reading across.
 
+- **Notice-window interlock.** `POST /api/consent/examples` answers **409
+  `storage_not_open_yet`** until `EXAMPLE_STORAGE_OPENS_AT`
+  (`src/config/consent.ts`, 2026-08-28). privacy-policy §12 binds the company
+  to a 30-day notice before example storage begins; this constant is that
+  promise in code, so deploying the Worker early cannot silently falsify a
+  published policy. One gate is enough — no consent means no receipt, so
+  `POST /api/examples` cannot reach `addExample` either. `gas/config.js`
+  mirrors the date to avoid rendering a control the backend must refuse, but
+  the backend is the authority. The constant becomes inert after the date;
+  leave it as the record of when storage legitimately opened.
 - `POST /api/consent/examples` grants. Idempotent: an already-live consent
   keeps its original timestamp (re-stamping would falsify when the user
   actually agreed). The body must echo the policy version the UI rendered,
