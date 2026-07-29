@@ -228,7 +228,7 @@ backoff), 영구 실패는 Dead Letter Queue 로 이송되어 운영자 진단 �
 이용자는 언제든지 다음 방법으로 본 서비스 이용계약을 해지할 수 있다.
 
 - GAS Add-on 제거 → Google 측 OAuth 권한 자동 회수.
-- `POST /api/account/delete` 호출 또는 사이드바 "계정 삭제" 메뉴 → 9개
+- `POST /api/account/delete` 호출 또는 사이드바 "계정 삭제" 메뉴 → 10개
   사용자 스코프 테이블 cascade 삭제 + Google refresh token revoke + 활성
   watch 채널 stop(`src/CLAUDE.md` "Account deletion (§3 row 179)" /
   개인정보처리방침 §6.2). 본 작업은 즉시·완전 삭제이며 복구 불가하다.
@@ -330,7 +330,10 @@ backoff), 영구 실패는 Dead Letter Queue 로 이송되어 운영자 진단 �
 이용자의 Google Calendar 이벤트 콘텐츠(제목·설명·장소·참석자 등)에 관한
 일체의 권리는 이용자(또는 해당 콘텐츠의 권리자)에게 그대로 귀속되며, 회사
 는 분류 처리 목적의 in-transit 처리에 필요한 범위 내에서만 일시적으로
-이용한다(개인정보처리방침 §2.1·§5).
+이용한다(개인정보처리방침 §2.1·§5). 다만 (i) 이용자가 개인정보처리방침
+§2.5 에 따라 **별도로 동의한 정정 예시**(마스킹된 제목)와 (ii) 같은 방침
+§2.3 의 **LLM 오류 진단 기록**은 in-transit 처리의 예외로서 durable
+저장되며, 그 범위·보유기간·파기는 개인정보처리방침이 정하는 바에 따른다.
 
 <!-- LEGAL-REVIEW: 사용자 콘텐츠의 IP 귀속을 명시하지 않으면 GDPR Art. 5
 (데이터 최소화 원칙) 외에도 한국 「저작권법」 제46조(저작물 이용허락) 및

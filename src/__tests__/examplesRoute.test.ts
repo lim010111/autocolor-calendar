@@ -149,6 +149,30 @@ describe("POST /api/examples — 게이트", () => {
     expect(res.status).toBe(403);
   });
 
+  // C6 오라클 (legal-reviewer 2026-07-29): 동의 확인이 **본문 파싱보다
+  // 먼저**여야 한다. ADR-0007 이 동의 엔드포인트를 분리한 근거가 "동의
+  // 기록이 생기기 전에 제목이 경계를 넘지 않는다" 인데, 본문을 먼저 파싱하면
+  // 미동의 사용자의 제목을 읽고 검증한 뒤 403 을 내는 셈이라 그 근거가
+  // 코드에서 거짓이 된다. 본문이 깨져 있어도 400 이 아니라 403 이 나오는
+  // 것이 곧 "제목을 읽지 않았다" 의 증거다.
+  it("미동의 요청은 본문을 읽기 전에 403 — 깨진 본문이어도 400 이 아니다", async () => {
+    useDb({ users: [user()], categories: [rule()] });
+    const res = await app.fetch(
+      new Request("https://worker.test/api/examples", {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: "Bearer token-a",
+        },
+        body: "{ this is not json",
+      }),
+      baseEnv as unknown as Record<string, unknown>,
+      ctx,
+    );
+    expect(res.status).toBe(403);
+    expect(await res.json()).toMatchObject({ error: "consent_required" });
+  });
+
   it("not_found 도 throttle 창을 소비하지 않는다", async () => {
     useDb({
       users: [consented()],

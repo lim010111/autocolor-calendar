@@ -53,19 +53,16 @@ const AddExampleBody = z.object({
 //        failure indistinguishable from an outage.
 examplesRoutes.post("/", async (c) => {
   const userId = c.get("userId");
-  const body = await c.req.json().catch(() => null);
-  const parsed = AddExampleBody.safeParse(body);
-  if (!parsed.success) {
-    return c.json(
-      { error: "invalid_request", details: parsed.error.flatten() },
-      400,
-    );
-  }
-  const { ruleId, title } = parsed.data;
-
   const { db, close } = getDb(c.env);
   try {
-    // §5.2 type gate — no receipt, no `ConsentedExample`, no storage.
+    // §5.2 type gate — checked BEFORE the request body is read.
+    //
+    // The ordering is a privacy property, not a style choice. ADR-0007 chose
+    // a separate consent endpoint precisely so a title never crosses the
+    // boundary before a consent record exists (PIPA §22 동의 후 수집).
+    // Parsing the body first would defeat that: an unconsented request's
+    // title would be read and validated before the 403. Reading no body at
+    // all is what makes the ADR's stated rationale true of the code.
     const receipt = await issueExampleConsentReceipt(db, userId);
     if (receipt === null) {
       return c.json(
@@ -76,6 +73,16 @@ examplesRoutes.post("/", async (c) => {
         403,
       );
     }
+
+    const body = await c.req.json().catch(() => null);
+    const parsed = AddExampleBody.safeParse(body);
+    if (!parsed.success) {
+      return c.json(
+        { error: "invalid_request", details: parsed.error.flatten() },
+        400,
+      );
+    }
+    const { ruleId, title } = parsed.data;
 
     // Ownership is proven here, tenant-scoped. The body's `ruleId` is never
     // trusted as an authorization claim.
