@@ -6,71 +6,70 @@ outside the narrative block; mechanical sections are regenerated every run._
 <!-- narrative:start -->
 ## Current focus
 
-**배포 창 종료 (2026-07-28).** Workers Paid 전환 → Worker prod 배포
-(`8bcac9d7`, `SYNC_SUBREQUEST_BUDGET=900`, 큐 `max_batch_size=1`) → GAS
-설치본 `AKfycbxfHV5…` **@57** co-deploy. 라이브 검증 진행 중.
+**#05 동의 모델 구현 완료 (코드·문서), 미배포.** example 저장의 1회 동의
+모델을 ADR-0007 로 확정하고 백엔드·GAS·개인정보처리방침 v1.1 까지 마쳤다.
+`ConsentReceipt` 의 프로덕션 민터(`consentReceiptFrom`)가 생기면서 §5.2 타입
+게이트가 열렸다 — 그동안 `addExample` 은 살아 있었지만 호출자가 구조적으로
+0이었다. 철회 시 기존 행은 **즉시 전량 삭제**(사용자 결정).
+**663 tests green**, 브랜치 `embedding-classifier/05-examples-consent-ui`.
 
-**라벨 생성이 라이브에서 전면 실패했고 수정됨 (PR #162).**
-`calendars.patch` 가 `primary` 별칭을 **404 로 거부**(본문 무관, 빈 `{}` 도
-404 / resolved id 는 200 / `calendars.get` 은 별칭 허용). read-modify-write
-의 read 만 성공하고 write 에서 죽었다. **discovery 문서와 실동작이 다르므로
-resolved id 를 별칭으로 되돌리지 말 것**(코드 주석에 실측 고정). 07-15
-프로브가 이벤트 PATCH 만 봤고 `Calendars.patch` 는 미검증 표면이었던 것이
-놓친 지점 — 같은 결함이 `scripts/cutover-labels.ts` 에도 있었다.
+**착수 중 발견 — example 이 프롬프트로 새는 경로가 이미 배선돼 있었다.**
+`addExample → listRules → buildPrompt → llm_calls.prompt_summary` 체인이
+전부 연결돼 있고 저장이 0이라서만 무해했다. 저장을 켜면 (a) v2 프롬프트에
+설명된 적 없는 필드가 나가 §5.3 eval-gate 를 뒷문으로 우회하고, (b) 동의한
+제목이 `prompt_summary` 에 복제돼 철회 purge 가 닿지 못한다. **프롬프트
+버전에 키잉해 차단**(`promptVersionSendsExamples`) — 피처 플래그가 아니라
+버전 인터록이라 eval-gate 를 통과해야만 켜진다.
 
-**native-labels — nl#02 AC1 · nl#03 AC2 실측 완료.** 분류 적용 6건 전부
-`eventLabelId` + 마커 v2 각인(colorId absent), §5.4 수동 보호 실증(사용자가
-직접 고른 라벨 이벤트는 마커 없음·미변경), 클라이언트 mint UUID 수용 확인.
+**`OPENAI_API_KEY` 블로커는 실재하지 않았다.** `.dev.vars` 와 `.prod.vars` 가
+바이트 동일한 키이고 실제 호출 68회 전부 200. 07-17 의 401 기록이 낡은 것.
+#05·#07 이 공유하던 사람-블로커가 사라졌다.
 
-**embedding-classifier #07 신설 — LLM leg 과잉 배정.** 라이브 오분류 4건은
-전부 **Stage 2 히트**로 확인되어 "임계값이 낮다" 가설은 반증. hit 56 중 52
-가 단일 카테고리로 쏠리고 **동일 프롬프트에 정반대 판정**(비결정성) 관측.
-`callOpenAi` 에 `temperature`/`seed` 미지정 확인.
+**#07 AC1 종료 — "temperature 넣으면 끝" 은 반증됐다.** `gpt-5.4-nano` 는
+샘플링 파라미터를 **전부 수용**(6/6 200)하지만 10회 반복 일치율이
+baseline 90% → `temperature:0` 85% 로 **개선되지 않는다**. 파라미터가 무시되는
+것으로 보이며 원인은 모델 추론 비결정성. `callOpenAi` 에 파라미터를 추가하지
+말 것 — 방향은 프롬프트(none 편향)로 확정. 흔들리는 케이스는 전부 정답
+카테고리가 목록에 **없는** 경우로, 타이브레이커 (f)가 무너지는 지점이다.
 
-**card-latency / sync-reliability — 전 트랙 done.**
+**#04 — 컷오버 스크립트는 no-op, 그러나 AC3 는 실제 작업이 남았다.**
+dry-run pending 0건(규칙 3개 전부 labelId 링크)이라 `--execute` 는 돌리지
+않았다. 규칙 3/3 이 named chip 으로 실재(AC2 기계 절반). 다만 마커 census 로
+**v1 이벤트 121건 잔존**(v2 는 35건) 확인 — full resync 는 no-op 이 아니며
+PR-B(v1 읽기 경로 제거)의 실질 선행조건이다. `#d81b60` 은 26개 슬롯 덤프에
+없어 **미해결**(24색 가정이 부정확했다).
 
-**OAuth 검수 통과 (07-24)** — 라이브 표면 동결 해제. 재검수 트리거는 스코프
-추가·consent screen *설정* 변경뿐.
-
-**출시 로드맵:** ① 라이브 검증 마무리(4로케일) → #04 컷오버 → PR-B 레거시
-제거. ② #07 + #05 OAuth AC → #06. ③ Marketplace 출시.
-
-운영 posture: main 에 local merge-gate advisory(보고만, 차단 안 함).
+**출시 로드맵:** ① #05 배포 시퀀싱(§12 30일 통지) → ② full resync → PR-B
+③ #07 프롬프트 + eval-gate → #06 ④ Marketplace.
 
 ## Start here next session
 
-**main 622 tests green.** 병목 = **분류 품질(#07)** + **4로케일 스크린샷**.
-
-- **사람 — 4로케일 스크린샷 4장**: 애드온 패널 en/ko/zh-CN/zh-TW.
-  nl#03 과 ec#04 의 마지막 AC 를 동시에 닫는다. `#d81b60` hex 실측 병행.
-- **사람 — OPENAI_API_KEY 재발급**: #05 eval-gate 와 **#07 이 같은 블로커를
-  공유**. 프롬프트 수정은 §5.3 상 eval 통과가 전제라 키 없이 #07 AC 3·4 를
-  못 닫는다.
-- **에이전트 — #07 1차**: 모델이 `temperature`/`seed` 를 받는지 1회 호출로
-  실측(gpt-5 계열 nano 는 파라미터 거부 전례 — 단정 금지). 거부되면
-  프롬프트(none 편향 강화)로 방향 전환.
-- **에이전트 — #04 컷오버 dry-run**: 현재 규칙 3개 전부 labelId 링크라
-  no-op 예상. dry-run 무해하므로 먼저 확인 후 `--execute`.
-- **에이전트 — #05 OAuth AC 4건**: 1회 동의 모델 + Instant Feedback UI
-  표면화 + 개인정보처리방침 durable-storage 명시(`legal-reviewer`) + 결정 기록.
+- **사람 — #05 배포 시퀀싱 판단**: 처리방침 v1.1 은 §12 **중대한 변경**(1·2·3호)
+  이라 시행 30일 전 통지 + 이메일 + 명시적 재동의가 따른다. 미출시 서비스에
+  30일 시계가 실질적으로 구속력이 있는지가 배포 타이밍을 정한다.
+- **사람 — 4로케일 스크린샷 4장** + `#d81b60` 실측(위 참조 — 프로브로는 못 얻음).
+- **에이전트 — full resync 실행 판단**: v1 121건 재각인. prod 쓰기라 승인 필요.
+- **에이전트 — #07 프롬프트 v7**: 방향 확정됨(none 편향 강화). eval-gate 는
+  이제 키가 있으므로 즉시 착수 가능. `--prompt-version v6` 델타도 같이 측정하면
+  #05 의 마지막 AC(기본 버전 v6 승격)까지 닫힌다.
 
 ## Open decisions
 
-- **404 → 502 매핑** — `not_found` 가 `upstream_unavailable` 로 나가
-  "업스트림 장애" 라는 잘못된 신호를 준다. PR #162 진단을 늦춘 실제 원인.
-  라우트 계약 변경이라 별도 판단 — 미결.
-- **호스트 탭 캐시** — 새 규칙 직후 미새로고침 탭은 자동 채색을 못 그린다
-  (백엔드는 정상, API 실측으로 확정). 애드온에 호스트 갱신 API 가 **없음을
-  문서로 확인**. 토스트 안내로 대응 — 추가 대응 여부 미결.
-- **#04 keyword optional ↔ backend `keywords.min(1)`** — `keywords=[name]`
-  폴백으로 우회 중이나 **이 폴백이 #07 의 씨앗 빈약을 키운다**. Zod 완화 미결.
-- 벡터 차원 **동결** 미확정 — 잠정 gemma(768). 1024 로 뒤집히면 마이그레이션.
-- 임계값 `T=(0.30,0.55,0.10)` = provisional. 단 #07 로 **Stage 1 이 보수적**
-  (184건 중 128건이 LLM 까지 하강)임이 드러나 하향은 후보 아님.
+- **#05 배포 시퀀싱 / §12 30일 통지** — 위 참조. 코드는 준비됐고 배포만 남았다.
+- **동의 이력 3년 보관 미구현** — 처리방침 §6 이 3년을 약속하는데 스키마가
+  없다. ADR-0007 이 만든 문제가 아니라 드러낸 것. 탈퇴 후 살아남는 원장은
+  별도 PII-최소화 설계가 필요 — 별도 이슈 후보.
+- **404 → 502 매핑** — `not_found` 가 `upstream_unavailable` 로 나간다.
+  PR #162 진단을 늦춘 원인. 라우트 계약 변경이라 미결.
+- **호스트 탭 캐시** — 새 규칙 직후 미새로고침 탭은 자동 채색을 못 그린다.
+  호스트 갱신 API 부재 확인. 토스트 안내로 대응 — 추가 대응 미결.
+- **#04 keyword optional ↔ `keywords.min(1)`** — `keywords=[name]` 폴백이
+  #07 의 씨앗 빈약을 키운다. Zod 완화 미결.
+- 벡터 차원 **동결** 미확정(잠정 gemma 768). 임계값 `T=(0.30,0.55,0.10)`
+  provisional — 단 Stage 1 이 보수적임이 드러나 하향은 후보 아님.
 - un-grilled architecture-deepening 후보: ColorOwnershipMarker,
   ResultHandler, ObservabilityRecorder, route-test-harness, GAS
   `fetchBackendEndpoint`. Claim primitive 은 보류 확정.
-
 <!-- narrative:end -->
 
 ## architecture-deepening
@@ -99,7 +98,7 @@ resolved id 를 별칭으로 되돌리지 말 것**(코드 주석에 실측 고�
 
 ## embedding-classifier
 
-`█████████████████░░░░░` 64/84 acceptance criteria met (76%)
+`██████████████████░░░░` 68/84 acceptance criteria met (81%)
 
 | # | Issue | Triage | Criteria | State | Blocked by |
 |---|-------|--------|----------|-------|-----------|
@@ -107,9 +106,9 @@ resolved id 를 별칭으로 되돌리지 말 것**(코드 주석에 실측 고�
 | 02 | Embedding knn classifier name seeds | `done` | 14/14 | ✅ done | — |
 | 03 | Keyword seeds | `ready-for-agent` | 14/14 | ✅ done | — |
 | 04 | Rule editor redesign | `ready-for-human` | 5/6 | 🔵 in-progress | #03 |
-| 05 | Examples seeds instant feedback | `ready-for-human` | 14/19 | 🔵 in-progress | #03 |
+| 05 | Examples seeds instant feedback | `ready-for-human` | 17/19 | 🔵 in-progress | #03 |
 | 06 | History based rule suggestions | `ready-for-agent` | 0/8 | ⛔ blocked | #05 |
-| 07 | Llm leg over assignment | `needs-triage` | 0/6 | ⬜ todo | — |
+| 07 | Llm leg over assignment | `ready-for-agent` | 1/6 | 🔵 in-progress | — |
 
 ## native-labels
 

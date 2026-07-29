@@ -100,20 +100,31 @@ example durable 저장이 **구조적으로** 일어나지 않는다. 착지 전
 - [ ] **examples 구조화 필드** — LLM user-메시지 카테고리 JSON 에 examples 가 구조화
       필드로 합류(산문 프롬프트 아님) + system 프롬프트에 "examples 필드 사용법"
       1줄 전역 추가. 프롬프트 **버전 범프** + eval-gate 3-gate 통과.
+      *(남은 일이 바뀌었다 — 필드·v6 프롬프트·레지스트리는 이미 있고, ADR-0007 의
+      버전 인터록 때문에 **eval-gate 를 통과해 기본 버전을 v6 로 올리는 것**이
+      곧 이 AC 다. `OPENAI_API_KEY` 블로커는 실재하지 않았음이 ec#07 에서 실측됨.)*
 
 ### 동의·법무 (OAuth 게이트 — UI/출시는 검수 후)
 
-- [ ] **동의 모델 = 1회 동의** — 첫 Instant Feedback 정정 시 저장 동의를 1회 수집,
+- [x] **동의 모델 = 1회 동의** — 첫 Instant Feedback 정정 시 저장 동의를 1회 수집,
       이후 `ConsentReceipt` 가 모든 example 을 커버(철회 전까지). 철회 시 신규 저장
       중단(기존 행 처리는 개인정보처리방침 결정을 따른다).
-- [ ] **사이드바 Instant Feedback UI** — "Event color analysis" 에서 Rule 지목 →
+      *(ADR-0007. `users` 3개 컬럼 + `consentReceiptFrom` 타입 게이트. 철회 시
+      기존 행 **즉시 전량 삭제**로 확정 — 사용자 결정, 2026-07-28.)*
+- [x] **사이드바 Instant Feedback UI** — "Event color analysis" 에서 Rule 지목 →
       example 추가가 end-to-end 동작한다. **OAuth 검수 통과 후 표면화**(다크 빌드
       단계에선 백엔드 경로만, 저장 0).
+      *(코드 완료 — rememberExample 체크박스 + 동의 카드 + 철회 카드 + i18n 28키
+      ×4. **배포는 미실행**: 이번 세션 범위가 코드·문서까지이고, §12 30일 통지가
+      선행돼야 한다.)*
 - [ ] **개인정보처리방침/동의 표면 변경분** — "동의 시 정정 제목(redacted)이 durable
       저장됨"을 명시. `legal-reviewer` 게이트 통과. OAuth 검수 통과 후 출시.
-- [ ] **동의 모델 결정 기록** — 1회 동의 모델 + durable 저장 disclosure 를
+- [x] **동의 모델 결정 기록** — 1회 동의 모델 + durable 저장 disclosure 를
       개인정보처리방침 문서(또는 ADR-0004 amendment)에 기록. **신규 durable-storage
       ADR 은 불필요** — 저장 결정은 ADR-0004 §범위 + src/AGENTS.md §5.2 가 이미 외부화.
+      *(ADR-0007 로 기록 — 사용자 결정. durable-storage ADR 이 아니라 **동의 모델**
+      ADR 이므로 위 금지에 저촉되지 않는다. ADR-0004 는 본문 동결 정책에 따라
+      `[개정 …]` 포인터 한 줄만 추가. 정본 불변항은 src/AGENTS.md, 고지는 §2.5.)*
 
 ### lockstep + 범위 명시
 
@@ -129,7 +140,9 @@ example durable 저장이 **구조적으로** 일어나지 않는다. 착지 전
 ## Blocked by
 
 - #03
-- 출시는 OAuth 검수(2026-05-14 재제출분) 통과 후에만 가능 — 외부 게이트
+- ~~출시는 OAuth 검수 통과 후에만 가능~~ — 해소 (2026-07-24 승인)
+- ~~eval-gate 가 `OPENAI_API_KEY` 재발급 대기~~ — **블로커 부재로 확인**
+  (2026-07-28, ec#07 실측: 68회 호출 전부 200)
 
 ## Comments
 
@@ -189,3 +202,63 @@ Google Trust & Safety 승인 통보(project `autocolor-dev`): `script.external_r
   변경 시 재검수 필요. 본 이슈의 개인정보처리방침 *본문* 갱신은 URL 이 그대로면
   consent screen 설정 변경이 아니므로 재검수 트리거 아님(URL 을 바꾸면 트리거).
 - 잔여 non-OAuth 게이트는 그대로: eval-gate 3-gate (OPENAI_API_KEY 재발급 필요).
+
+### 2026-07-28 — OAuth AC 4건 구현 (agent)
+
+브랜치 `embedding-classifier/05-examples-consent-ui`. 커밋 2개(백엔드 / 문서·GAS).
+663 tests(+41) / typecheck / lint / check-context-paths / legal:build 통과.
+
+**사람이 내린 결정 3건** (착수 전 확인):
+1. 철회 시 기존 example 행 → **즉시 전량 삭제**.
+2. 결정 기록 위치 → **신규 ADR-0007**. (AC 가 금지한 것은 *durable-storage*
+   ADR 이고 이것은 *동의 모델* ADR 이라 저촉되지 않는다. ADR-0004 는 본문 동결
+   정책상 `[개정 …]` 포인터 한 줄만 추가.)
+3. eval-gate 는 이번 세션 범위 밖 — AC 1 실측 보고 후 정지.
+
+**에이전트가 내린 기술 판단 4건** (되돌리기 쉬운 것들, 명시):
+- receipt 를 정책 버전 일치까지 게이트(§12 재동의의 기계적 집행).
+- `embed_failed` 를 5xx 가 아니라 200+reason 으로 — 5xx 면 `gas/api.js` 의
+  3회 백오프에 걸려 사이드바가 멈추고 소프트 실패가 장애와 구분되지 않는다.
+- rememberExample 체크박스 기본 OFF.
+- `POST /api/examples` 에 2초 throttle(`users.last_example_at`) 추가 — AC 요구
+  사항은 아니지만 호출당 Workers AI embed 1회를 태우는 인증 엔드포인트다.
+
+**착수 중 발견한 것 — 이 이슈의 설계를 바꿨다.**
+
+example → 프롬프트 체인이 **이미 전부 배선돼 있었고**, 저장이 0이라서만
+무해했다: `addExample` → `listRules`(:167-189) → `buildPrompt`(:222-224) →
+`llm_calls.prompt_summary`. 코드 주석이 그 전제를 명시하고 있었다
+(llmClassifier.ts:217-218 "dark build stores zero examples"). 저장을 켜는
+순간 두 가지가 조용히 따라온다:
+
+1. **eval-gate 우회** — 현행 기본 프롬프트는 v2 이고 v2 는 examples 필드를
+   설명한 적이 없다. 필드를 채우면 §5.3 상 eval-gate 대상인 모델 입력 변경이
+   뒷문으로 나간다.
+2. **철회 purge 가 닿지 않는 사본** — 동의한 제목이
+   `llm_calls.prompt_summary` 에 durable 복제되어 "즉시 전량 삭제" 가 거짓이
+   된다.
+
+**조치**: `buildPrompt` 가 필드를 문서화한 프롬프트 버전에만 examples 를
+싣도록 게이팅(`promptVersionSendsExamples`). 피처 플래그가 아니라 **버전
+키잉**이라 eval-gate 를 통과해 기본 버전을 올려야만 켜진다. eval 러너는
+`--prompt-version v6` 로 그대로 델타 측정 가능하므로 위 프롬프트 AC 가 잃는
+것은 없다. 회귀 테스트로 고정(v2 → `[]`, v6 → 채워짐).
+
+부수 효과로 example 이 이번 PR 에서 **OpenAI 에 도달하지 않으므로** §4.1
+국외이전 항목이 하나 줄고, 새로 고지할 수탁자는 Cloudflare Workers AI 하나만
+남는다.
+
+**같은 diff 에서 시정한 기존 부정확 기재 2건** (이번 작업이 만든 것이 아니라
+드러낸 것 — 편집 대상 절에 있던 사실오류라 방치할 수 없었다):
+- 처리방침 §2.3 이 `llm_calls` 를 "집계 카운터만, 이벤트 내용 미포함" 으로
+  기술했으나 `prompt_summary` / `raw_response` 가 마스킹된 이벤트 텍스트를
+  durable 저장한다(migration 0015, 현재 라이브).
+- Cloudflare **Workers AI** 가 동기화 읽기 경로에서 이벤트 제목을 처리하는데
+  §4 에도 `sub-processors.md` 에도 없었다.
+
+**배포하지 않은 것**: `clasp push` / `wrangler deploy` / `db:migrate`.
+마이그레이션은 파일만(`drizzle/0020_dark_thor_girl.sql`). 처리방침 v1.1 은
+§12 **중대한 변경**(1·2·3호 해당)이라 시행 30일 전 사전 통지 + 이메일 별도
+통지가 선행돼야 하고, 그 전까지 §2.5 저장은 구조적으로 개시되지 않는다
+(동의 없이는 저장 경로 호출 불가). 매니페스트 무변경이라 OAuth 재검수
+트리거는 아니다.
