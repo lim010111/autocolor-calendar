@@ -76,6 +76,21 @@ Reviewer-walkthrough scripts under [../docs/assets/marketplace/reviewer-demo/](.
   design: a stale deployment must not record consent against example-storage
   disclosure text the user never saw. Bump both together only when that
   disclosure materially changes (ADR-0007).
+- **Load-bearing:** `buildWelcomeCard` renders `welcome.legal.notice` plus the
+  Terms / Privacy links **above** the sign-in button. Terms of Service §0.3
+  makes its own effect conditional on "회사의 안내 절차에 따라 본 약관에
+  동의" — that section *is* the procedure, so removing it or moving the links
+  below the button (browsewrap) silently un-enforces every clause that only
+  matters in a dispute. Both URLs come from `config.js` and are already
+  covered by `appsscript.json` `openLinkUrlPrefixes`; no manifest change, so
+  no OAuth re-review.
+- **Removed on purpose (2026-07-29):** the settings card's `policy_settings`
+  checkbox group (`prevent_overwrite` / `use_llm` / `use_description`) is
+  gone. It had no `onChange`, no save handler, and no backing column — while
+  the privacy policy promised a "규칙 기반 분류만 사용" opt-out on the
+  strength of it. Do not reintroduce a toggle without the column and the
+  chain gate behind it; LLM invocation is decided by `OPENAI_API_KEY` at the
+  operator level (`src/services/classifierChain.ts`), not per user.
 - **Note:** the event card never fetches consent state. It learns it from
   `POST /api/examples` returning 403 `consent_required` and pushes
   `buildExampleConsentCard` at that point. Do not add a consent probe to the

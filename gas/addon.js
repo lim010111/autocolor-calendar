@@ -110,6 +110,26 @@ function buildWelcomeCard(L) {
 
   builder.addSection(tutorialSection);
 
+  // ToS §0.3 — clickwrap-lite. The terms make their own effect conditional on
+  // "회사의 안내 절차에 따라 본 약관에 동의" ; without this section the terms
+  // have never taken effect by their own wording, so every clause that only
+  // matters in a dispute (liability limits, §8.2 termination grounds) is
+  // unenforceable. Notice + links must render BEFORE the sign-in button —
+  // a link placed after the act of assent is browsewrap, which US courts
+  // reject far more often than clickwrap. No manifest change: both URLs are
+  // already covered by `openLinkUrlPrefixes` (`https://legal.autocolorcal.app`).
+  var consentSection = CardService.newCardSection();
+  consentSection.addWidget(CardService.newTextParagraph()
+    .setText(t('welcome.legal.notice', null, L)));
+  consentSection.addWidget(CardService.newButtonSet()
+    .addButton(CardService.newTextButton()
+      .setText(t('welcome.legal.terms', null, L))
+      .setOpenLink(CardService.newOpenLink().setUrl(ACFC_CONFIG.TERMS_OF_SERVICE_URL)))
+    .addButton(CardService.newTextButton()
+      .setText(t('welcome.legal.privacy', null, L))
+      .setOpenLink(CardService.newOpenLink().setUrl(ACFC_CONFIG.PRIVACY_POLICY_URL))));
+  builder.addSection(consentSection);
+
   var fixedFooter = CardService.newFixedFooter()
     .setPrimaryButton(CardService.newTextButton()
       .setText(t('welcome.cta.login', null, L))
@@ -1646,19 +1666,16 @@ function buildSettingsCard(L) {
     .setOnClickAction(CardService.newAction().setFunctionName("actionGoBack"))));
   builder.addSection(navSection);
 
-  var section = CardService.newCardSection()
-    .setHeader(t('settings.section.policy', null, L));
-
-  var policyGroup = CardService.newSelectionInput()
-    .setType(CardService.SelectionInputType.CHECK_BOX)
-    .setFieldName("policy_settings");
-
-  policyGroup.addItem(t('settings.policy.preventOverwrite', null, L), "prevent_overwrite", true);
-  policyGroup.addItem(t('settings.policy.useLlm', null, L), "use_llm", true);
-  policyGroup.addItem(t('settings.policy.useDescription', null, L), "use_description", false);
-
-  section.addWidget(policyGroup);
-  builder.addSection(section);
+  // (2026-07-29) The "정책 설정" checkbox group that used to live here —
+  // prevent_overwrite / use_llm / use_description — was decoration: no
+  // onChange, no save handler, and no backing column anywhere in
+  // `src/db/schema.ts`. Meanwhile the privacy policy promised a "규칙 기반
+  // 분류만 사용" opt-out on the strength of it. Rendering a toggle that
+  // cannot be honoured is a misrepresentation in the UI itself, so the group
+  // is removed and the policy's LLM opt-out claim was withdrawn in the same
+  // change (privacy-policy §4.2 / §5.1). A real per-user LLM switch, if ever
+  // wanted, is a schema + chain-gate + settings-write feature — not a
+  // checkbox.
 
   // ADR-0007 — example-storage consent state + withdrawal entry point.
   var examplesSection = CardService.newCardSection()

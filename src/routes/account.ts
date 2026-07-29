@@ -18,7 +18,7 @@ accountRoutes.use("*", authMiddleware);
 // POST /api/account/delete
 //
 // Marketplace privacy gate (§3 row 179). Hard-deletes the user's row; FK
-// cascade cleans 9 user-scoped tables. Best-effort Google API cleanup runs
+// cascade cleans 10 user-scoped tables. Best-effort Google API cleanup runs
 // before the authoritative DELETE so cascade-dropped rows are still readable.
 //
 // Order is required (see src/CLAUDE.md "Account deletion (§3 row 179)"):
@@ -63,7 +63,7 @@ accountRoutes.post("/delete", async (c) => {
     // returning null after cascade.
     await teardownWatchesForUser(db, c.env, userId);
 
-    // Step 3 — authoritative delete. FK cascade fans out to 9 user-scoped
+    // Step 3 — authoritative delete. FK cascade fans out to 10 user-scoped
     // tables. This is the only path that propagates errors to the response.
     await db.delete(users).where(eq(users.id, userId));
 

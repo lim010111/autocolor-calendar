@@ -126,7 +126,8 @@ const LANDING_HTML = `<!DOCTYPE html>
     <strong>Stage 1 (Rules)</strong> — Looks up your keywords against the
     event title, description, and location. Titles are sent to our embedding model to compute rule similarity; nothing else leaves your Google account at this step.
     1단계는 사용자가 등록한 키워드를 일정의 제목·설명·위치에서 찾아 색상을
-    적용합니다. 데이터는 캘린더 밖으로 나가지 않습니다.
+    적용합니다. 규칙과의 유사도 계산을 위해 <strong>제목</strong>은 임베딩
+    모델로 전송되며, 그 밖의 항목은 이 단계에서 계정 밖으로 나가지 않습니다.
   </p>
   <p>
     <strong>Stage 2 (AI)</strong> — Used only when Stage 1 finds no match.

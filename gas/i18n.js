@@ -106,6 +106,10 @@ var MESSAGES = {
     'welcome.step2': '<b>Step 2. Add an event</b><br>Add events to your calendar as usual. Just include the keyword in the title or description.',
     'welcome.step3': '<b>Step 3. Auto-color</b><br>The color is usually applied within 5–10 seconds. ✨ It runs in the background even when the sidebar is closed, and events created on the mobile Google Calendar app are colored the same way.',
     'welcome.cta.login': 'Sign in with Google',
+    // ToS §0.3 clickwrap — must render above the sign-in button.
+    'welcome.legal.notice': 'By continuing you agree to the <b>Terms of Service</b> and confirm that you have read the <b>Privacy Policy</b>.',
+    'welcome.legal.terms': 'Terms of Service',
+    'welcome.legal.privacy': 'Privacy Policy',
 
     // buildHomeCard
     'home.title': 'AutoColor dashboard',
@@ -215,10 +219,6 @@ var MESSAGES = {
     'rules.toast.deleteFailed': 'Failed to delete rule: {{message}}',
 
     // buildSettingsCard
-    'settings.section.policy': 'Policy settings',
-    'settings.policy.preventOverwrite': 'Prevent manual color overwrite',
-    'settings.policy.useLlm': 'Auto AI color classification',
-    'settings.policy.useDescription': 'Include event description in analysis',
     'settings.section.examples': 'Correction examples',
     'settings.examples.granted': 'Saving corrections: on (since {{date}})',
     'settings.examples.notGranted': 'Saving corrections: off. You will be asked the first time you save a correction.',
@@ -322,6 +322,10 @@ var MESSAGES = {
     'welcome.step2': '<b>2단계. 일정 등록하기</b><br>평소처럼 캘린더에 일정을 등록합니다. 제목이나 설명에 키워드가 포함되면 됩니다.',
     'welcome.step3': '<b>3단계. 자동 색상 적용</b><br>일정을 등록하면 보통 5~10초 안에 자동으로 색상이 적용됩니다. ✨ 사이드바를 열지 않아도 백그라운드에서 동작하고, 모바일 Google 캘린더 앱에서 만든 일정도 동일하게 적용돼요.',
     'welcome.cta.login': 'Google 계정으로 시작하기',
+    // ToS §0.3 clickwrap — must render above the sign-in button.
+    'welcome.legal.notice': '계속하면 <b>이용약관</b>에 동의하는 것으로 보며, <b>개인정보처리방침</b>을 확인한 것으로 봅니다.',
+    'welcome.legal.terms': '이용약관',
+    'welcome.legal.privacy': '개인정보처리방침',
 
     'home.title': 'AutoColor 대시보드',
     'home.push.inactive': '🔴 자동 동기화 비활성',
@@ -417,10 +421,6 @@ var MESSAGES = {
     'rules.toast.deleted': '규칙이 삭제되었습니다. 적용된 색상은 곧 원상복구됩니다.',
     'rules.toast.deleteFailed': '규칙 삭제 실패: {{message}}',
 
-    'settings.section.policy': '정책 설정',
-    'settings.policy.preventOverwrite': '수동 색상 덮어쓰기 방지',
-    'settings.policy.useLlm': 'AI 색상 자동 분류',
-    'settings.policy.useDescription': '설명(일정 세부 정보) 분석에 포함',
     'settings.section.examples': '정정 예시',
     'settings.examples.granted': '정정 내용 저장: 사용 중 ({{date}} 동의)',
     'settings.examples.notGranted': '정정 내용 저장: 사용 안 함. 정정을 처음 저장할 때 동의를 여쭤봅니다.',
@@ -519,6 +519,10 @@ var MESSAGES = {
     'welcome.step2': '<b>第 2 步. 添加日程</b><br>像往常一样在日历中添加日程,标题或描述包含关键词即可。',
     'welcome.step3': '<b>第 3 步. 自动应用颜色</b><br>添加日程后通常 5~10 秒内自动应用颜色。✨ 即使不打开侧边栏也会在后台运行,移动版 Google 日历应用中创建的日程也同样适用。',
     'welcome.cta.login': '使用 Google 帐号登录',
+    // ToS §0.3 clickwrap — must render above the sign-in button.
+    'welcome.legal.notice': '继续即表示您同意<b>服务条款</b>，并确认已阅读<b>隐私政策</b>。',
+    'welcome.legal.terms': '服务条款',
+    'welcome.legal.privacy': '隐私政策',
 
     'home.title': 'AutoColor 仪表板',
     'home.push.inactive': '🔴 自动同步未启用',
@@ -614,10 +618,6 @@ var MESSAGES = {
     'rules.toast.deleted': '规则已删除。已应用的颜色将很快还原。',
     'rules.toast.deleteFailed': '删除规则失败: {{message}}',
 
-    'settings.section.policy': '策略设置',
-    'settings.policy.preventOverwrite': '阻止覆盖手动设置的颜色',
-    'settings.policy.useLlm': 'AI 自动颜色分类',
-    'settings.policy.useDescription': '在分析中包含日程描述',
     'settings.section.examples': '更正示例',
     'settings.examples.granted': '保存更正：已开启（{{date}} 同意）',
     'settings.examples.notGranted': '保存更正：未开启。首次保存更正时会征求您的同意。',
@@ -716,6 +716,10 @@ var MESSAGES = {
     'welcome.step2': '<b>步驟 2. 新增活動</b><br>像平常一樣在日曆中新增活動,標題或描述包含關鍵字即可。',
     'welcome.step3': '<b>步驟 3. 自動套用顏色</b><br>新增活動後通常 5~10 秒內自動套用顏色。✨ 即使不開啟側邊欄也會在背景執行,行動版 Google 日曆應用程式建立的活動同樣適用。',
     'welcome.cta.login': '使用 Google 帳戶登入',
+    // ToS §0.3 clickwrap — must render above the sign-in button.
+    'welcome.legal.notice': '繼續即表示您同意<b>服務條款</b>，並確認已閱讀<b>隱私權政策</b>。',
+    'welcome.legal.terms': '服務條款',
+    'welcome.legal.privacy': '隱私權政策',
 
     'home.title': 'AutoColor 資訊主頁',
     'home.push.inactive': '🔴 自動同步未啟用',
@@ -811,10 +815,6 @@ var MESSAGES = {
     'rules.toast.deleted': '規則已刪除。已套用的顏色將很快還原。',
     'rules.toast.deleteFailed': '刪除規則失敗: {{message}}',
 
-    'settings.section.policy': '原則設定',
-    'settings.policy.preventOverwrite': '防止覆寫手動設定的顏色',
-    'settings.policy.useLlm': 'AI 自動顏色分類',
-    'settings.policy.useDescription': '在分析中包含活動描述',
     'settings.section.examples': '更正範例',
     'settings.examples.granted': '儲存更正：已開啟（{{date}} 同意）',
     'settings.examples.notGranted': '儲存更正：未開啟。首次儲存更正時會徵詢您的同意。',

@@ -59,7 +59,7 @@ Out of scope (intentionally):
 |---|---|---|---|
 | **Cloudflare** | Edge runtime + DB connection broker (Hyperdrive) + queue substrate (Queues + DLQ) + scheduled-trigger runner + embedding inference (Workers AI) | Calendar event payloads in transit only; queue messages are job descriptors; DLQ rows are Google API error envelopes; Workers AI receives event titles and consented correction titles as embedding input (not retained) | See §3 `Processing region` row |
 | **Supabase** | Managed PostgreSQL — OAuth tokens (encrypted at rest), sync state, observability counters, sessions, rule seed vectors | Aggregate counters / sync state / categories / encrypted refresh tokens / error envelopes; plus two durable surfaces carrying **redacted** event-derived text: `llm_calls` diagnostic columns and, with per-user consent, `rule_seeds` correction examples | See §3 `Processing region` row |
-| **OpenAI** | Optional LLM fallback (`gpt-5.4-nano`) for the rule-miss path of the classifier | Three whitelisted fields only (`summary` / `description` / `location`) after PII redaction; not invoked when `OPENAI_API_KEY` is unset | See §3 `Processing region` row |
+| **OpenAI** | LLM fallback (`gpt-5.4-nano`) for the rule-miss path of the classifier — operator-gated by `OPENAI_API_KEY`, not a per-user setting | Three whitelisted fields only (`summary` / `description` / `location`) after PII redaction; not invoked when `OPENAI_API_KEY` is unset | See §3 `Processing region` row |
 
 ## §1 — Cloudflare
 
@@ -166,8 +166,9 @@ table (currently `초안`); the substantive disclosure lives at
 
 ### Role
 
-Optional LLM fallback for the rule-miss path of the classifier. Model:
-`gpt-5.4-nano`.
+LLM fallback for the rule-miss path of the classifier. Model:
+`gpt-5.4-nano`. Invocation is gated by the operator-held `OPENAI_API_KEY`;
+there is no per-user opt-out (privacy-policy §4.2).
 
 ### Data handled
 

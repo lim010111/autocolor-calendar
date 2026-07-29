@@ -9,6 +9,11 @@ var ACFC_CONFIG = {
   // every grant fails loudly — that is the intended behaviour, not a bug.
   EXAMPLE_CONSENT_POLICY_VERSION: 'example-storage/v1',
   PRIVACY_POLICY_EXAMPLES_URL: 'https://legal.autocolorcal.app/privacy',
+  // ToS §0.3 — the welcome card is the "회사가 정한 안내 절차" the terms name
+  // as their own condition of effect. Both links must render *before* the
+  // sign-in button, or the terms never take effect by their own wording.
+  PRIVACY_POLICY_URL: 'https://legal.autocolorcal.app/privacy',
+  TERMS_OF_SERVICE_URL: 'https://legal.autocolorcal.app/terms',
   PROPERTY_KEYS: {
     ONBOARDED: 'acfc.onboarded',
     HOME_FIRST_SEEN_AT: 'acfc.homeFirstSeenAt'

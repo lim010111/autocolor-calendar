@@ -35,21 +35,24 @@ publish 절차:
    publish.
 3. `docs/marketplace-readiness.md` row 121-122 status `초안` → `완료` +
    URL 추가.
-4. `gas/addon.js:119` 의 "정식 링크는 출시 시점에 제공됩니다." placeholder
-   를 실제 URL 로 교체 (GAS 새 version 배포).
-5. GAS Add-on onboarding 카드에 privacy-policy §4.1 의 국외이전 안내 문구
-   ("본 서비스는 미국·일본·캐나다·아일랜드 등에 데이터를 이전합니다.
-   회원가입 진행 시 본 처리방침 §4.1 의 국외이전 조건에 별도로 동의한
-   것으로 간주됩니다.") 추가.
-6. (privacy-policy §9.1 후속) 본 정책 시행일로부터 90일 이내에 OAuth
-   콜백의 K-12 도메인 자동 차단 로직을 구현하고, 구현 시점에 §9.1 본문을
-   사전 차단 진술로 갱신 + §12 의 절차로 통지.
+4. **약관·방침 링크가 GAS onboarding 카드에서 살아 있는지 확인.**
+   `buildWelcomeCard` 는 로그인 버튼 **위에** 두 링크와 clickwrap 안내
+   (`welcome.legal.*`) 를 렌더링하며, 이용약관 §0.3 은 그 절차의 존재를
+   자기 발효요건으로 삼는다. 링크가 404 인 상태로 배포하면 약관이 발효
+   되지 않는다 — publish 와 GAS 새 version 배포는 같은 창에서 처리한다.
+5. **privacy-policy §4.1.1 의 수탁자 정보관리책임자 연락처 4건**의
+   현행성 재확인 (PIPA §28의8②3호 필수 고지사항).
+6. **privacy-policy §8.2 의 접속기록 보관 절차** 가동 확인 — Cloudflare ·
+   Supabase 콘솔 감사 로그의 요금제상 보존기간이 1년에 미치지 못하면
+   정기 내려받기·보관 루틴을 publish 전에 시작한다.
 
 **주의:** 본 디렉터리에는 외부 vendor URL 을 인라인하지 않는다
 ([`../assets/marketplace/sub-processors.md`](../assets/marketplace/sub-processors.md) §4 정책).
-단, [`privacy-policy.md`](./privacy-policy.md) §11 의 한국 권익침해 구제기관
-enumeration 은 PIPA §30 ①항 8호의 처리방침 필수 기재사항으로 본 정책의
-명시적 예외에 해당한다(privacy-policy §11 본문 참조).
+단, [`privacy-policy.md`](./privacy-policy.md) 의 다음 두 곳은 법령상 필수
+기재사항이므로 본 정책의 명시적 예외에 해당한다.
+
+- §11 한국 권익침해 구제기관 enumeration — PIPA §30 ①항 8호.
+- §4.1.1 수탁자 정보관리책임자 연락처 — PIPA §28의8 ②항 3호.
 
 ## Index
 
