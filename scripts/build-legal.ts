@@ -162,10 +162,28 @@ async function buildPage(page: Page): Promise<void> {
     gfm: true,
     breaks: false,
   });
-  const out = template(page.title, html, page.slug);
+  const out = template(page.title, protectEmails(html), page.slug);
   const outPath = join(outDir, `${page.slug}.html`);
   await writeFile(outPath, out, "utf8");
   console.log(`  ✓ ${page.src} → dist/legal/${page.slug}.html (${out.length.toLocaleString()} bytes)`);
+}
+
+// Cloudflare zone-level Email Address Obfuscation rewrites every address in
+// the served HTML into a `/cdn-cgi/l/email-protection` link that only a
+// browser running JS can decode. That is fine for a marketing page and wrong
+// here: §4.1.1 의 수탁자 연락처(PIPA §28의8②3호) and §10 의 개인정보 보호책임자
+// 연락처(§30①6호) are **mandatory disclosures**, and a reader without JS — a
+// text browser, a regulator's fetch, a Marketplace review crawler — would see
+// `[email protected]` instead of the address the statute requires us to publish.
+//
+// `<!--email_off-->` is Cloudflare's documented per-fragment opt-out. It must
+// be applied here, after `marked` has run and after the comment strip above,
+// or the strip would eat the directive itself.
+function protectEmails(html: string): string {
+  return html.replace(
+    /[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/g,
+    (addr) => `<!--email_off-->${addr}<!--email_on-->`,
+  );
 }
 
 async function copyIcons(): Promise<void> {

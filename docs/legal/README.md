@@ -24,6 +24,14 @@ Cross-references, 운영자 publish 체크리스트) 을 제거한 뒤 HTML 을 
 Marketplace 리뷰어가 읽을 문서에 실리지 않아야 하므로, 본문에 내부 참조를
 추가할 때는 반드시 두 마커 중 하나 안에 넣어라.
 
+**게시본에 남는 주석은 `<!--email_off-->` / `<!--email_on-->` 한 쌍뿐이다.**
+Cloudflare 존 설정의 Email Address Obfuscation 이 커스텀 도메인에서 모든
+이메일 주소를 `/cdn-cgi/l/email-protection` 링크로 바꿔 JS 없이는 읽을 수
+없게 만든다. §4.1.1 수탁자 연락처(PIPA §28의8②3호) 와 §10 개인정보 보호
+책임자 연락처(§30①6호) 는 법정 필수 기재사항이므로, `build-legal.ts` 가
+빌드 마지막 단계에서 주소를 이 지시자로 감싸 난독화를 끈다. 게시본 주석
+검사 시 이 두 개는 정상이며, 그 밖의 주석이 보이면 스트립이 깨진 것이다.
+
 ## Publish & verification commands
 
 ```bash

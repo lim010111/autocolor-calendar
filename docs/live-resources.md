@@ -50,9 +50,16 @@ URL 을 유일한 `/exec` 인 것처럼 적어 두어 prod 리다이렉트 대�
 
 | Deployment ID | 역할 | 정본 | 버전 |
 |---|---|---|---|
-| `AKfycbxfHV5JvpRF…` | **설치본 Add-on** — 사용자가 Calendar 에서 실행하는 코드 | 2026-07-07 v49 잔류 사고로 확인 | @56 (2026-07-28) |
+| `AKfycbxfHV5JvpRF…` | **설치본 Add-on** — 사용자가 Calendar 에서 실행하는 코드 | 2026-07-07 v49 잔류 사고로 확인 | @57 (2026-07-29) |
 | `AKfycbxKZDXL9_vy…` | **prod 웹앱** — Worker 가 OAuth 결과를 되던지는 `/exec` | `.prod.vars` `GAS_REDIRECT_URL` | @54 |
-| `AKfycbzmpZKgeaXn…` | **dev 웹앱** — dev Worker 의 `/exec` | `.dev.vars` `GAS_REDIRECT_URL` | — |
+| `AKfycby_UpX9PLFS…` | HEAD 추적 배포 — 코드 push 즉시 반영 | `clasp deployments` | @HEAD |
+
+> **(2026-07-29 실측 정정)** `.dev.vars` `GAS_REDIRECT_URL` 이 가리키는
+> `AKfycbzmpZKgeaXn…` 은 **현재 존재하지 않는다** — `clasp deployments` 에
+> 없다. 언젠가 삭제됐고 `.dev.vars` 만 남았다. dev Worker 의 OAuth 콜백은
+> 그래서 죽어 있을 것이다(dev 전용이라 prod 영향 0). 되살리려면 새 URL 이
+> 생기므로 `.dev.vars` + GCP dev 리다이렉트를 함께 갱신해야 한다 — dev 는
+> URL 고정 계약의 대상이 아니다.
 
 - **URL must stay stable** — 세 개 모두. 재배포는 `clasp deploy -i <위 ID> -V <n>`
   (또는 "Manage deployments → Edit existing → New Version → Deploy") 로만.
