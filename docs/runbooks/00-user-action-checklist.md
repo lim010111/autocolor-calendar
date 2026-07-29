@@ -20,9 +20,9 @@
 | G2 — Prod 환경 활성화        | ✅ 완료          | PR #43 머지 (Hyperdrive / Queue / cron 바인딩)          |
 | G3 — CI/CD 파이프라인        | ✅ 완료          | PR #45 머지 + `main` classic branch protection 활성화 확인 2026-05-06 (4 status check + PR review 1명 + force-push/delete 차단; `enforce_admins: false`는 1인 개발자 emergency push 대비 의도적) |
 | G4 — Privacy/ToS 호스팅      | ✅ 완료          | `legal.autocolorcal.app/{privacy,terms}` publish 2026-05-05 + GCP Consent Screen 갱신 (③ 완료 / ⑥ self-publish 채택) |
-| G5 — Listing assets          | ⏳ 대기          | description 정본 OK, 아이콘·스크린샷 미완               |
-| G6 — OAuth 검수              | ⏳ critical path | scope 정당화 final, 데모 영상·Submit 미완               |
-| G7 — 백업/복구               | ⚠️ 진행중        | Supabase Pro 결제 완료 2026-05-06 / PITR 토글 잔존 (작업 ②) |
+| G5 — Listing assets          | ⏳ 대기          | description·아이콘·데모 영상 완료. **스크린샷 4장은 존재하나 무효** — 2026-05-09 촬영분이라 native-labels #03 편집기 개편(07-28)·legal clickwrap(07-29) 이전 UI 다. 재촬영 필요 (작업 ④) |
+| G6 — OAuth 검수              | ✅ 완료          | 2026-07-24 승인 — `script.external_request` / `calendar` / `calendar.events` 3종. 데모 영상·Submit 모두 종료. 재검수 트리거는 신규 스코프 또는 consent screen **설정** 변경뿐 |
+| G7 — 백업/복구               | ⚠️ 후퇴함        | Pro 결제 2026-05-06 → **2026-07-01 billing 중단으로 prod 가 임시 Free** (pause → Restore). Free 는 **백업 0 + 7일 무활동 자동 pause** 라 G7 은 사실상 미충족이다. PITR 은 애초에 보류 결정(2026-05-06). 실트래픽 전 Pro 복구 필요 — 접속기록 1년 보관(처리방침 §8.2 후속)의 Audit Log Drain 도 Pro 애드온이라 같은 결제에 묶인다 |
 | G8 — Marketplace publish     | ⏳ G6 의존       | 마지막 단계, 검수 1-3주                                 |
 
 ---
@@ -69,7 +69,18 @@
 - [x] custom domain 매핑 + 200 응답 확인
 - [x] `gas/addon.js:119` placeholder URL을 실제 URL로 교체 (commit `ae85980` — GAS 새 version 배포는 운영자 수동 단계로 잔존)
 
-### ④ 스크린샷 4장 촬영 (1시간)
+### ④ 스크린샷 4장 촬영 (1시간) — 재촬영 필요
+
+> **1차 촬영분(2026-05-09, `1f41184`)은 무효다.** 그 뒤 UI 가 두 번 바뀌었다:
+> native-labels #03 편집기 개편(07-28 — 이름·색 읽기 전용, 11색 팔레트 →
+> 라벨 칩, 이벤트 사이드바 색 선택도 칩 목록) 과 legal clickwrap(07-29 —
+> welcome 카드에 약관·방침 링크 추가, 설정 카드의 정책 체크박스 3개 제거).
+> `01-welcome` · `03-rules` · `04-event-preview` 는 확실히 낡았고 `02-home`
+> 도 확인이 필요하다.
+>
+> **native-labels #03 의 마지막 AC(4로케일 편집기 각 1장)와 같은 화면**이니
+> 한자리에서 같이 찍는다 — 편집기를 en/ko/zh-CN/zh-TW 로 4장(AC 증거) +
+> 아래 장면 4종(리스팅 자산).
 
 실제 Google Calendar에서 Add-on 패널 캡처:
 
@@ -122,10 +133,21 @@
 
 ## ⭐ critical path — 가장 먼저 시계 돌리기
 
-### ⑦ 데모 영상 촬영 (반나절)
+### ⑦ 데모 영상 촬영 — ✅ 2026-05-09 완료 (07-17 재편집, 07-24 승인)
 
-**Submit하는 순간 Google 검수 4-6주 시계가 시작됨** → ③④⑤⑥과 병행해도 무방.
-다른 작업 다 끝내고 영상 찍기 시작하면 출시가 4-6주 늦춰진다.
+> **다시 찍지 않는다.** `https://youtu.be/5hzXGmM_dQc` 하나가 G6(Restricted
+> Scope 데모)와 G5(Promotional video, **optional**) 양쪽의 정본이다 —
+> `docs/marketplace-readiness.md` §1 row 76 / §2 row 129 / §6 row 258 이
+> 같은 URL 을 공유한다. 2026-07-03 반려(consent 화면 미노출) → 07-17
+> 재편집본 제출 → **07-24 스코프 승인**으로 소임을 다했다.
+>
+> 영상은 native-labels #03 편집기 개편(07-28)과 legal clickwrap(07-29)
+> **이전**에 촬영돼 현재 UI 와 일부 다르다. 그러나 승인 메일의 재검수
+> 트리거는 "신규 스코프 요청 또는 consent screen 설정 변경" 뿐이므로 UI
+> 변경은 재제출 사유가 아니다. G8 리스팅 품질 차원에서 재촬영하고 싶다면
+> 선택 사항이며, 그때는 ④와 같은 셋업을 공유한다.
+
+아래는 촬영 당시의 사양 — 재촬영을 택할 경우의 참조로만 남긴다.
 
 - **사양**: 60-90초, 720p+, 영어 자막, prod 환경 (`autocolorcal.app`)
 - **시나리오** (5단계):
@@ -139,10 +161,10 @@
 - **왜 사용자만**: 화면 녹화 + 본인 OAuth 계정
 - **Claude 도움**: 분 단위 콘티 + 영문 자막 스크립트, 사전 데이터 셋업 가이드
 - **상세**: `docs/runbooks/06-oauth-verification.md` Step 2
-- [ ] 사전 데이터 셋업 (test 계정 + 빈 캘린더)
-- [ ] 1차 촬영
-- [ ] 자막 입히기
-- [ ] YouTube/Drive 업로드 + URL 캡처
+- [x] 사전 데이터 셋업 (test 계정 + 빈 캘린더)
+- [x] 1차 촬영 (2026-05-09) + 재편집 (2026-07-17, consent 화면 포함)
+- [x] 자막 입히기
+- [x] YouTube unlisted 업로드 + URL 캡처 — `https://youtu.be/5hzXGmM_dQc`
 
 ### ⑧ GCP OAuth Consent Screen Submit (30분)
 
@@ -205,12 +227,13 @@
 +9-10주     정식 출시 🎉
 ```
 
-**핵심 1건만 고른다면 → ⑦ 데모 영상 + ⑧ Submit**. 4-6주 시계가 가장 일찍
-시작되는 게 critical path 최단화의 전부.
+> **(2026-07-29) 위 타임라인은 소진됐다.** ⑦·⑧·G6 은 2026-07-24 승인으로
+> 끝났고, 4-6주 외부 시계도 함께 닫혔다. 지금 남은 critical path 는
+> **④ 스크린샷 재촬영 → G5 → ⑨ G8 Submit** 이며, 4-6주짜리 대기는 G8
+> 검수 하나뿐이다.
 
-**병행 가능한 작업**: ①②③⑤⑥은 서로 독립이라 같은 날 다 시작해도 OK.
-④ 스크린샷은 ⑦ 데모 영상과 같은 prod 환경 셋업을 공유하니 같이 찍는 게
-효율적.
+**핵심 1건만 고른다면 → ④ 스크린샷 재촬영**. G5 를 막고 있는 유일한 항목이고,
+native-labels #03 의 마지막 AC 와 같은 화면이라 한자리에서 둘 다 닫힌다.
 
 ---
 
