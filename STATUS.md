@@ -6,79 +6,69 @@ outside the narrative block; mechanical sections are regenerated every run._
 <!-- narrative:start -->
 ## Current focus
 
-**#05 동의 모델 — 코드·문서 완료, 미배포.** 1회 동의 모델을 ADR-0007 로
-확정하고 백엔드·GAS·처리방침 v1.1 까지 마쳤다. `consentReceiptFrom` 민터가
-§5.2 타입 게이트를 열었다 — 그동안 `addExample` 은 살아 있었지만 호출자가
-구조적으로 0. 철회 시 기존 행은 **즉시 전량 삭제**. 666 tests green, 브랜치
-`embedding-classifier/05-examples-consent-ui`(`84aa09e` 푸시됨).
+**배포 완료 — 처리방침·약관 v1.1 게시 + GAS @58.** Pages `autocolor-legal`
+가 `main` 에 git-connected 라 **legal publish = main 머지**였다(PR #163,
+CI 5/5). GAS 는 기존 deployment 두 개에 v58 발행 — ID·URL 불변, 설치본
+@57→@58 / prod 웹앱 @54→@58(종전 드리프트도 정렬). **Worker 는 배포하지
+않았다** — 예시 저장 UI 가 창 이전에 그려지지 않으므로 미배포가 그 자체로
+fail-closed 다.
 
-**법무 Round 3 — 문서가 없는 통제·권리를 9곳에서 기술하고 있었다.** 코드
-실측으로 전부 정정. 핵심 셋: ① 국외이전 근거 §28의8①1호(동의 간주) →
-**①3호**(계약이행 위탁·처리방침 공개) — 개정 전은 1호도 3호도 아니라
-**어느 근거도 못 타는 상태**였다. ② "LLM 거부권" 은 실재한 적 없다(sync
-게이트는 `OPENAI_API_KEY` 단독) → 문구 삭제 + 근거 §15①4호. 남겨두면 3호
-경로가 막혀 **오히려 법적으로 무겁다**. 장식 체크박스 3개도 같이 제거.
-③ ToS §0.3 이 자기 발효요건으로 삼는 안내 절차가 없어 **약관이 발효된 적이
-없었다** → welcome 카드에 clickwrap + 링크(매니페스트 무변경 → 재검수 없음).
-함께 발견: §6 세션 "7일 / pg_cron" 은 실제 30일 rolling·60일 absolute, gc
-미구현. 과잉 감량: GDPR 면제 논증 67줄, §12 전건 30일, K-12 기한 약속, 동의
-이력 3년, ToS 재가입 제한. 게시 본문 privacy 809→767 / terms 446→413줄.
+**§12 30일 통지를 이제 코드가 강제한다.** `EXAMPLE_STORAGE_OPENS_AT`
+(2026-08-28) 이전의 grant 는 409 `storage_not_open_yet`. 게이트는 grant 한
+곳으로 충분하다 — 동의가 없으면 receipt 도 `addExample` 도 없다. GAS 는 같은
+날짜를 미러링해 체크박스·설정 섹션을 숨긴다. 사람의 기억이 아니라 구조가
+약속을 지킨다(`promptVersionSendsExamples` 와 같은 계열).
 
-**검증 패스가 잡은 2건.** ① **§28의8②5호 — 내 오독이었다.** ①3호 가목 문언이
-"제2항 **각 호**" 라 3호 경로도 1~5호 전부 공개 대상 → §4.2 를 거부 방법·
-절차·효과로 재구성. ② **게시본 leak** — `build-legal.ts` 가 HTML 주석만
-걷어내 "sub-agent self-review 산출물" 고백·운영자 체크리스트·코드 경로가
-공개 페이지에 실려 나갔다 → `BUILD-STRIP` 마커로 leak 0.
+**법무 Round 3·4 — 문서가 없는 통제를 기술하던 것을 정정.** 국외이전 근거
+§28의8①1호(동의 간주)→**①3호**(계약이행 위탁·처리방침 공개), 실재한 적 없는
+"LLM 거부권" 삭제(+ 장식 체크박스 3개), ToS §0.3 이 자기 발효요건으로 삼는
+clickwrap 신설 — **약관이 발효된 적이 없었다**. 세션 "7일/pg_cron" 은 실제
+30일 rolling·60일 absolute. 과잉 감량 후 게시 본문 privacy 809→767 /
+terms 446→413줄.
 
-**example 이 프롬프트로 새는 경로는 이미 배선돼 있었다.** `addExample →
-listRules → buildPrompt → llm_calls.prompt_summary` 가 다 연결돼 저장 0이라서만
-무해했다. 프롬프트 **버전에 키잉해 차단**(`promptVersionSendsExamples`) —
-피처 플래그가 아니라 버전 인터록이라 eval-gate 통과로만 켜진다.
+**Round 4 가 잡은 Critical.** §4.1 문단이 **여는 `<!--` 없이** 작성돼 내부
+검토 이력·저장소 경로·"직전 게시본의 두 진술 모두 사실과 달랐다" 는 자인이
+**게시 본문으로 공개**되고 있었다. + 인용 오류 2, 누락 1(ToS 전역 캡 10k),
+과잉 3. 게시본 leak 0.
 
-**#07 AC1 종료 — "temperature 넣으면 끝" 은 반증됐다.** `gpt-5.4-nano` 는
-샘플링 파라미터를 전부 수용(6/6 200)하나 반복 일치율이 90% → 85% 로
-**개선되지 않는다**. 원인은 모델 추론 비결정성 → `callOpenAi` 는 두고
-프롬프트(none 편향)로. 흔들리는 케이스는 전부 정답 카테고리가 목록에 **없는**
-경우다. `OPENAI_API_KEY` 블로커도 실재하지 않았다(양 파일 바이트 동일, 68/68 200).
+**사람 몫으로 남겨뒀던 게시 게이트 2건은 사람 몫이 아니었다.** ① 수탁자 연락처
+실측 — Supabase 가 `.io`→`.com` 으로 바뀌어 있었다(§28의8②3호 필수 기재).
+② §8.2 "감사 로그 1년 이상 보관" 은 **이행 불가능한 약속** — Cloudflare
+18개월은 충족하나 Supabase 는 7일이고 대시보드 export 경로가 없다. 단정을
+걷어내고 보관 의무는 구현 백로그로.
 
-**#04 — 컷오버는 no-op, AC3 는 남았다.** dry-run pending 0. 다만 마커 census 로
-**v1 이벤트 121건 잔존**(v2 35건) — full resync 는 PR-B 의 실질 선행조건이다.
+**실물 배포에서 하나 더.** Cloudflare Email Obfuscation 이 커스텀 도메인에서
+모든 주소를 `[email protected]` 으로 바꿔 내보내고 있었다 — §4.1.1·§10 은
+법정 필수 기재라 `build-legal.ts` 가 `<!--email_off-->` 로 감싼다.
 
-**출시 로드맵:** ① 처리방침 v1.1 publish + GAS 동시 배포 → ② full resync →
-PR-B ③ #07 프롬프트 + eval-gate → #06 ④ Marketplace. §2.5 저장 개시는 D+30.
+**#07 AC1 종료.** `gpt-5.4-nano` 는 샘플링 파라미터를 전부 수용(6/6 200)하나
+반복 일치율이 90%→85% 로 **개선되지 않는다**. 모델 추론 비결정성이 원인 →
+프롬프트(none 편향)로. **#04** dry-run pending 0, 다만 v1 마커 121건 잔존.
+
+**출시 로드맵:** ~~① publish~~ **완료** → ② full resync → PR-B → ③ #07
+프롬프트 + eval-gate → #06 → ④ Marketplace. §2.5 저장 개시 2026-08-28.
 
 ## Start here next session
 
-- **legal 게이트 재확인 — #05 의 마지막 AC (:120)**: 3패스(general-purpose
-  검증)가 돌아 **조건부 publish 가능** 판정, Critical 4건 중 문서·코드
-  3건은 `84aa09e` 로 해소했다. 다만 **수정본을 다시 읽히지는 않았으므로
-  AC 는 아직 열려 있다** — 한 번 더 돌려 잔여 0을 확인하면 닫힌다.
-  남은 Critical 1건은 재배포(아래)라 텍스트 게이트와 별개다.
-- **가장 급한 것은 재배포다.** `legal.autocolorcal.app` 이 지금 서비스하는
-  본문은 **여전히 v1.0** 이고, 이번에 지운 허위 기재(LLM 거부권·세션 7일·
-  동의 이력 3년) 가 현재도 공개 중이다. 개정의 가치는 배포 전까지 0.
-  **legal publish 와 GAS 새 version 은 같은 창에서** — ToS §0.3 이 welcome
-  카드 링크의 존재를 자기 발효요건으로 삼는다.
-- **publish 전 사람 확인 2건**: ① §4.1.1 수탁자 연락처 4건 현행성(PIPA
-  §28의8②3호 필수 기재라 오기재 시 이전 근거에 흠결). ② §8.2 접속기록 보관
-  루틴 — 콘솔 로그 보존기간이 1년 미달이면 정기 내려받기를 먼저 가동.
-- ~~사람 결정 2건(K-12 날짜 / 동의 이력 3년)~~ **해소** — 둘 다 약속 자체를
-  삭제(ADR-0007 개정 주석).
+- **사람 — 배포 육안 확인 1건**: Add-on 을 열어 welcome 카드에 이용약관·
+  개인정보처리방침 링크가 **로그인 버튼 위에** 뜨는지, 설정 카드에서 정책
+  체크박스 3개가 사라졌는지. 여기 겸해서 **4로케일 스크린샷 4장**.
+  (`#d81b60` 실측도 같은 화면에서 — 프로브로는 못 얻는다.)
+- **2026-08-28 이후 별도 창**: `db:migrate` prod(`0020`) → `deploy:prod`
+  → 예시 UI 노출 확인. 그 전에 하면 §12 자기구속을 깬다(코드가 막지만
+  Worker 만 배포하고 GAS 를 안 올리면 UI 는 계속 숨겨진 채다).
 - **W12 는 프롬프트 AC 와 묶어서**: 기본 프롬프트를 v6 로 올리면 저장된 예시가
   OpenAI 로 나가 §4.1 이전 항목과 §2.5 "전량 삭제" 가 **조용히 거짓이 된다**.
-  엔지니어링 인터록은 있는데 법적 트리거가 없다 — eval-gate 착수 시 §2.5 에
-  "전송 개시 = §12 중대한 변경" 문장을 같이 넣을 것.
-- ~~N4 — 홈페이지 Stage 1 문구~~ **해소** — 한국어 문장만 남아 있던 것을 정정.
-- **사람 — 4로케일 스크린샷 4장** + `#d81b60` 실측(위 참조 — 프로브로는 못 얻음).
+  eval-gate 착수 시 §2.5 에 "전송 개시 = §12 중대한 변경" 문장을 같이 넣을 것.
 - **에이전트 — full resync 실행 판단**: v1 121건 재각인. prod 쓰기라 승인 필요.
-- **에이전트 — #07 프롬프트 v7**: 방향 확정됨(none 편향 강화). eval-gate 는
-  이제 키가 있으므로 즉시 착수 가능. `--prompt-version v6` 델타도 같이 측정하면
-  #05 의 마지막 AC(기본 버전 v6 승격)까지 닫힌다.
+- **에이전트 — #07 프롬프트 v7**: 방향 확정(none 편향 강화). `--prompt-version
+  v6` 델타를 같이 재면 #05 의 마지막 AC(v6 승격)까지 닫힌다.
 
 ## Open decisions
 
-- **#05 배포 시퀀싱 / §12 30일 통지** — 위 참조. 코드는 준비됐고 배포만 남았다.
-  §12 는 이제 일반 7일 / 중대 30일이고, 기재 시정분은 게시와 동시에 시행이다.
+- **Supabase 접속기록 보관 수단** — 콘솔 감사로그 7일 < 법정 1년이고 export
+  경로가 없다. Pro 복구 + Audit Log Drain 이 유일한 길. 기재는 정리했으므로
+  문서 결함이 아니라 **구현 과제**다(세션 GC 와 같은 취급).
 - **세션 GC 부재** — 만료 세션 행이 삭제되지 않고 회원탈퇴까지 남는다.
   처리방침 §6 은 이제 이를 사실대로 적었으므로 **문서 결함이 아니라 구현
   과제**다. PIPA §21①(목적 달성 시 지체 없이 파기) 대응 백로그.
@@ -121,7 +111,7 @@ PR-B ③ #07 프롬프트 + eval-gate → #06 ④ Marketplace. §2.5 저장 개�
 
 ## embedding-classifier
 
-`██████████████████░░░░` 68/84 acceptance criteria met (81%)
+`██████████████████░░░░` 69/84 acceptance criteria met (82%)
 
 | # | Issue | Triage | Criteria | State | Blocked by |
 |---|-------|--------|----------|-------|-----------|
@@ -129,7 +119,7 @@ PR-B ③ #07 프롬프트 + eval-gate → #06 ④ Marketplace. §2.5 저장 개�
 | 02 | Embedding knn classifier name seeds | `done` | 14/14 | ✅ done | — |
 | 03 | Keyword seeds | `ready-for-agent` | 14/14 | ✅ done | — |
 | 04 | Rule editor redesign | `ready-for-human` | 5/6 | 🔵 in-progress | #03 |
-| 05 | Examples seeds instant feedback | `ready-for-human` | 17/19 | 🔵 in-progress | #03 |
+| 05 | Examples seeds instant feedback | `ready-for-human` | 18/19 | 🔵 in-progress | #03 |
 | 06 | History based rule suggestions | `ready-for-agent` | 0/8 | ⛔ blocked | #05 |
 | 07 | Llm leg over assignment | `ready-for-agent` | 1/6 | 🔵 in-progress | — |
 
