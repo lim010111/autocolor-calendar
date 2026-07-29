@@ -25,6 +25,7 @@ export type Row = {
   userId: string;
   name: string;
   colorId: string;
+  backgroundColor?: string | null;
   keywords: string[];
   priority: number;
   // ADR-0006 (native-labels) — optional so pre-label tests keep their
@@ -94,6 +95,7 @@ const COL_MAP: Record<string, keyof Row> = {
   user_id: "userId",
   name: "name",
   color_id: "colorId",
+  background_color: "backgroundColor",
   priority: "priority",
   created_at: "createdAt",
   updated_at: "updatedAt",
@@ -297,6 +299,7 @@ function fillRowDefaults(v: Partial<Row>): Row {
     userId: v.userId ?? "",
     name: v.name ?? "",
     colorId: v.colorId ?? "1",
+    backgroundColor: v.backgroundColor ?? null,
     keywords: v.keywords ?? [],
     priority: v.priority ?? 100,
     labelId: v.labelId ?? null,

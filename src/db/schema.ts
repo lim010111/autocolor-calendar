@@ -153,6 +153,13 @@ export const categories = pgTable(
     // approximation until #04 removes it.
     name: text("name").notNull(),
     colorId: text("color_id").notNull(),
+    // ADR-0006 — the label's real background hex (one of the 24 default
+    // label-slot colors, or a custom RGB label color). This is the DISPLAY
+    // source of truth: `colorId` collapses 24 colors onto 11 classic ids and
+    // cannot be reversed, so rendering from it shows the wrong swatch. NULL =
+    // pre-cutover rule with no label, or a row not yet reconciled (the sync's
+    // `labelReconcile` backfills it from Google).
+    backgroundColor: text("background_color"),
     keywords: text("keywords").array().notNull().default(sql`'{}'::text[]`),
     priority: integer("priority").notNull().default(100),
     // ADR-0006 — Google event-label UUID this Rule is attached to

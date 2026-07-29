@@ -35,6 +35,9 @@ export type Rule = {
   userId: string;
   name: string;
   colorId: string;
+  // ADR-0006 — the label's real hex; the display source of truth (colorId is
+  // a lossy 11-value cache). NULL until `labelReconcile` backfills it.
+  backgroundColor: string | null;
   keywords: string[];
   priority: number;
   // ADR-0006 — Google event-label UUID this Rule writes (null = pre-cutover
@@ -56,6 +59,8 @@ export type Category = Rule;
 export type RuleCreateInput = {
   name: string;
   colorId: string;
+  // ADR-0006 — the hex the editor sent (and minted the Google label with).
+  backgroundColor?: string | undefined;
   keywords: string[];
   priority?: number | undefined;
   // ADR-0006 (native-labels #03) — the Google event-label UUID the editor's
@@ -93,6 +98,7 @@ const SELECT_FIELDS = {
   userId: categories.userId,
   name: categories.name,
   colorId: categories.colorId,
+  backgroundColor: categories.backgroundColor,
   keywords: categories.keywords,
   priority: categories.priority,
   labelId: categories.labelId,
@@ -106,6 +112,7 @@ type CategoriesRow = {
   userId: string;
   name: string;
   colorId: string;
+  backgroundColor: string | null;
   keywords: string[];
   priority: number;
   labelId: string | null;
@@ -491,6 +498,9 @@ export async function createRule(
         name: input.name,
         colorId: input.colorId,
         keywords: input.keywords,
+        ...(input.backgroundColor !== undefined
+          ? { backgroundColor: input.backgroundColor }
+          : {}),
         ...(input.priority !== undefined ? { priority: input.priority } : {}),
         ...(input.labelId !== undefined ? { labelId: input.labelId } : {}),
       })

@@ -45,6 +45,7 @@ const labelsRead = (
 type RuleRow = {
   id: string;
   name: string;
+  backgroundColor?: string | null;
   labelId: string | null;
   labelDeletedAt: Date | null;
 };
@@ -93,9 +94,19 @@ describe("nearestClassicColorId", () => {
   });
 
   it("maps a non-classic hex to the nearest classic", () => {
-    // #ad1457 (deep pink) sits closest to tomato #ff887c / bold red #dc2127
-    // territory — pin the deterministic answer.
-    expect(nearestClassicColorId("#ad1457")).toBe("11");
+    // #ad1457 (radicchio) lands on grape — pin the deterministic answer.
+    expect(nearestClassicColorId("#ad1457")).toBe("3");
+  });
+
+  it("measures against the palette the picker actually sends", () => {
+    // Regression: the table used to hold `colors.get`'s pastel hexes while
+    // every hex compared against it comes from the modern 24-color label
+    // picker. Dark grey then landed on basil GREEN (pastel graphite is the
+    // near-white #e1e1e1) and brown landed on green too.
+    expect(nearestClassicColorId("#616161")).toBe("8"); // graphite → graphite
+    expect(nearestClassicColorId("#795548")).toBe("8"); // cocoa → graphite
+    expect(nearestClassicColorId("#33b679")).toBe("2"); // sage → sage
+    expect(nearestClassicColorId("#7986cb")).toBe("1"); // lavender → lavender
   });
 
   it("falls back to graphite for garbage/missing input", () => {
@@ -110,7 +121,8 @@ describe("reconcileLabels — Google labelProperties is canonical (ADR-0006)", (
       { id: "L1", backgroundColor: "#ad1457", name: "새이름" },
     ]));
     const { db, updates, inserts } = makeDb([
-      { id: "r1", name: "옛이름", labelId: "L1", labelDeletedAt: null },
+      // color already matches, so this case isolates the rename
+      { id: "r1", name: "옛이름", backgroundColor: "#ad1457", labelId: "L1", labelDeletedAt: null },
     ]);
 
     await reconcileLabels({ db, userId: USER, calendarId: CAL, accessToken: AT, embed });
@@ -124,6 +136,62 @@ describe("reconcileLabels — Google labelProperties is canonical (ADR-0006)", (
       name: "새이름",
     });
     expect(inserts).toHaveLength(0);
+  });
+
+  it("recolor: folds a Google-side color edit into the background_color cache", async () => {
+    mockedLabels.mockResolvedValueOnce(labelsRead([
+      { id: "L1", backgroundColor: "#795548", name: "식사" },
+    ]));
+    const { db, updates } = makeDb([
+      { id: "r1", name: "식사", backgroundColor: "#33b679", labelId: "L1", labelDeletedAt: null },
+    ]);
+
+    await reconcileLabels({ db, userId: USER, calendarId: CAL, accessToken: AT, embed });
+
+    expect(updates).toHaveLength(1);
+    expect(updates[0]).toMatchObject({
+      backgroundColor: "#795548",
+      colorId: "8", // legacy nearest-classic cache follows along
+    });
+    // color-only edit must not re-embed the name seed
+    expect(mockedSeed).not.toHaveBeenCalled();
+  });
+
+  it("recolor: backfills a row written before the column existed", async () => {
+    mockedLabels.mockResolvedValueOnce(labelsRead([
+      { id: "L1", backgroundColor: "#795548", name: "식사" },
+    ]));
+    const { db, updates } = makeDb([
+      { id: "r1", name: "식사", backgroundColor: null, labelId: "L1", labelDeletedAt: null },
+    ]);
+
+    await reconcileLabels({ db, userId: USER, calendarId: CAL, accessToken: AT, embed });
+
+    expect(updates).toHaveLength(1);
+    expect(updates[0]).toMatchObject({ backgroundColor: "#795548" });
+  });
+
+  it("recolor: an unchanged color writes nothing (case-insensitive)", async () => {
+    mockedLabels.mockResolvedValueOnce(labelsRead([
+      { id: "L1", backgroundColor: "#795548", name: "식사" },
+    ]));
+    const { db, updates } = makeDb([
+      { id: "r1", name: "식사", backgroundColor: "#795548", labelId: "L1", labelDeletedAt: null },
+    ]);
+    const upper = makeDb([
+      { id: "r1", name: "식사", backgroundColor: "#795548", labelId: "L1", labelDeletedAt: null },
+    ]);
+
+    await reconcileLabels({ db, userId: USER, calendarId: CAL, accessToken: AT, embed });
+    expect(updates).toHaveLength(0);
+
+    mockedLabels.mockResolvedValueOnce(labelsRead([
+      { id: "L1", backgroundColor: "#795548".toUpperCase(), name: "식사" },
+    ]));
+    await reconcileLabels({
+      db: upper.db, userId: USER, calendarId: CAL, accessToken: AT, embed,
+    });
+    expect(upper.updates).toHaveLength(0);
   });
 
   it("delete: stamps labelDeletedAt when the backing label vanished", async () => {
@@ -187,6 +255,7 @@ describe("reconcileLabels — Google labelProperties is canonical (ADR-0006)", (
       keywords: ["긴급"],
       labelId: "L9",
       colorId: "11", // nearest classic for #dc2127
+      backgroundColor: "#dc2127", // the real hex — what the editor renders
     });
     expect(mockedSeed).toHaveBeenCalledTimes(1);
     expect(mockedSeed.mock.calls[0]![2]).toEqual({
@@ -222,7 +291,8 @@ describe("reconcileLabels — Google labelProperties is canonical (ADR-0006)", (
     await reconcileLabels({ db, userId: USER, calendarId: CAL, accessToken: AT, embed });
 
     expect(updates).toHaveLength(1);
-    expect(updates[0]).toMatchObject({ labelId: "L2" });
+    // linking also adopts the label's color — Google is canonical from here
+    expect(updates[0]).toMatchObject({ labelId: "L2", backgroundColor: "#5484ed" });
     expect(inserts).toHaveLength(0);
   });
 

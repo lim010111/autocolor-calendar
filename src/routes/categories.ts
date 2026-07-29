@@ -152,6 +152,11 @@ function toWire(rule: Rule) {
     id: rule.id,
     name: rule.name,
     colorId: rule.colorId,
+    // ADR-0006 — the label's real hex. The editor renders its swatch from
+    // THIS, not from `colorId`: the nearest-classic cache collapses the 24
+    // label colors onto 11 ids, so 19 of the 24 render as a different color.
+    // Additive field — a pre-fix GAS client ignores it.
+    backgroundColor: rule.backgroundColor,
     keywords: rule.keywords,
     priority: rule.priority,
     // ADR-0006 (native-labels #02) — label linkage for the #03 editor:
@@ -238,6 +243,9 @@ categoriesRoutes.post("/", async (c) => {
       // colorId is non-null here: the refine guarantees colorId or
       // backgroundColor, and the hex branch just derived it.
       colorId: colorId!,
+      // The hex is the display source of truth (see `toWire`); undefined on
+      // the legacy colorId-only path, where reconcile fills it in later.
+      backgroundColor: input.backgroundColor,
       keywords: input.keywords,
       priority: input.priority,
       labelId,

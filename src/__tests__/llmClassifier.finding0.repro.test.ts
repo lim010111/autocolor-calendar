@@ -37,6 +37,7 @@ function cat(partial: Partial<Rule> = {}): Rule {
     userId: partial.userId ?? USER,
     name,
     colorId: partial.colorId ?? "9",
+    backgroundColor: partial.backgroundColor ?? null,
     keywords,
     priority: partial.priority ?? 100,
     labelId: partial.labelId ?? null,

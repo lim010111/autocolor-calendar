@@ -17,6 +17,7 @@ function rule(id: string, name = id, colorId = "9"): Rule {
     userId: "u",
     name,
     colorId,
+    backgroundColor: null,
     labelId: null,
     labelDeletedAt: null,
     keywords: [],
