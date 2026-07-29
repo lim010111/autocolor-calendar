@@ -117,8 +117,13 @@ example durable 저장이 **구조적으로** 일어나지 않는다. 착지 전
       *(코드 완료 — rememberExample 체크박스 + 동의 카드 + 철회 카드 + i18n 28키
       ×4. **배포는 미실행**: 이번 세션 범위가 코드·문서까지이고, §12 30일 통지가
       선행돼야 한다.)*
-- [ ] **개인정보처리방침/동의 표면 변경분** — "동의 시 정정 제목(redacted)이 durable
+- [x] **개인정보처리방침/동의 표면 변경분** — "동의 시 정정 제목(redacted)이 durable
       저장됨"을 명시. `legal-reviewer` 게이트 통과. OAuth 검수 통과 후 출시.
+      *(privacy §1.7·§2.5 신설 + v1.1. 게이트는 **Round 4 재검증**으로 닫았다 —
+      수정본을 그대로 다시 읽혀 Round 3 이 고친 9건이 재현되지 않음을 확인하고,
+      새로 잡힌 8건 + 운영자 실측 2건을 `7825e12` 로 해소했다. 게시본 leak 0.
+      잔존은 게시·배포 실행뿐이며 텍스트 게이트는 아니다 —
+      `docs/legal/legal-review-opinion.md` Round 4.)*
 - [x] **동의 모델 결정 기록** — 1회 동의 모델 + durable 저장 disclosure 를
       개인정보처리방침 문서(또는 ADR-0004 amendment)에 기록. **신규 durable-storage
       ADR 은 불필요** — 저장 결정은 ADR-0004 §범위 + src/AGENTS.md §5.2 가 이미 외부화.
@@ -585,3 +590,55 @@ OK · `legal:build` 성공. 배포는 하지 않았다.
 
 **게이트 재확인:** 666 tests green · typecheck · lint · check-context-paths
 170 refs OK · `legal:build` 성공 · 게시본 leak 0.
+
+## Round 4 + 배포 (2026-07-29)
+
+### 검증 패스 2회차 — AC(:120) 종료
+
+Round 3 수정본을 **그대로 다시 읽힌** 패스. Round 3 이 고친 본문-코드 불일치
+9건은 전부 재현되지 않았고(통제·권리·보유기간·삭제 동작 주장이 모두 코드에
+근거), 새로 8건이 잡혔다. Critical 1건은 **§4.1 의 검토 이력 문단이 여는
+`<!--` 없이 작성돼 게시본에 본문으로 렌더**되고 있던 것 — 저장소 경로와
+직전 게시본의 허위 기재 자인이 공개 중이었다. 전부 `7825e12` 로 해소, 게시본
+leak 0. 상세는 `docs/legal/legal-review-opinion.md` Round 4.
+
+운영자 실측으로 2건 추가 확인:
+
+- **§4.1.1 Supabase 창구 오기재** — `privacy@supabase.io` → 현행
+  `privacy@supabase.com`. PIPA §28의8②3호 필수 기재라 오기재는 이전 근거의
+  흠결이 된다. 나머지 3건(Cloudflare / OpenAI / Google)은 현행 확인.
+  → 종전 "publish 전 사람 확인" 2건 중 1건 해소.
+- **§8.2 "감사 로그 1년 이상 보관" 은 이행 불가능한 약속이었다** — Cloudflare
+  18개월은 충족하나 Supabase 는 요금제상 7일이고 대시보드 export 경로가 없다
+  (Log Drains 는 Pro 애드온, 현재 prod 는 임시 Free). 단정을 걷어내고 보관
+  의무는 구현 백로그로 이관. → 나머지 1건도 게시 차단 사유가 아님이 확정.
+
+### §12 30일 통지를 코드로 강제 (`e3c3835`)
+
+처리방침 §12 는 "게시일부터 30일 경과 + 명시적 동의 이후에만 정정 예시 저장을
+개시한다" 고 자기구속한다. 그 약속을 지키는 것이 운영자의 기억뿐이면 Worker 를
+하루 일찍 배포하는 것만으로 게시된 처리방침이 조용히 거짓이 된다.
+
+`EXAMPLE_STORAGE_OPENS_AT = 2026-08-28` 을 두고 창 이전의 grant 를 409
+`storage_not_open_yet` 으로 거절한다. 게이트는 grant 한 곳으로 충분하다 —
+살아 있는 동의가 없으면 `consentReceiptFrom` 이 receipt 를 발행하지 않으므로
+`POST /api/examples` 도 `addExample` 에 닿지 못한다. GAS 는 같은 날짜를
+미러링해 `rememberExample` 체크박스와 설정 카드의 예시 동의 섹션을 창 이전에는
+그리지 않는다 — 백엔드가 거절할 컨트롤을 노출하는 것은 방금 제거한
+`policy_settings` 체크박스와 같은 결함이기 때문이다.
+
+`promptVersionSendsExamples` 와 같은 계열의 인터록이다: 사람의 기억이 아니라
+구조가 약속을 지킨다.
+
+### 배포 시퀀싱
+
+Cloudflare Pages `autocolor-legal` 은 **`main` 브랜치에 git-connected** 라
+legal publish = main 머지다(대시보드 작업 없음). Worker 는 CI 에 배포 잡이
+없어 머지로 나가지 않는다. 따라서 이번 창의 형태:
+
+1. main 머지 → Pages 재빌드 → 개정 처리방침·약관 게시
+2. `clasp push` + 기존 deployment 에 새 version → welcome 카드 clickwrap 라이브
+   (ToS §0.3 이 링크의 존재를 자기 발효요건으로 삼으므로 1과 같은 창)
+3. Worker 배포·`0020` 마이그레이션은 **하지 않는다** — 예시 저장 UI 가 창
+   이전에는 그려지지 않으므로 백엔드 경로가 필요 없고, 미배포 상태가 그 자체로
+   fail-closed 다. 2026-08-28 이후 별도 창에서 처리.
