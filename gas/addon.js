@@ -110,6 +110,26 @@ function buildWelcomeCard(L) {
 
   builder.addSection(tutorialSection);
 
+  // ToS §0.3 — clickwrap-lite. The terms make their own effect conditional on
+  // "회사의 안내 절차에 따라 본 약관에 동의" ; without this section the terms
+  // have never taken effect by their own wording, so every clause that only
+  // matters in a dispute (liability limits, §8.2 termination grounds) is
+  // unenforceable. Notice + links must render BEFORE the sign-in button —
+  // a link placed after the act of assent is browsewrap, which US courts
+  // reject far more often than clickwrap. No manifest change: both URLs are
+  // already covered by `openLinkUrlPrefixes` (`https://legal.autocolorcal.app`).
+  var consentSection = CardService.newCardSection();
+  consentSection.addWidget(CardService.newTextParagraph()
+    .setText(t('welcome.legal.notice', null, L)));
+  consentSection.addWidget(CardService.newButtonSet()
+    .addButton(CardService.newTextButton()
+      .setText(t('welcome.legal.terms', null, L))
+      .setOpenLink(CardService.newOpenLink().setUrl(ACFC_CONFIG.TERMS_OF_SERVICE_URL)))
+    .addButton(CardService.newTextButton()
+      .setText(t('welcome.legal.privacy', null, L))
+      .setOpenLink(CardService.newOpenLink().setUrl(ACFC_CONFIG.PRIVACY_POLICY_URL))));
+  builder.addSection(consentSection);
+
   var fixedFooter = CardService.newFixedFooter()
     .setPrimaryButton(CardService.newTextButton()
       .setText(t('welcome.cta.login', null, L))
@@ -350,6 +370,80 @@ function fetchPreviewOrError(payload) {
       contentType: 'application/json',
       payload: JSON.stringify(payload),
     });
+    return JSON.parse(res.getContentText() || '{}');
+  } catch (err) {
+    if (err && err.message === 'AUTH_EXPIRED') return { error: 'AUTH_EXPIRED' };
+    return { error: err && err.message ? err.message : 'unknown_error' };
+  }
+}
+
+/**
+ * ADR-0007 — reads the "remember this correction" checkbox. The value can
+ * arrive either as a form input (the click that toggled it) or as an action
+ * parameter (a re-render that promoted it), so both are checked. Absent →
+ * false, i.e. opt-in.
+ */
+function readRememberExample(e) {
+  var v = readRuleFormValue(e, 'rememberExample');
+  if (v === 'on') return true;
+  var p1 = (e && e.parameters) || {};
+  var p2 = (e && e.commonEventObject && e.commonEventObject.parameters) || {};
+  return (p1.rememberExample || p2.rememberExample) === 'on';
+}
+
+/**
+ * ADR-0007 — stores one Instant Feedback correction. Returns the parsed
+ * body ({stored:true} | {stored:false, reason}) or {error} for auth /
+ * consent / network failure. Soft outcomes come back as HTTP 200 with a
+ * `reason`, so they never reach the `catch` (see src/routes/examples.ts).
+ */
+function postExampleOrError(payload) {
+  try {
+    var res = AutoColorAPI.fetchBackend('/api/examples', {
+      method: 'post',
+      contentType: 'application/json',
+      payload: JSON.stringify(payload),
+    });
+    return JSON.parse(res.getContentText() || '{}');
+  } catch (err) {
+    if (err && err.message === 'AUTH_EXPIRED') return { error: 'AUTH_EXPIRED' };
+    return { error: err && err.message ? err.message : 'unknown_error' };
+  }
+}
+
+/** ADR-0007 — records the one-time example-storage consent. */
+function postExampleConsentOrError() {
+  try {
+    var res = AutoColorAPI.fetchBackend('/api/consent/examples', {
+      method: 'post',
+      contentType: 'application/json',
+      payload: JSON.stringify({
+        policyVersion: ACFC_CONFIG.EXAMPLE_CONSENT_POLICY_VERSION,
+      }),
+    });
+    return JSON.parse(res.getContentText() || '{}');
+  } catch (err) {
+    if (err && err.message === 'AUTH_EXPIRED') return { error: 'AUTH_EXPIRED' };
+    return { error: err && err.message ? err.message : 'unknown_error' };
+  }
+}
+
+/** ADR-0007 — current consent state. Settings card only; the event card
+ *  learns consent lazily from the 403 so the sidebar hot path stays fetch-free. */
+function fetchExampleConsentOrError() {
+  try {
+    var res = AutoColorAPI.fetchBackend('/api/consent/examples', { method: 'get' });
+    return JSON.parse(res.getContentText() || '{}');
+  } catch (err) {
+    if (err && err.message === 'AUTH_EXPIRED') return { error: 'AUTH_EXPIRED' };
+    return { error: err && err.message ? err.message : 'unknown_error' };
+  }
+}
+
+/** ADR-0007 — withdraws consent and purges every stored example. */
+function deleteExampleConsentOrError() {
+  try {
+    var res = AutoColorAPI.fetchBackend('/api/consent/examples', { method: 'delete' });
     return JSON.parse(res.getContentText() || '{}');
   } catch (err) {
     if (err && err.message === 'AUTH_EXPIRED') return { error: 'AUTH_EXPIRED' };
@@ -611,9 +705,10 @@ function onEventOpen(e) {
     // (card-latency #01 pattern; null → the re-render fetches instead).
     var chipAction = CardService.newAction()
       .setFunctionName("actionSelectColor");
-    if (chipSnapshotJson) {
-      chipAction.setParameters({ categoriesSnapshotJson: chipSnapshotJson });
-    }
+    var chipParams = {};
+    if (chipSnapshotJson) chipParams.categoriesSnapshotJson = chipSnapshotJson;
+    if (rememberChecked) chipParams.rememberExample = 'on';
+    if (chipSnapshotJson || rememberChecked) chipAction.setParameters(chipParams);
 
     var labelGrid = CardService.newGrid()
       .setTitle(t('event.labelPicker', null, L))
@@ -637,6 +732,24 @@ function onEventOpen(e) {
     overrideSection.addWidget(labelGrid);
   }
 
+  // ADR-0007 — Instant Feedback opt-in. Separate from the label pick on
+  // purpose: "make this event this color" (a one-off override) and "learn
+  // this pattern" (a correction worth remembering) are different intents,
+  // and only the second one stores a title. Defaults OFF — storing on every
+  // override without a per-item affirmative act is the riskier default.
+  // Form inputs do not survive a CardService re-render, so the current
+  // state rides the action parameters (see actionSelectColor).
+  // Hidden until the privacy-policy §12 notice window opens — see
+  // ACFC_CONFIG.EXAMPLE_STORAGE_OPENS_AT. The backend refuses the grant
+  // before then, so rendering the checkbox would only produce a dead control.
+  var rememberChecked = exampleStorageIsOpen() && readRememberExample(e);
+  if (exampleStorageIsOpen()) {
+    overrideSection.addWidget(CardService.newSelectionInput()
+      .setType(CardService.SelectionInputType.CHECK_BOX)
+      .setFieldName("rememberExample")
+      .addItem(t('feedback.remember.label', null, L), "on", rememberChecked));
+  }
+
   overrideSection.addWidget(CardService.newTextButton()
     .setText(t('event.btn.exclude', null, L))
     .setOnClickAction(CardService.newAction().setFunctionName("actionExcludeEvent")));
@@ -651,7 +764,12 @@ function onEventOpen(e) {
   var saveParams = {};
   if (selectedLabelId) saveParams.selectedLabelId = selectedLabelId;
   if (chipSnapshotJson) saveParams.categoriesSnapshotJson = chipSnapshotJson;
-  if (selectedLabelId || chipSnapshotJson) saveAction.setParameters(saveParams);
+  // Carry the title so the save handler need not re-issue Calendar.Events.get.
+  if (title) saveParams.eventTitle = title;
+  if (rememberChecked) saveParams.rememberExample = 'on';
+  if (selectedLabelId || chipSnapshotJson || title || rememberChecked) {
+    saveAction.setParameters(saveParams);
+  }
 
   var fixedFooter = CardService.newFixedFooter()
     .setPrimaryButton(CardService.newTextButton()
@@ -697,6 +815,9 @@ function actionSelectColor(e) {
 
   if (!e.parameters) e.parameters = {};
   e.parameters.selectedLabelId = selectedLabelId;
+  // The checkbox is a form input, so its value arrives in formInputs on this
+  // click and would be lost by the re-render — promote it to a parameter.
+  e.parameters.rememberExample = readRememberExample(e) ? 'on' : '';
 
   return CardService.newActionResponseBuilder()
     .setNavigation(CardService.newNavigation().updateCard(onEventOpen(e)))
@@ -894,8 +1015,86 @@ function actionSaveEventOverride(e) {
       }
     }
   }
+  // ADR-0007 — Instant Feedback. Only after the color actually applied:
+  // never remember a correction we failed to carry out.
+  if (!readRememberExample(e)) {
+    return CardService.newActionResponseBuilder()
+      .setNotification(CardService.newNotification().setText(t('override.toast.success', { label: label }, L)))
+      .build();
+  }
+  return finishExampleWrite(e, L, {
+    selectedLabelId: selectedLabelId,
+    rules: rules,
+    successToast: t('override.toast.success', { label: label }, L),
+  });
+}
+
+/**
+ * ADR-0007 — shared tail for "color applied, now try to remember it".
+ * Reached from actionSaveEventOverride and, after a first-time consent
+ * grant, from actionGrantExampleConsent replaying the same correction.
+ */
+function finishExampleWrite(e, L, opts) {
+  var p1 = (e && e.parameters) || {};
+  var p2 = (e && e.commonEventObject && e.commonEventObject.parameters) || {};
+  var title = opts.eventTitle || p1.eventTitle || p2.eventTitle || '';
+
+  // Resolve the rule id from the carried snapshot — the snapshot's `id` IS
+  // the rule id. No snapshot (over the parameter budget) → fetch once.
+  var rules = opts.rules || readCategoriesSnapshot(e);
+  if (!rules) {
+    var fetched = fetchCategoriesOrError();
+    if (fetched.error === 'AUTH_EXPIRED') {
+      return CardService.newActionResponseBuilder()
+        .setNavigation(CardService.newNavigation().popToRoot().updateCard(buildReconnectCard(null, L)))
+        .build();
+    }
+    rules = fetched.rules || null;
+  }
+  var ruleId = null;
+  if (rules) {
+    for (var i = 0; i < rules.length; i++) {
+      if (rules[i].labelId === opts.selectedLabelId) { ruleId = rules[i].id; break; }
+    }
+  }
+  if (!ruleId || !title) {
+    return CardService.newActionResponseBuilder()
+      .setNotification(CardService.newNotification().setText(t('feedback.toast.ruleUnknown', null, L)))
+      .build();
+  }
+
+  var res = postExampleOrError({ ruleId: ruleId, title: title });
+
+  if (res.error === 'AUTH_EXPIRED') {
+    return CardService.newActionResponseBuilder()
+      .setNavigation(CardService.newNavigation().popToRoot().updateCard(buildReconnectCard(null, L)))
+      .build();
+  }
+  if (res.error && res.error.indexOf('consent_required') !== -1) {
+    // First correction: the color already applied, so say so, and push the
+    // one-time consent card carrying enough state to replay this write.
+    return CardService.newActionResponseBuilder()
+      .setNavigation(CardService.newNavigation().pushCard(buildExampleConsentCard(L, {
+        pendingRuleId: ruleId,
+        pendingTitle: title,
+        pendingLabelId: opts.selectedLabelId,
+      })))
+      .setNotification(CardService.newNotification().setText(opts.successToast))
+      .build();
+  }
+
+  var notice;
+  if (res.stored === true) {
+    notice = opts.grantedToast || t('feedback.toast.remembered', null, L);
+  } else if (res.reason === 'unfit') {
+    notice = t('feedback.toast.unfit', null, L);
+  } else if (res.reason === 'embed_failed') {
+    notice = t('feedback.toast.embedFailed', null, L);
+  } else {
+    notice = t('feedback.toast.failed', null, L);
+  }
   return CardService.newActionResponseBuilder()
-    .setNotification(CardService.newNotification().setText(t('override.toast.success', { label: label }, L)))
+    .setNotification(CardService.newNotification().setText(notice))
     .build();
 }
 
@@ -1315,6 +1514,154 @@ function actionDeleteRule(e) {
 /**
  * Screen 5: Settings Card.
  */
+/**
+ * ADR-0007 — the one-time example-storage consent surface. Pushed the first
+ * time a user saves a correction with "remember" ticked; the backend's 403
+ * `consent_required` is the sole trigger, so this card cannot be bypassed by
+ * a stale client. Carries the pending correction so agreeing replays it.
+ */
+function buildExampleConsentCard(L, params) {
+  var builder = CardService.newCardBuilder()
+    .setHeader(CardService.newCardHeader()
+      .setTitle(t('feedback.consent.title', null, L))
+      .setSubtitle(t('feedback.consent.subtitle', null, L)));
+
+  var section = CardService.newCardSection();
+  section.addWidget(CardService.newTextParagraph()
+    .setText(t('feedback.consent.body', null, L)));
+  ['what', 'where', 'retention', 'revoke'].forEach(function (k) {
+    section.addWidget(CardService.newTextParagraph()
+      .setText('• ' + t('feedback.consent.bullet.' + k, null, L)));
+  });
+  section.addWidget(CardService.newTextButton()
+    .setText(t('feedback.consent.policyLink', null, L))
+    .setOpenLink(CardService.newOpenLink()
+      .setUrl(ACFC_CONFIG.PRIVACY_POLICY_EXAMPLES_URL)));
+  builder.addSection(section);
+
+  var grantAction = CardService.newAction()
+    .setFunctionName("actionGrantExampleConsent")
+    .setParameters({
+      pendingRuleId: (params && params.pendingRuleId) || '',
+      pendingTitle: (params && params.pendingTitle) || '',
+      pendingLabelId: (params && params.pendingLabelId) || '',
+    });
+
+  builder.setFixedFooter(CardService.newFixedFooter()
+    .setPrimaryButton(CardService.newTextButton()
+      .setText(t('feedback.consent.btn.agree', null, L))
+      .setTextButtonStyle(CardService.TextButtonStyle.FILLED)
+      .setOnClickAction(grantAction))
+    .setSecondaryButton(CardService.newTextButton()
+      .setText(t('feedback.consent.btn.cancel', null, L))
+      .setOnClickAction(CardService.newAction().setFunctionName("actionGoBack"))));
+
+  return builder.build();
+}
+
+function actionGrantExampleConsent(e) {
+  var L = pickLocale(e);
+  var p1 = (e && e.parameters) || {};
+  var p2 = (e && e.commonEventObject && e.commonEventObject.parameters) || {};
+
+  var res = postExampleConsentOrError();
+  if (res.error === 'AUTH_EXPIRED') {
+    return CardService.newActionResponseBuilder()
+      .setNavigation(CardService.newNavigation().popToRoot().updateCard(buildReconnectCard(null, L)))
+      .build();
+  }
+  if (res.error) {
+    // A version mismatch means this Add-on build renders disclosure text the
+    // backend no longer considers current — refuse rather than record it.
+    var msg = res.error.indexOf('policy_version_mismatch') !== -1
+      ? t('feedback.consent.toast.versionMismatch', null, L)
+      : t('feedback.consent.toast.failed', null, L);
+    return CardService.newActionResponseBuilder()
+      .setNavigation(CardService.newNavigation().popCard())
+      .setNotification(CardService.newNotification().setText(msg))
+      .build();
+  }
+
+  // Consent recorded — replay the correction that triggered this card.
+  var ruleId = p1.pendingRuleId || p2.pendingRuleId || '';
+  var title = p1.pendingTitle || p2.pendingTitle || '';
+  if (!ruleId || !title) {
+    return CardService.newActionResponseBuilder()
+      .setNavigation(CardService.newNavigation().popCard())
+      .setNotification(CardService.newNotification().setText(t('feedback.consent.toast.granted', null, L)))
+      .build();
+  }
+
+  var stored = postExampleOrError({ ruleId: ruleId, title: title });
+  var notice;
+  if (stored.stored === true) {
+    notice = t('feedback.consent.toast.granted', null, L);
+  } else if (stored.reason === 'unfit') {
+    notice = t('feedback.toast.unfit', null, L);
+  } else if (stored.reason === 'embed_failed') {
+    notice = t('feedback.toast.embedFailed', null, L);
+  } else {
+    notice = t('feedback.toast.failed', null, L);
+  }
+  return CardService.newActionResponseBuilder()
+    .setNavigation(CardService.newNavigation().popCard())
+    .setNotification(CardService.newNotification().setText(notice))
+    .build();
+}
+
+/**
+ * ADR-0007 — withdrawal confirm. The warning must state that withdrawal
+ * deletes every stored example immediately and irreversibly; that is the
+ * commitment privacy-policy §2.5 makes to the user.
+ */
+function buildExampleConsentRevokeCard(L) {
+  var builder = CardService.newCardBuilder()
+    .setHeader(CardService.newCardHeader().setTitle(t('revokeExamples.title', null, L)));
+
+  var section = CardService.newCardSection();
+  section.addWidget(CardService.newTextParagraph()
+    .setText(t('revokeExamples.warning', null, L)));
+  builder.addSection(section);
+
+  builder.setFixedFooter(CardService.newFixedFooter()
+    .setPrimaryButton(CardService.newTextButton()
+      .setText(t('revokeExamples.btn.confirm', null, L))
+      .setTextButtonStyle(CardService.TextButtonStyle.FILLED)
+      .setOnClickAction(CardService.newAction().setFunctionName("actionRevokeExampleConsent")))
+    .setSecondaryButton(CardService.newTextButton()
+      .setText(t('common.back', null, L))
+      .setOnClickAction(CardService.newAction().setFunctionName("actionGoBack"))));
+
+  return builder.build();
+}
+
+function actionGoToExampleConsentRevokeConfirm(e) {
+  var L = pickLocale(e);
+  return CardService.newActionResponseBuilder()
+    .setNavigation(CardService.newNavigation().pushCard(buildExampleConsentRevokeCard(L)))
+    .build();
+}
+
+function actionRevokeExampleConsent(e) {
+  var L = pickLocale(e);
+  var res = deleteExampleConsentOrError();
+  if (res.error === 'AUTH_EXPIRED') {
+    return CardService.newActionResponseBuilder()
+      .setNavigation(CardService.newNavigation().popToRoot().updateCard(buildReconnectCard(null, L)))
+      .build();
+  }
+  if (res.error) {
+    return CardService.newActionResponseBuilder()
+      .setNotification(CardService.newNotification().setText(t('revokeExamples.toast.failed', null, L)))
+      .build();
+  }
+  var count = typeof res.purgedExamples === 'number' ? res.purgedExamples : 0;
+  return CardService.newActionResponseBuilder()
+    .setNavigation(CardService.newNavigation().popToRoot().updateCard(buildSettingsCard(L)))
+    .setNotification(CardService.newNotification().setText(t('revokeExamples.toast.done', { count: count }, L)))
+    .build();
+}
+
 function buildSettingsCard(L) {
   var builder = CardService.newCardBuilder();
 
@@ -1324,19 +1671,45 @@ function buildSettingsCard(L) {
     .setOnClickAction(CardService.newAction().setFunctionName("actionGoBack"))));
   builder.addSection(navSection);
 
-  var section = CardService.newCardSection()
-    .setHeader(t('settings.section.policy', null, L));
+  // (2026-07-29) The "정책 설정" checkbox group that used to live here —
+  // prevent_overwrite / use_llm / use_description — was decoration: no
+  // onChange, no save handler, and no backing column anywhere in
+  // `src/db/schema.ts`. Meanwhile the privacy policy promised a "규칙 기반
+  // 분류만 사용" opt-out on the strength of it. Rendering a toggle that
+  // cannot be honoured is a misrepresentation in the UI itself, so the group
+  // is removed and the policy's LLM opt-out claim was withdrawn in the same
+  // change (privacy-policy §4.2 / §5.1). A real per-user LLM switch, if ever
+  // wanted, is a schema + chain-gate + settings-write feature — not a
+  // checkbox.
 
-  var policyGroup = CardService.newSelectionInput()
-    .setType(CardService.SelectionInputType.CHECK_BOX)
-    .setFieldName("policy_settings");
-
-  policyGroup.addItem(t('settings.policy.preventOverwrite', null, L), "prevent_overwrite", true);
-  policyGroup.addItem(t('settings.policy.useLlm', null, L), "use_llm", true);
-  policyGroup.addItem(t('settings.policy.useDescription', null, L), "use_description", false);
-
-  section.addWidget(policyGroup);
-  builder.addSection(section);
+  // ADR-0007 — example-storage consent state + withdrawal entry point.
+  // Skipped entirely before the §12 notice window opens: no consent can exist
+  // yet, so the section would render "동의한 적 없음" and spend a backend
+  // round-trip to learn it.
+  if (exampleStorageIsOpen()) {
+    var examplesSection = CardService.newCardSection()
+      .setHeader(t('settings.section.examples', null, L));
+    var consent = fetchExampleConsentOrError();
+    if (consent && consent.granted === true) {
+      var when = '';
+      try {
+        when = consent.grantedAt ? new Date(consent.grantedAt).toLocaleDateString() : '';
+      } catch (_err) {}
+      examplesSection.addWidget(CardService.newDecoratedText()
+        .setText(t('settings.examples.granted', { date: when }, L))
+        .setWrapText(true));
+      examplesSection.addWidget(CardService.newTextButton()
+        .setText(t('settings.btn.revokeExamples', null, L))
+        .setOnClickAction(CardService.newAction().setFunctionName("actionGoToExampleConsentRevokeConfirm")));
+    } else {
+      // Covers "never granted", "withdrawn" and a fetch failure alike — the
+      // withdrawal button is only meaningful against a confirmed live consent.
+      examplesSection.addWidget(CardService.newDecoratedText()
+        .setText(t('settings.examples.notGranted', null, L))
+        .setWrapText(true));
+    }
+    builder.addSection(examplesSection);
+  }
 
   var accountSection = CardService.newCardSection()
     .setHeader(t('settings.section.account', null, L));

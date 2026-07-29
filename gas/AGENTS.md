@@ -68,6 +68,43 @@ Reviewer-walkthrough scripts under [../docs/assets/marketplace/reviewer-demo/](.
   `match.llm.quotaExceeded` line so the user can distinguish "한도 소진"
   from "AI가 매칭 못 찾음" — both are functionally `no_match`. See
   [../src/AGENTS.md](../src/AGENTS.md) "Preview LLM (§5 후속)".
+- **Lockstep:** `ACFC_CONFIG.EXAMPLE_CONSENT_POLICY_VERSION` (`config.js`)
+  must stay byte-identical to `EXAMPLE_CONSENT_POLICY_VERSION` in
+  [../src/config/consent.ts](../src/config/consent.ts). The backend rejects a
+  consent grant whose echoed version differs (409
+  `policy_version_mismatch`), so on drift **every** grant fails — loudly, by
+  design: a stale deployment must not record consent against example-storage
+  disclosure text the user never saw. Bump both together only when that
+  disclosure materially changes (ADR-0007).
+- **Time-gated surface:** the `rememberExample` checkbox on the event card and
+  the settings card's example-consent section are both wrapped in
+  `exampleStorageIsOpen()` (`config.js`). Before
+  `ACFC_CONFIG.EXAMPLE_STORAGE_OPENS_AT` the backend answers every grant with
+  409 `storage_not_open_yet` (privacy-policy §12's 30-day notice), so
+  rendering them would produce dead controls — the same defect the
+  `policy_settings` checkboxes were removed for. Remove the guards only
+  together with the backend constant.
+- **Load-bearing:** `buildWelcomeCard` renders `welcome.legal.notice` plus the
+  Terms / Privacy links **above** the sign-in button. Terms of Service §0.3
+  makes its own effect conditional on "회사의 안내 절차에 따라 본 약관에
+  동의" — that section *is* the procedure, so removing it or moving the links
+  below the button (browsewrap) silently un-enforces every clause that only
+  matters in a dispute. Both URLs come from `config.js` and are already
+  covered by `appsscript.json` `openLinkUrlPrefixes`; no manifest change, so
+  no OAuth re-review.
+- **Removed on purpose (2026-07-29):** the settings card's `policy_settings`
+  checkbox group (`prevent_overwrite` / `use_llm` / `use_description`) is
+  gone. It had no `onChange`, no save handler, and no backing column — while
+  the privacy policy promised a "규칙 기반 분류만 사용" opt-out on the
+  strength of it. Do not reintroduce a toggle without the column and the
+  chain gate behind it; LLM invocation is decided by `OPENAI_API_KEY` at the
+  operator level (`src/services/classifierChain.ts`), not per user.
+- **Note:** the event card never fetches consent state. It learns it from
+  `POST /api/examples` returning 403 `consent_required` and pushes
+  `buildExampleConsentCard` at that point. Do not add a consent probe to the
+  `onEventOpen` render path — it would put a `users` read on the sidebar hot
+  path for state needed only on a rare action, and the backend's 403 is the
+  only authority that honours a withdrawal made on another device.
 - **Gotcha:** `CardService` cannot render arbitrary HTML — every card is
   rebuilt on every action, so do NOT cache view state in module-level vars.
   Per-user state belongs in `storage.js`; per-render state belongs in the

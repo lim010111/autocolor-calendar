@@ -15,11 +15,11 @@ import { describe, expect, it, vi } from "vitest";
 
 import {
   consentExample,
-  type ConsentReceipt,
 } from "../services/piiRedactor";
 import { addExample } from "../services/ruleService";
 import { ruleSeeds } from "../db/schema";
 import { type RuleSeedRow, makeFakeDb } from "./_helpers/fakeDb";
+import { mintTestReceipt } from "./_helpers/consentReceipt";
 
 const USER_A = "00000000-0000-0000-0000-00000000000a";
 const RULE_A = "11111111-1111-1111-1111-11111111111a";
@@ -29,9 +29,8 @@ describe("finding-0 oracle: addExample move atomicity after delete", () => {
   const embedOk = () =>
     vi.fn(async (texts: string[]) => texts.map(() => [0.1, 0.2, 0.3]));
 
-  // §5.2: `ConsentReceipt` has no production minter (OAuth-gated consent
-  // flow) — test-side forgery of the receipt brand only.
-  const receipt = {} as ConsentReceipt;
+  // ADR-0007: minted through the real `consentReceiptFrom` (§5.2).
+  const receipt = mintTestReceipt();
   const mint = (title: string, ruleId = RULE_A, userId = USER_A) => {
     const example = consentExample(title, ruleId, userId, receipt);
     if (!example) throw new Error("fixture title must survive redaction");

@@ -116,6 +116,13 @@
     이후 출시 게이트**다 (2026-05-14 재제출분 — 통과 전까지 oauthScopes /
     consent / redirect / GAS deploy URL 동결).
 
+    > **[개정 2026-07-28 · ADR-0007]** 위 출시 게이트는 2026-07-24 Google
+    > Trust & Safety 승인으로 **해제**됐다. 이 문단이 열어 둔 "동의를 어떻게
+    > 받는가" 는 **ADR-0007** 이 결정한다(1회 동의 · 상태는 `users` 3개 컬럼 ·
+    > 타입 게이트 민터 `consentReceiptFrom` · 철회 시 기존 행 즉시 전량 삭제).
+    > 저장 결정 자체는 위 본문이 이미 외부화했으므로 신규 durable-storage ADR
+    > 은 두지 않았다.
+
 - Consequences:
   - **불변항 대체.** `docs/architecture-guidelines.md` 의 "Hybrid
     Classification Engine" bullet 과 `src/CLAUDE.md` §5 (§5.1 substring

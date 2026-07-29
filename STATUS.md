@@ -6,71 +6,93 @@ outside the narrative block; mechanical sections are regenerated every run._
 <!-- narrative:start -->
 ## Current focus
 
-**배포 창 종료 (2026-07-28).** Workers Paid 전환 → Worker prod 배포
-(`8bcac9d7`, `SYNC_SUBREQUEST_BUDGET=900`, 큐 `max_batch_size=1`) → GAS
-설치본 `AKfycbxfHV5…` **@57** co-deploy. 라이브 검증 진행 중.
+**#05 동의 모델 — 코드·문서 완료, 미배포.** 1회 동의 모델을 ADR-0007 로
+확정하고 백엔드·GAS·처리방침 v1.1 까지 마쳤다. `consentReceiptFrom` 민터가
+§5.2 타입 게이트를 열었다 — 그동안 `addExample` 은 살아 있었지만 호출자가
+구조적으로 0. 철회 시 기존 행은 **즉시 전량 삭제**. 666 tests green, 브랜치
+`embedding-classifier/05-examples-consent-ui`(`84aa09e` 푸시됨).
 
-**라벨 생성이 라이브에서 전면 실패했고 수정됨 (PR #162).**
-`calendars.patch` 가 `primary` 별칭을 **404 로 거부**(본문 무관, 빈 `{}` 도
-404 / resolved id 는 200 / `calendars.get` 은 별칭 허용). read-modify-write
-의 read 만 성공하고 write 에서 죽었다. **discovery 문서와 실동작이 다르므로
-resolved id 를 별칭으로 되돌리지 말 것**(코드 주석에 실측 고정). 07-15
-프로브가 이벤트 PATCH 만 봤고 `Calendars.patch` 는 미검증 표면이었던 것이
-놓친 지점 — 같은 결함이 `scripts/cutover-labels.ts` 에도 있었다.
+**법무 Round 3 — 문서가 없는 통제·권리를 9곳에서 기술하고 있었다.** 코드
+실측으로 전부 정정. 핵심 셋: ① 국외이전 근거 §28의8①1호(동의 간주) →
+**①3호**(계약이행 위탁·처리방침 공개) — 개정 전은 1호도 3호도 아니라
+**어느 근거도 못 타는 상태**였다. ② "LLM 거부권" 은 실재한 적 없다(sync
+게이트는 `OPENAI_API_KEY` 단독) → 문구 삭제 + 근거 §15①4호. 남겨두면 3호
+경로가 막혀 **오히려 법적으로 무겁다**. 장식 체크박스 3개도 같이 제거.
+③ ToS §0.3 이 자기 발효요건으로 삼는 안내 절차가 없어 **약관이 발효된 적이
+없었다** → welcome 카드에 clickwrap + 링크(매니페스트 무변경 → 재검수 없음).
+함께 발견: §6 세션 "7일 / pg_cron" 은 실제 30일 rolling·60일 absolute, gc
+미구현. 과잉 감량: GDPR 면제 논증 67줄, §12 전건 30일, K-12 기한 약속, 동의
+이력 3년, ToS 재가입 제한. 게시 본문 privacy 809→767 / terms 446→413줄.
 
-**native-labels — nl#02 AC1 · nl#03 AC2 실측 완료.** 분류 적용 6건 전부
-`eventLabelId` + 마커 v2 각인(colorId absent), §5.4 수동 보호 실증(사용자가
-직접 고른 라벨 이벤트는 마커 없음·미변경), 클라이언트 mint UUID 수용 확인.
+**검증 패스가 잡은 2건.** ① **§28의8②5호 — 내 오독이었다.** ①3호 가목 문언이
+"제2항 **각 호**" 라 3호 경로도 1~5호 전부 공개 대상 → §4.2 를 거부 방법·
+절차·효과로 재구성. ② **게시본 leak** — `build-legal.ts` 가 HTML 주석만
+걷어내 "sub-agent self-review 산출물" 고백·운영자 체크리스트·코드 경로가
+공개 페이지에 실려 나갔다 → `BUILD-STRIP` 마커로 leak 0.
 
-**embedding-classifier #07 신설 — LLM leg 과잉 배정.** 라이브 오분류 4건은
-전부 **Stage 2 히트**로 확인되어 "임계값이 낮다" 가설은 반증. hit 56 중 52
-가 단일 카테고리로 쏠리고 **동일 프롬프트에 정반대 판정**(비결정성) 관측.
-`callOpenAi` 에 `temperature`/`seed` 미지정 확인.
+**example 이 프롬프트로 새는 경로는 이미 배선돼 있었다.** `addExample →
+listRules → buildPrompt → llm_calls.prompt_summary` 가 다 연결돼 저장 0이라서만
+무해했다. 프롬프트 **버전에 키잉해 차단**(`promptVersionSendsExamples`) —
+피처 플래그가 아니라 버전 인터록이라 eval-gate 통과로만 켜진다.
 
-**card-latency / sync-reliability — 전 트랙 done.**
+**#07 AC1 종료 — "temperature 넣으면 끝" 은 반증됐다.** `gpt-5.4-nano` 는
+샘플링 파라미터를 전부 수용(6/6 200)하나 반복 일치율이 90% → 85% 로
+**개선되지 않는다**. 원인은 모델 추론 비결정성 → `callOpenAi` 는 두고
+프롬프트(none 편향)로. 흔들리는 케이스는 전부 정답 카테고리가 목록에 **없는**
+경우다. `OPENAI_API_KEY` 블로커도 실재하지 않았다(양 파일 바이트 동일, 68/68 200).
 
-**OAuth 검수 통과 (07-24)** — 라이브 표면 동결 해제. 재검수 트리거는 스코프
-추가·consent screen *설정* 변경뿐.
+**#04 — 컷오버는 no-op, AC3 는 남았다.** dry-run pending 0. 다만 마커 census 로
+**v1 이벤트 121건 잔존**(v2 35건) — full resync 는 PR-B 의 실질 선행조건이다.
 
-**출시 로드맵:** ① 라이브 검증 마무리(4로케일) → #04 컷오버 → PR-B 레거시
-제거. ② #07 + #05 OAuth AC → #06. ③ Marketplace 출시.
-
-운영 posture: main 에 local merge-gate advisory(보고만, 차단 안 함).
+**출시 로드맵:** ① 처리방침 v1.1 publish + GAS 동시 배포 → ② full resync →
+PR-B ③ #07 프롬프트 + eval-gate → #06 ④ Marketplace. §2.5 저장 개시는 D+30.
 
 ## Start here next session
 
-**main 622 tests green.** 병목 = **분류 품질(#07)** + **4로케일 스크린샷**.
-
-- **사람 — 4로케일 스크린샷 4장**: 애드온 패널 en/ko/zh-CN/zh-TW.
-  nl#03 과 ec#04 의 마지막 AC 를 동시에 닫는다. `#d81b60` hex 실측 병행.
-- **사람 — OPENAI_API_KEY 재발급**: #05 eval-gate 와 **#07 이 같은 블로커를
-  공유**. 프롬프트 수정은 §5.3 상 eval 통과가 전제라 키 없이 #07 AC 3·4 를
-  못 닫는다.
-- **에이전트 — #07 1차**: 모델이 `temperature`/`seed` 를 받는지 1회 호출로
-  실측(gpt-5 계열 nano 는 파라미터 거부 전례 — 단정 금지). 거부되면
-  프롬프트(none 편향 강화)로 방향 전환.
-- **에이전트 — #04 컷오버 dry-run**: 현재 규칙 3개 전부 labelId 링크라
-  no-op 예상. dry-run 무해하므로 먼저 확인 후 `--execute`.
-- **에이전트 — #05 OAuth AC 4건**: 1회 동의 모델 + Instant Feedback UI
-  표면화 + 개인정보처리방침 durable-storage 명시(`legal-reviewer`) + 결정 기록.
+- **legal 게이트 재확인 — #05 의 마지막 AC (:120)**: 3패스(general-purpose
+  검증)가 돌아 **조건부 publish 가능** 판정, Critical 4건 중 문서·코드
+  3건은 `84aa09e` 로 해소했다. 다만 **수정본을 다시 읽히지는 않았으므로
+  AC 는 아직 열려 있다** — 한 번 더 돌려 잔여 0을 확인하면 닫힌다.
+  남은 Critical 1건은 재배포(아래)라 텍스트 게이트와 별개다.
+- **가장 급한 것은 재배포다.** `legal.autocolorcal.app` 이 지금 서비스하는
+  본문은 **여전히 v1.0** 이고, 이번에 지운 허위 기재(LLM 거부권·세션 7일·
+  동의 이력 3년) 가 현재도 공개 중이다. 개정의 가치는 배포 전까지 0.
+  **legal publish 와 GAS 새 version 은 같은 창에서** — ToS §0.3 이 welcome
+  카드 링크의 존재를 자기 발효요건으로 삼는다.
+- **publish 전 사람 확인 2건**: ① §4.1.1 수탁자 연락처 4건 현행성(PIPA
+  §28의8②3호 필수 기재라 오기재 시 이전 근거에 흠결). ② §8.2 접속기록 보관
+  루틴 — 콘솔 로그 보존기간이 1년 미달이면 정기 내려받기를 먼저 가동.
+- ~~사람 결정 2건(K-12 날짜 / 동의 이력 3년)~~ **해소** — 둘 다 약속 자체를
+  삭제(ADR-0007 개정 주석).
+- **W12 는 프롬프트 AC 와 묶어서**: 기본 프롬프트를 v6 로 올리면 저장된 예시가
+  OpenAI 로 나가 §4.1 이전 항목과 §2.5 "전량 삭제" 가 **조용히 거짓이 된다**.
+  엔지니어링 인터록은 있는데 법적 트리거가 없다 — eval-gate 착수 시 §2.5 에
+  "전송 개시 = §12 중대한 변경" 문장을 같이 넣을 것.
+- ~~N4 — 홈페이지 Stage 1 문구~~ **해소** — 한국어 문장만 남아 있던 것을 정정.
+- **사람 — 4로케일 스크린샷 4장** + `#d81b60` 실측(위 참조 — 프로브로는 못 얻음).
+- **에이전트 — full resync 실행 판단**: v1 121건 재각인. prod 쓰기라 승인 필요.
+- **에이전트 — #07 프롬프트 v7**: 방향 확정됨(none 편향 강화). eval-gate 는
+  이제 키가 있으므로 즉시 착수 가능. `--prompt-version v6` 델타도 같이 측정하면
+  #05 의 마지막 AC(기본 버전 v6 승격)까지 닫힌다.
 
 ## Open decisions
 
-- **404 → 502 매핑** — `not_found` 가 `upstream_unavailable` 로 나가
-  "업스트림 장애" 라는 잘못된 신호를 준다. PR #162 진단을 늦춘 실제 원인.
-  라우트 계약 변경이라 별도 판단 — 미결.
-- **호스트 탭 캐시** — 새 규칙 직후 미새로고침 탭은 자동 채색을 못 그린다
-  (백엔드는 정상, API 실측으로 확정). 애드온에 호스트 갱신 API 가 **없음을
-  문서로 확인**. 토스트 안내로 대응 — 추가 대응 여부 미결.
-- **#04 keyword optional ↔ backend `keywords.min(1)`** — `keywords=[name]`
-  폴백으로 우회 중이나 **이 폴백이 #07 의 씨앗 빈약을 키운다**. Zod 완화 미결.
-- 벡터 차원 **동결** 미확정 — 잠정 gemma(768). 1024 로 뒤집히면 마이그레이션.
-- 임계값 `T=(0.30,0.55,0.10)` = provisional. 단 #07 로 **Stage 1 이 보수적**
-  (184건 중 128건이 LLM 까지 하강)임이 드러나 하향은 후보 아님.
+- **#05 배포 시퀀싱 / §12 30일 통지** — 위 참조. 코드는 준비됐고 배포만 남았다.
+  §12 는 이제 일반 7일 / 중대 30일이고, 기재 시정분은 게시와 동시에 시행이다.
+- **세션 GC 부재** — 만료 세션 행이 삭제되지 않고 회원탈퇴까지 남는다.
+  처리방침 §6 은 이제 이를 사실대로 적었으므로 **문서 결함이 아니라 구현
+  과제**다. PIPA §21①(목적 달성 시 지체 없이 파기) 대응 백로그.
+- **404 → 502 매핑** — `not_found` 가 `upstream_unavailable` 로 나간다.
+  PR #162 진단을 늦춘 원인. 라우트 계약 변경이라 미결.
+- **호스트 탭 캐시** — 새 규칙 직후 미새로고침 탭은 자동 채색을 못 그린다.
+  호스트 갱신 API 부재 확인. 토스트 안내로 대응 — 추가 대응 미결.
+- **#04 keyword optional ↔ `keywords.min(1)`** — `keywords=[name]` 폴백이
+  #07 의 씨앗 빈약을 키운다. Zod 완화 미결.
+- 벡터 차원 **동결** 미확정(잠정 gemma 768). 임계값 `T=(0.30,0.55,0.10)`
+  provisional — 단 Stage 1 이 보수적임이 드러나 하향은 후보 아님.
 - un-grilled architecture-deepening 후보: ColorOwnershipMarker,
   ResultHandler, ObservabilityRecorder, route-test-harness, GAS
   `fetchBackendEndpoint`. Claim primitive 은 보류 확정.
-
 <!-- narrative:end -->
 
 ## architecture-deepening
@@ -99,7 +121,7 @@ resolved id 를 별칭으로 되돌리지 말 것**(코드 주석에 실측 고�
 
 ## embedding-classifier
 
-`█████████████████░░░░░` 64/84 acceptance criteria met (76%)
+`██████████████████░░░░` 68/84 acceptance criteria met (81%)
 
 | # | Issue | Triage | Criteria | State | Blocked by |
 |---|-------|--------|----------|-------|-----------|
@@ -107,9 +129,9 @@ resolved id 를 별칭으로 되돌리지 말 것**(코드 주석에 실측 고�
 | 02 | Embedding knn classifier name seeds | `done` | 14/14 | ✅ done | — |
 | 03 | Keyword seeds | `ready-for-agent` | 14/14 | ✅ done | — |
 | 04 | Rule editor redesign | `ready-for-human` | 5/6 | 🔵 in-progress | #03 |
-| 05 | Examples seeds instant feedback | `ready-for-human` | 14/19 | 🔵 in-progress | #03 |
+| 05 | Examples seeds instant feedback | `ready-for-human` | 17/19 | 🔵 in-progress | #03 |
 | 06 | History based rule suggestions | `ready-for-agent` | 0/8 | ⛔ blocked | #05 |
-| 07 | Llm leg over assignment | `needs-triage` | 0/6 | ⬜ todo | — |
+| 07 | Llm leg over assignment | `ready-for-agent` | 1/6 | 🔵 in-progress | — |
 
 ## native-labels
 

@@ -11,7 +11,9 @@ import { accountRoutes } from "./routes/account";
 import { authRoutes } from "./routes/auth";
 import { categoriesRoutes } from "./routes/categories";
 import { classifyRoutes } from "./routes/classify";
+import { consentRoutes } from "./routes/consent";
 import { eventsRoutes } from "./routes/events";
+import { examplesRoutes } from "./routes/examples";
 import { healthRoutes } from "./routes/health";
 import { homeRoutes } from "./routes/home";
 import { llmCallsRoutes } from "./routes/llmCalls";
@@ -55,6 +57,8 @@ app.route("/api/events", eventsRoutes);
 app.route("/api/stats", statsRoutes);
 app.route("/api/llm-calls", llmCallsRoutes);
 app.route("/api/account", accountRoutes);
+app.route("/api/consent", consentRoutes);
+app.route("/api/examples", examplesRoutes);
 
 export default {
   fetch: app.fetch,

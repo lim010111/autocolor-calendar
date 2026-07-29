@@ -7,13 +7,18 @@
 // and the sibling `fakeDb.guard.test.ts` fails with a clear named
 // message instead of a dozen unit tests producing cryptic mismatches.
 //
-// Extension point: helper currently handles `categories` + `syncState`
-// only. When a third table needs FakeDb coverage, add a new `if (table
-// === <newTable>)` arm to the `from()` body — that is deliberately the
-// cheapest extension path. No placeholder `extraTables` option until a
-// real third caller arrives.
+// Extension point: helper handles `categories`, `syncState`, `ruleSeeds`
+// and `users`. When a further table needs FakeDb coverage, add a new
+// `if (table === <newTable>)` arm to the `from()` body — that is
+// deliberately the cheapest extension path. No placeholder `extraTables`
+// option until a real caller arrives.
+//
+// `users` (ADR-0007) is the only arm that projects column aliases: the
+// consent service selects `{consentedAt: users.exampleConsentAt, ...}` and
+// destructures those aliases, so echoing raw rows would silently hand the
+// service `undefined` for every field. See `projectUser`.
 
-import { ruleSeeds, syncState } from "../../db/schema";
+import { ruleSeeds, syncState, users } from "../../db/schema";
 
 export type Row = {
   id: string;
@@ -31,6 +36,44 @@ export type Row = {
 };
 
 export type SyncStateRow = { userId: string; calendarId: string };
+
+// ADR-0007 — only the columns the consent path reads/writes. `users` has
+// more columns in the real schema; adding them here has no value until a
+// test needs them.
+export type UserRow = {
+  id: string;
+  exampleConsentAt?: Date | null;
+  exampleConsentRevokedAt?: Date | null;
+  exampleConsentPolicyVersion?: string | null;
+  lastExampleAt?: Date | null;
+  updatedAt?: Date | null;
+};
+
+const USER_COL_MAP: Record<string, keyof UserRow> = {
+  id: "id",
+  example_consent_at: "exampleConsentAt",
+  example_consent_revoked_at: "exampleConsentRevokedAt",
+  example_consent_policy_version: "exampleConsentPolicyVersion",
+  last_example_at: "lastExampleAt",
+  updated_at: "updatedAt",
+};
+
+// drizzle's `.select({alias: table.column})` / `.returning({...})` project
+// columns under caller-chosen aliases; the service code destructures those
+// aliases, so the fake has to honour them rather than echoing raw rows.
+function projectUser(row: UserRow, cols: unknown): Record<string, unknown> {
+  if (cols === undefined || cols === null || typeof cols !== "object") {
+    return { ...row };
+  }
+  const out: Record<string, unknown> = {};
+  for (const [alias, col] of Object.entries(
+    cols as Record<string, { name?: string } | undefined>,
+  )) {
+    const field = col?.name ? USER_COL_MAP[col.name] : undefined;
+    out[alias] = field === undefined ? undefined : (row[field] ?? null);
+  }
+  return out;
+}
 
 // Mirrors the unique-violation Postgres error that
 // `services/categoryService` / `services/ruleService` re-throw as
@@ -298,14 +341,25 @@ export type FakeDbInitial = {
   // to compute its add/remove diff). Rows use the camelCase drizzle-column
   // keys the write path inserts (ruleId / userId / seedType / seedText).
   ruleSeeds?: RuleSeedRow[];
+  // ADR-0007 — consent state rows.
+  users?: UserRow[];
   failInsertWith?: Error;
   failUpdateWith?: Error;
+  // ADR-0007 — makes every `users` UPDATE fail, for the revoke
+  // purge-before-stamp ordering oracle.
+  failUserUpdateWith?: Error;
+  // ADR-0007 — the `POST /api/examples` throttle is an
+  // `or(isNull(...), <interval sql>)` predicate that `extractEq` cannot see,
+  // so the fake cannot derive "window still open" from state. This flag is
+  // the explicit seam: true = the UPDATE matches zero rows, i.e. throttled.
+  userUpdateMatchesNone?: boolean;
 };
 
 export type FakeDbState = {
   categories: Row[];
   syncStates: SyncStateRow[];
   ruleSeeds: RuleSeedRow[];
+  users: UserRow[];
 };
 
 export type FakeDbHandle = {
@@ -319,6 +373,7 @@ export function makeFakeDb(initial: FakeDbInitial = {}): FakeDbHandle {
     categories: [...(initial.categories ?? [])],
     syncStates: [...(initial.syncStates ?? [])],
     ruleSeeds: [...(initial.ruleSeeds ?? [])],
+    users: [...(initial.users ?? [])],
   };
 
   const db = {
@@ -357,7 +412,23 @@ export function makeFakeDb(initial: FakeDbInitial = {}): FakeDbHandle {
               },
             };
           }
-          // categories (default). To support a third table, add an
+          // ADR-0007 — consent state lives on `users`. `.where().limit(1)`
+          // is the only read shape `consentService.readExampleConsent` uses.
+          if (table === users) {
+            return {
+              where(whereSql: unknown) {
+                const c = extractEq(whereSql);
+                const filtered = state.users.filter(
+                  (r) => c["id"] === undefined || r.id === c["id"],
+                );
+                return {
+                  limit: async (n: number) =>
+                    filtered.slice(0, n).map((r) => projectUser(r, _cols)),
+                };
+              },
+            };
+          }
+          // categories (default). To support a further table, add an
           // `else if (table === <newTable>) { ... }` arm above this
           // block — see the module-header note.
           void table;
@@ -433,6 +504,60 @@ export function makeFakeDb(initial: FakeDbInitial = {}): FakeDbHandle {
       };
     },
     update(_table: unknown) {
+      // ADR-0007 — consent grant/revoke and the `POST /api/examples`
+      // throttle both UPDATE `users`. `sql\`now()\`` patches arrive as
+      // drizzle SQL objects, so they are normalized to a Date here; a
+      // `null` patch value (revoke clearing `exampleConsentRevokedAt`)
+      // passes through untouched.
+      if (_table === users) {
+        return {
+          set(patch: Record<string, unknown>) {
+            return {
+              where(whereSql: unknown) {
+                const c = extractEq(whereSql);
+                const matched = initial.userUpdateMatchesNone
+                  ? []
+                  : state.users.filter(
+                      (r) => c["id"] === undefined || r.id === c["id"],
+                    );
+                const apply = () => {
+                  for (const r of matched) {
+                    for (const [k, v] of Object.entries(patch)) {
+                      (r as Record<string, unknown>)[k] =
+                        v !== null && typeof v === "object" ? new Date() : v;
+                    }
+                  }
+                };
+                return {
+                  then(
+                    onFulfilled?: (value: undefined) => unknown,
+                    onRejected?: (reason: unknown) => unknown,
+                  ) {
+                    if (initial.failUserUpdateWith) {
+                      return Promise.reject(initial.failUserUpdateWith).then(
+                        onFulfilled,
+                        onRejected,
+                      );
+                    }
+                    apply();
+                    return Promise.resolve(undefined).then(
+                      onFulfilled,
+                      onRejected,
+                    );
+                  },
+                  returning: async (cols?: unknown) => {
+                    if (initial.failUserUpdateWith) {
+                      throw initial.failUserUpdateWith;
+                    }
+                    apply();
+                    return matched.map((r) => projectUser(r, cols));
+                  },
+                };
+              },
+            };
+          },
+        };
+      }
       return {
         set(patch: Partial<Row>) {
           return {
@@ -478,6 +603,7 @@ export function makeFakeDb(initial: FakeDbInitial = {}): FakeDbHandle {
       if (table === ruleSeeds) {
         return {
           where(whereSql: unknown) {
+            const removed: RuleSeedRow[] = [];
             const eqc = extractEq(whereSql);
             const nec = extractNe(whereSql);
             const inClause = extractInArray(whereSql);
@@ -498,10 +624,25 @@ export function makeFakeDb(initial: FakeDbInitial = {}): FakeDbHandle {
                 const field = SEED_COL_MAP[sqlCol];
                 return field !== undefined && r[field] !== val;
               });
+              const doomed = eqMatch && inMatch && neMatch;
+              if (doomed) removed.push(r);
               // keep rows that do NOT match every delete predicate
-              return !(eqMatch && inMatch && neMatch);
+              return !doomed;
             });
-            return Promise.resolve(undefined);
+            // Two shapes on one object: `await db.delete(...).where(...)`
+            // (#03/#05 seed reconciliation) and
+            // `.where(...).returning({id})` (ADR-0007 revoke, which needs
+            // the purge count).
+            return {
+              then(
+                onFulfilled?: (value: undefined) => unknown,
+                onRejected?: (reason: unknown) => unknown,
+              ) {
+                return Promise.resolve(undefined).then(onFulfilled, onRejected);
+              },
+              returning: async (_cols?: unknown) =>
+                removed.map((r) => ({ id: r["id"] })),
+            };
           },
         };
       }

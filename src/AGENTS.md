@@ -131,14 +131,72 @@ unique minter is `redactEventForLlm`. The same file co-locates
 applies the unfit-drop gate (`isUnfitExample` — empty or ≥50%-placeholder
 titles return `null`, silently dropped), and stamps the brand;
 `ruleService.addExample` is the only sink and accepts nothing else. The
-`ConsentReceipt` type required by the minter still has **no production
-minter** — the OAuth-gated consent flow issues the first receipts, so
-example storage is structurally zero until then (dark build). All three
-brands are phantom `unique symbol` intersections — zero runtime footprint,
-no forgeable literal, no surface for `JSON.stringify` to leak into a
-prompt body or `llm_calls.prompt_summary`. Sibling redactors or
-out-of-file `as RedactedEvent` / `as ConsentedExample` casts break the
-invariant and must not be introduced.
+`ConsentReceipt` required by that minter is itself minted by exactly one
+function — `consentReceiptFrom`, in the same file. It is **pure**: it takes
+an `ExampleConsentRecord` (the three `users.example_consent_*` columns) plus
+the current `EXAMPLE_CONSENT_POLICY_VERSION` and returns `null` unless
+consent is present, un-revoked, AND stamped with the current disclosure
+version. The DB read lives in `src/services/consentService.ts` so this file
+stays DB-free; the *cast* stays here so all three brands keep a single
+minting file. All three brands are phantom `unique symbol` intersections —
+zero runtime footprint, no forgeable literal, no surface for
+`JSON.stringify` to leak into a prompt body or `llm_calls.prompt_summary`.
+Sibling redactors or out-of-file `as RedactedEvent` / `as ConsentedExample`
+/ `as ConsentReceipt` casts break the invariant and must not be introduced —
+`piiRedactor.test.ts` pins each cast's occurrence count at the source level
+(comments stripped first, so the doc prose above does not inflate it).
+
+## Example storage consent (§5.2, ADR-0007)
+
+`users.example_consent_at` / `_revoked_at` / `_policy_version` are a
+**sole-writer** column group owned by `src/routes/consent.ts` (via
+`consentService.ts`). Never write them from any other code path — mirror of
+the `users.last_preview_at` discipline. **NULL here is fail-closed** ("never
+consented"), the opposite of `last_preview_at`'s permissive NULL; do not
+carry that reading across.
+
+- **Notice-window interlock.** `POST /api/consent/examples` answers **409
+  `storage_not_open_yet`** until `EXAMPLE_STORAGE_OPENS_AT`
+  (`src/config/consent.ts`, 2026-08-28). privacy-policy §12 binds the company
+  to a 30-day notice before example storage begins; this constant is that
+  promise in code, so deploying the Worker early cannot silently falsify a
+  published policy. One gate is enough — no consent means no receipt, so
+  `POST /api/examples` cannot reach `addExample` either. `gas/config.js`
+  mirrors the date to avoid rendering a control the backend must refuse, but
+  the backend is the authority. The constant becomes inert after the date;
+  leave it as the record of when storage legitimately opened.
+- `POST /api/consent/examples` grants. Idempotent: an already-live consent
+  keeps its original timestamp (re-stamping would falsify when the user
+  actually agreed). The body must echo the policy version the UI rendered,
+  or the route returns **409 `policy_version_mismatch`** — that is what stops
+  a stale Add-on deployment from recording consent against disclosure text
+  the user never saw.
+- `DELETE /api/consent/examples` revokes and **purges every
+  `seed_type='example'` row for that tenant in the same request,
+  purge-before-stamp**. This is the deliberate inverse of `addExample`'s
+  insert-before-delete: there a mid-failure must not lose user data, here it
+  must not retain data under a revoked consent. A crash between the two
+  statements must leave "no data, consent still live" (retry fixes it),
+  never the reverse. Consent is the only lawful basis for this storage, so
+  withdrawal removes the basis entirely (ADR-0007).
+- `POST /api/examples` is the sole caller of `consentExample` and returns
+  **403 `consent_required`** when `issueExampleConsentReceipt` yields null.
+  Its soft outcomes (`unfit`, `embed_failed`) are **200 with a discriminated
+  `reason`**, not 4xx/5xx: a 4xx turns the by-design silent drop into an
+  error path, and a 5xx trips `gas/api.js`'s 3× backoff retry loop. It also
+  carries its own 2-second throttle on `users.last_example_at` (sole writer),
+  because each call burns one Workers AI embed and the per-rule cap of 10
+  bounds stored rows, not calls.
+
+**Prompt interlock.** `buildPrompt` sends the category `examples` field only
+for system-prompt versions that document it
+(`promptVersionSendsExamples`, `src/services/prompts/classifierPrompts.ts`).
+Turning on consent-gated storage would otherwise start shipping a populated
+field under the v2 prompt, which never mentions it — an un-eval-gated model
+input change (§5.3) — and would put consented titles into
+`llm_calls.prompt_summary`, which the revocation purge does not reach. Keying
+on the version makes the eval-gate mechanical. Do not replace it with an
+unconditional map.
 
 ## Color ownership marker (§5.4)
 
@@ -452,7 +510,8 @@ Stage-2 LLM leg below.
   can be multi-modal). `score(rule)` = **max cosine** over that rule's seeds vs
   the event-title vector (k = seed pool, agg = max, metric = cosine). All three
   seed types are live: name (#02), keyword (#03), example (#05 — Instant
-  Feedback via `addExample`, dark until the OAuth consent flow mints receipts).
+  Feedback via `addExample`, live behind the one-time storage consent — see
+  "Example storage consent (§5.2)" above).
   The kNN pool query is seed-type-agnostic, so example rows joined with zero
   read-path change.
 - **Trust grades (derived, never stored).** example = **verified** (Instant
@@ -1120,6 +1179,9 @@ truth, not this index.
 - **Add a cron / queue handler** → `## Watch renewal concurrency` +
   `## Token rotation (§3 후속)` (per-row claim vs. observed-not-prevented
   patterns; idempotency under concurrent ticks).
+- **Add a consent-gated durable write** → `## Example storage consent (§5.2)`
+  + `## PII redaction contract (§5.2)` (receipt minter → branded sink;
+  sole-writer columns; purge-before-stamp on revoke; soft failures stay 200).
 - **Add a Worker secret** → `## Secret rotation impact` (rotation impact
   table; PREV-key window; `needs_reauth` flip rules) + extend
   `../scripts/sync-secrets.ts` `REQUIRED_SECRETS` + `../.dev.vars.example`.

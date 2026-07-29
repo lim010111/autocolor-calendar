@@ -51,6 +51,42 @@ export const users = pgTable("users", {
   // `sync_state.last_manual_trigger_at` / `watch_renewal_in_progress_at`
   // single-writer pattern — never write this from any other code path.
   lastPreviewAt: timestamp("last_preview_at", { withTimezone: true }),
+
+  // ADR-0007 / ADR-0004 #05 — Instant Feedback one-time storage consent.
+  // These three columns are the only input to `consentReceiptFrom`
+  // (`src/services/piiRedactor.ts`), the unique minter of `ConsentReceipt`.
+  // Without a live receipt `consentExample()` cannot be called and
+  // `ruleService.addExample` has no reachable caller, so example durable
+  // storage is structurally impossible (§5.2 type gate).
+  //
+  // Live consent ≡ exampleConsentAt IS NOT NULL
+  //             AND exampleConsentRevokedAt IS NULL
+  //             AND exampleConsentPolicyVersion = EXAMPLE_CONSENT_POLICY_VERSION
+  //
+  // NULL is **fail-closed** here — "never consented". This is the opposite of
+  // `last_preview_at` above, whose NULL means "no prior call observed" and is
+  // permissive; do not copy that reading across.
+  //
+  // Sole writer: `src/routes/consent.ts` (via `src/services/consentService.ts`).
+  // **Never write these columns from any other code path** — a second writer
+  // re-opens the "stored without a live receipt" hole this gate closes. Same
+  // discipline as `users.last_preview_at` / `sync_state.last_manual_trigger_at`.
+  // See src/CLAUDE.md "Example storage consent (§5.2)".
+  exampleConsentAt: timestamp("example_consent_at", { withTimezone: true }),
+  exampleConsentRevokedAt: timestamp("example_consent_revoked_at", {
+    withTimezone: true,
+  }),
+  exampleConsentPolicyVersion: text("example_consent_policy_version"),
+
+  // Cost guardrail — per-user throttle for `POST /api/examples`. Each call
+  // burns one Workers AI embed before it can touch a row, so an authenticated
+  // bot could drain neurons without ever growing storage (the per-rule cap of
+  // 10 bounds rows, not calls). Mirror of `last_preview_at`'s 2-second atomic
+  // UPDATE-RETURNING throttle; a separate column because that one's
+  // sole-writer contract forbids a second writer by name.
+  // Sole writer: `src/routes/examples.ts`. NULL = no prior call (permissive,
+  // like `last_preview_at`).
+  lastExampleAt: timestamp("last_example_at", { withTimezone: true }),
 });
 
 export const oauthTokens = pgTable(

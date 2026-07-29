@@ -9,7 +9,6 @@ import type { Bindings } from "../env";
 import { enqueueSync } from "../queues/syncProducer";
 import {
   consentExample,
-  type ConsentReceipt,
 } from "../services/piiRedactor";
 import {
   addExample,
@@ -27,6 +26,7 @@ import type { RuleSeedRow } from "./_helpers/fakeDb";
 import { categories, ruleSeeds } from "../db/schema";
 
 import { type Row, makeFakeDb } from "./_helpers/fakeDb";
+import { mintTestReceipt } from "./_helpers/consentReceipt";
 
 const USER_A = "00000000-0000-0000-0000-00000000000a";
 const USER_B = "00000000-0000-0000-0000-00000000000b";
@@ -629,10 +629,10 @@ describe("addExample (ADR-0004 #05 — 저장 경로 + 생애주기)", () => {
   const embedOk = () =>
     vi.fn(async (texts: string[]) => texts.map(() => [0.1, 0.2, 0.3]));
 
-  // §5.2: `ConsentReceipt` has no production minter (OAuth-gated consent
-  // flow) — test-side forgery of the receipt brand only; production code
-  // MUST NOT cast its way around the type.
-  const receipt = {} as ConsentReceipt;
+  // ADR-0007: minted through the real `consentReceiptFrom`, not a brand
+  // forgery — production code MUST NOT cast its way around the type, and
+  // neither should the fixtures that stand in for it (§5.2).
+  const receipt = mintTestReceipt();
   const mint = (title: string, ruleId = RULE_A, userId = USER_A) => {
     const example = consentExample(title, ruleId, userId, receipt);
     if (!example) throw new Error("fixture title must survive redaction");

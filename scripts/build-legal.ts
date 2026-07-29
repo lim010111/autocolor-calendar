@@ -143,7 +143,25 @@ function escapeHtml(s: string): string {
 
 async function buildPage(page: Page): Promise<void> {
   const md = await readFile(join(srcDir, page.src), "utf8");
-  const html = await marked.parse(md, { gfm: true, breaks: false });
+  // 두 단계로 스트립한다. 순서가 중요하다 — BUILD-STRIP 마커 자체가 HTML
+  // 주석이므로 주석 제거보다 **먼저** 블록을 걷어내야 한다.
+  //
+  // 1) BUILD-STRIP 블록 — 저장소 내부 스캐폴딩(검토 이력 blockquote,
+  //    Cross-references 의 코드 경로 목록, 운영자 publish 체크리스트).
+  //    법정 기재사항이 아니면서 게시되면 정보주체·감독기관·Marketplace
+  //    리뷰어가 "이 문서는 변호사 검토를 받지 않은 AI 산출물이며 운영자가
+  //    채워야 할 placeholder 가 남아 있다" 를 그대로 읽게 된다.
+  // 2) 나머지 HTML 주석 — 내부 검토 주석(`<!-- LEGAL-REVIEW: … -->`).
+  //    marked 는 주석을 그대로 통과시키므로 스트립하지 않으면 공개 페이지
+  //    소스에 "…의무 트리거를 차단", "OAuth 검수 차단 위험" 같은 내부 표현이
+  //    노출된다. 두 종류 모두 소스 md 에만 남는다.
+  const stripped = md
+    .replace(/<!--\s*BUILD-STRIP-START\s*-->[\s\S]*?<!--\s*BUILD-STRIP-END\s*-->/g, "")
+    .replace(/<!--[\s\S]*?-->/g, "");
+  const html = await marked.parse(stripped, {
+    gfm: true,
+    breaks: false,
+  });
   const out = template(page.title, html, page.slug);
   const outPath = join(outDir, `${page.slug}.html`);
   await writeFile(outPath, out, "utf8");

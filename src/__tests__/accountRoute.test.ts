@@ -232,6 +232,14 @@ describe("POST /api/account/delete", () => {
     // FKs to OTHER parents (e.g. categories) cannot mask a missing user
     // cascade by inflating a loose count. ADR-0004 #02 added `rule_seeds`
     // (user_id → users cascade), bumping the count 9 → 10.
+    //
+    // ADR-0007 (#05 동의) deliberately keeps this at 10: the example-storage
+    // consent state is four COLUMNS on `users` itself — the cascade parent,
+    // which has no FK to itself — not a new user-scoped table. A consent
+    // ledger table would have moved this to 11; it was rejected because a
+    // cascade-deleted ledger cannot satisfy the privacy policy's 3-year
+    // 동의-이력 retention anyway (a ledger that outlives account deletion
+    // needs its own PII-minimisation design, tracked separately).
     const schemaPath = fileURLToPath(new URL("../db/schema.ts", import.meta.url));
     const src = readFileSync(schemaPath, "utf8");
     const matches = src.match(
