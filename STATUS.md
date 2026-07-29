@@ -11,7 +11,10 @@ outside the narrative block; mechanical sections are regenerated every run._
 `ConsentReceipt` 의 프로덕션 민터(`consentReceiptFrom`)가 생기면서 §5.2 타입
 게이트가 열렸다 — 그동안 `addExample` 은 살아 있었지만 호출자가 구조적으로
 0이었다. 철회 시 기존 행은 **즉시 전량 삭제**(사용자 결정).
-**663 tests green**, 브랜치 `embedding-classifier/05-examples-consent-ui`.
+**665 tests green**, 브랜치 `embedding-classifier/05-examples-consent-ui`
+(푸시됨, 커밋 4개). 자체 리뷰에서 throttle 순서 버그 1건 발견·수정 — throttle
+이 consent 검사 앞에 있어 최초 정정(403 → 동의 → 재생)이 방금 자기가 잡은
+2초 창에 걸려 항상 429 로 죽었다. 순서 오라클 2개로 고정.
 
 **착수 중 발견 — example 이 프롬프트로 새는 경로가 이미 배선돼 있었다.**
 `addExample → listRules → buildPrompt → llm_calls.prompt_summary` 체인이
@@ -44,6 +47,9 @@ PR-B(v1 읽기 경로 제거)의 실질 선행조건이다. `#d81b60` 은 26개 
 
 ## Start here next session
 
+- **`legal-reviewer` 게이트 미완 — #05 의 마지막 AC**: 처리방침 AC(:112)만
+  체크하지 않고 열어 뒀다. 게이트를 다시 돌려 findings 를 반영해야 닫힌다.
+  특히 아래 30일 통지 판단을 명시적으로 물어둔 상태다.
 - **사람 — #05 배포 시퀀싱 판단**: 처리방침 v1.1 은 §12 **중대한 변경**(1·2·3호)
   이라 시행 30일 전 통지 + 이메일 + 명시적 재동의가 따른다. 미출시 서비스에
   30일 시계가 실질적으로 구속력이 있는지가 배포 타이밍을 정한다.
