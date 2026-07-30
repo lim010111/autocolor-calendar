@@ -59,28 +59,27 @@ and the §5.4 ownership-marker contract.
 
 - **Reviewer action.** Open Google Calendar, click the AutoColor icon
   in the Calendar sidebar.
-- **Surface.**
-  - Card title: `"AutoColor 사용 가이드"` (`gas/addon.js:94`).
-  - Subtitle: `"AI가 캘린더를 예쁘게 정리해 드립니다."`
-    (`gas/addon.js:95`).
-  - Three tutorial rows under header `"💡 이렇게 사용해보세요!"`
-    (`gas/addon.js:98`):
-    - `"1단계. 규칙 만들기"` — `"키워드(예: '회의')와 원하는 색상을
-      선택해 나만의 규칙을 만드세요."` (`gas/addon.js:101-103`).
-    - `"2단계. 일정 등록하기"` — `"평소처럼 캘린더에 일정을
-      등록합니다. 제목이나 설명에 키워드가 포함되면 됩니다."`
-      (`gas/addon.js:105-108`).
-    - `"3단계. 자동 색상 적용"` — `"백그라운드에서 AutoColor가
-      자동으로 일정을 찾아 예쁜 색상을 입혀줍니다! ✨"`
-      (`gas/addon.js:110-112`).
-  - Disclosure copy: `"시작하려면 Google 계정 연동이 필요합니다.
-    진행하면 개인정보처리방침 및 서비스 약관에 동의하는 것으로
-    간주됩니다. (정식 링크는 출시 시점에 제공됩니다.)"`
-    (`gas/addon.js:119`). Note: at submission time the parenthesised
-    placeholder is replaced with concrete links to the published
-    Privacy Policy and Terms of Service.
-  - Fixed-footer primary button: `"Google 계정으로 시작하기"`
-    (`gas/addon.js:126`).
+- **Surface.** All copy is i18n-driven (`gas/i18n.js`, 4 locales —
+  en / ko / zh-CN / zh-TW; the locale follows the reviewer's Calendar
+  setting via `useLocaleFromApp`). Keys and ko values below;
+  `buildWelcomeCard` is `gas/addon.js:89-140`.
+  - Card title / subtitle: `welcome.title` / `welcome.subtitle`
+    (`gas/addon.js:92-94`) — ko: `"AutoColor 사용 가이드"` /
+    `"AI가 일정의 색상을 자동으로 입혀 드립니다!"`.
+  - Three tutorial rows under `welcome.section`
+    (`gas/addon.js:97-108`) — ko: `"💡 이렇게 사용해보세요!"` +
+    `welcome.step1` / `welcome.step2` / `welcome.step3`
+    (규칙 만들기 → 일정 등록 → 5~10초 내 자동 색상 적용).
+  - **Clickwrap consent section** (`gas/addon.js:118-128`, ToS §0.3):
+    `welcome.legal.notice` — ko: `"계속하면 <b>이용약관</b>에 동의하는
+    것으로 보며, <b>개인정보처리방침</b>을 확인한 것으로 봅니다."` —
+    followed by two link buttons (`welcome.legal.terms` /
+    `welcome.legal.privacy`) that open
+    `https://legal.autocolorcal.app/terms` and `/privacy`
+    (`ACFC_CONFIG`). Both render **before** the sign-in button by
+    design: a link placed after the act of assent is browsewrap.
+  - Fixed-footer primary button: `welcome.cta.login`
+    (`gas/addon.js:130-134`) — ko: `"Google 계정으로 시작하기"`.
 - **Backend / Google API call.** None. The card is rendered entirely
   by the GAS `homepageTrigger` (`gas/appsscript.json:24-27`,
   `gas/appsscript.json:31-34`) which runs `buildAddOn`
@@ -257,7 +256,7 @@ and the §5.4 ownership-marker contract.
   `${GAS_REDIRECT_URL}?error=consent_denied`; GAS `doGet` falls
   through to `authError.html` (`gas/addon.js:1104`). Pointer:
   `gas/authError.html` (current generic surface;
-  per-error-code branches are tracked at `TODO.md:36`).
+  per-error-code branches are tracked at `TODO.md:38`).
 - **Provider error / unexpected exception.** Google sends
   `?error=invalid_request` (or similar) →
   `OAuthError("provider_error")` (`src/routes/oauth.ts:43`). A

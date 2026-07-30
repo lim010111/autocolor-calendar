@@ -1,6 +1,6 @@
 # 08 — Marketplace submission
 
-> 이 runbook은 [`TODO.md` §7 line 134](../../TODO.md) "Google Workspace
+> 이 runbook은 [`TODO.md` §7 line 137](../../TODO.md) "Google Workspace
 > Marketplace 등록" 정본 절차다. 다른 모든 게이트(G1·G2·G4·G5·G6·G7)의
 > **수렴 지점** — 자료 / 인프라 / 검수 산출물을 모아 Marketplace에
 > 정식 등록한다. Google admin 검수 통상 1-3주.
@@ -18,10 +18,18 @@
     (test 계정 OAuth + sync 검증 통과).
   - [04 runbook](./04-legal-hosting.md) — Privacy / ToS URL 공개.
   - [05 runbook](./05-marketplace-listing-assets.md) — 11개 listing 자료
-    Marketplace SDK Draft 입력 완료.
+    Marketplace SDK Draft 입력 완료. **스크린샷은 현행 UI 로 촬영된 것
+    이어야 한다** — 2026-05-09 촬영분은 편집기 개편(07-28)·legal
+    clickwrap(07-29) 이전 화면이라 무효이며, SDK 콘솔에 올라간 자료도
+    같이 교체해야 한다.
   - [06 runbook](./06-oauth-verification.md) — OAuth Consent Screen
-    Verification status `Verified`.
-  - [07 runbook](./07-backup-and-recovery.md) — PITR 활성화 + 복구 리허설.
+    Verification status `Verified` (2026-07-24 승인 완료).
+  - [07 runbook](./07-backup-and-recovery.md) — **Supabase Pro plan +
+    daily snapshot 기반 복구 리허설 1회**. PITR 은 2026-05-06 에 보류
+    결정된 별도 축이므로 G8 의 선행조건이 아니다 (07 runbook Step 1
+    "PITR 보류 결정"). 2026-07-01 billing 중단으로 prod 가 임시 Free —
+    Free 는 백업 0 + 7일 무활동 자동 pause 라 **Pro 복구가 이 행의
+    실질 조건**이다.
   - [03 runbook](./03-cicd-pipeline.md) — 권장이지만 G8 차단 게이트 아님
     (출시 후 추가 가능).
 - **Acceptance**:
@@ -36,8 +44,12 @@
 각 행의 정본 pointer를 따라가서 status가 실제 상태와 일치하는지 확인.
 
 ```bash
-# 본 runbook 실행자가 cross-check할 grep 명령 모음
-grep -E "^\| (Owned domain|Prod Supabase|Privacy Policy|Terms of Service|Scope justifications|Demo video|CI/CD|Backup|Listing assets)" docs/marketplace-readiness.md
+# §5 표에서 아직 `완료`가 아닌 행을 전부 뽑는다. 출력이 비어야 publish 가능.
+# (행 이름 allowlist 를 쓰지 않는다 — 새 게이트 행이 추가될 때 조용히
+#  빠져나가는 경로가 되기 때문이다. 실제로 "접속기록 1년 보관" 행이
+#  그렇게 빠졌다.)
+awk '/^## 5\. Launch Gate/,0' docs/marketplace-readiness.md \
+  | grep '^| ' | grep -v '^|---' | grep -v '^| Gate ' | grep -v '완료'
 ```
 
 | 항목 | 확인 명령 |
@@ -46,10 +58,11 @@ grep -E "^\| (Owned domain|Prod Supabase|Privacy Policy|Terms of Service|Scope j
 | Prod Worker 활성 | `curl https://<prod-domain>/healthz` → 200 |
 | Privacy / ToS URL | `curl -I https://legal.<prod-domain>/privacy` → 200 + content-type (G4 결정: legal subdomain) |
 | OAuth verification | GCP Console → OAuth consent screen → Verification status: Verified |
-| Listing assets | Marketplace SDK 콘솔 → App Configuration 모든 빨간 ! 사라짐 |
-| Backup policy | Supabase Dashboard → Backups → PITR 토글 ON |
-| `gas/appsscript.json:17` | `grep "logoUrl" gas/appsscript.json`이 `gstatic` 아닌 자체 호스팅 URL |
-| `gas/addon.js:119` | `grep "정식 링크" gas/addon.js` 결과 0행 (placeholder 제거됨) |
+| Listing assets | Marketplace SDK 콘솔 → App Configuration 모든 빨간 ! 사라짐 + 업로드된 스크린샷이 현행 UI (라벨 칩 편집기 + welcome clickwrap) |
+| Backup policy | Supabase Dashboard → Settings → Billing 이 **Pro** + Backups 탭에 daily snapshot 존재 (PITR 토글은 보류 결정이라 OFF 가 정상) |
+| 접속기록 보관 | 처리방침 §8.2 가 약속한 1년 보관 루틴 가동 여부 (Audit Log Drain 또는 정기 export) |
+| `gas/appsscript.json` logoUrl | `grep "logoUrl" gas/appsscript.json`이 `gstatic` 아닌 자체 호스팅 URL |
+| `gas/addon.js` placeholder | `grep "정식 링크" gas/addon.js` 결과 0행 (placeholder 제거됨) |
 
 위 check 중 하나라도 실패면 **publish 금지**. 해당 prerequisite runbook으
 로 돌아가 마무리.
@@ -71,7 +84,7 @@ GCP Console → APIs & Services → Marketplace SDK → "App Configuration"
 | Support URL | GitHub Issues 또는 dedicated support page. |
 | Privacy Policy URL | `legal.<prod-domain>/privacy` 200 응답. |
 | Terms of Service URL | `legal.<prod-domain>/terms` 200 응답. |
-| OAuth scopes 4개 | `src/config/constants.ts` + `gas/appsscript.json` 일치. |
+| OAuth scopes | 두 목록은 **의도적으로 다르다** — 백엔드 4종(`src/config/constants.ts`: openid / email / calendar / calendar.events)과 GAS 6종(`gas/appsscript.json`: script.external_request / script.locale / calendar.addons.execute / addons.current.event.read·write / userinfo.email). 확인할 것은 "일치"가 아니라 **각각이 Console 등록 스코프의 부분집합인지**다 (2026-07-20 반려 사유가 정확히 이 불일치였다). |
 | Distribution | Step 3에서 결정. |
 | Pricing model | "Free". |
 
@@ -186,9 +199,13 @@ publish 통과 후 본 서비스 long-running 운영 책임:
   impact" 절차. 운영자 procedure를 1년 단위로 재실행.
 - **OAuth 검수 만료 갱신** — Google이 검수 만료를 자동 통지하면 본
   메일 받고 [06 runbook]의 자료를 최신화 + 재제출.
-- **CASA 재인증** — Tier 통보 후 1년마다 self-assessment workbook 또는
-  third-party Letter of Assessment 갱신. 만료 통지 수신 시 본 절 + [06 runbook]
-  (참고) CASA 보안 평가 절 동시 갱신. 트리거/Tier 상태는 [`docs/marketplace-readiness.md` §2 row 131](../marketplace-readiness.md) 정본.
+- **CASA 재인증 — 현재 해당 없음.** 2026-07-28 Console 실측에서 이 앱의
+  restricted 스코프가 0행이고 `calendar` 는 sensitive 로 분류돼 CASA 가
+  트리거되지 않았다. **restricted 스코프(예: Gmail·Drive 전체)를 추가하는
+  순간 연 1회 트랙이 되살아난다** — 그때 Tier 통보 후 1년마다
+  self-assessment workbook 또는 third-party Letter of Assessment 갱신.
+  상태 정본은 [`docs/marketplace-readiness.md`](../marketplace-readiness.md)
+  §2 "CASA security assessment" 행.
 
 ### 사고 발생 시
 
@@ -236,7 +253,7 @@ publish 자체는 mutation이지만 **회수 가능**:
 
 ## Cross-references
 
-- [`TODO.md` §7 line 134](../../TODO.md) — 작업 정본
+- [`TODO.md` §7 line 137](../../TODO.md) — 작업 정본
 - [`docs/completion-roadmap.md`](../completion-roadmap.md) — G8 절 + "완성 정의"
 - [`docs/marketplace-readiness.md`](../marketplace-readiness.md) — 모든 §status 표가 G8 prerequisite
 - [`docs/runbooks/01-domain-and-search-console.md`](./01-domain-and-search-console.md) — Domain prerequisite
