@@ -69,6 +69,38 @@ Google UI 로 안내 (ADR-0006 Decision 2·3 의 UI 절반).
 
 ## Comments
 
+### 2026-07-30 — 스크린샷 직전에 색 표시가 깨져 있었음 (수정·배포 완료)
+
+4로케일 스크린샷을 찍기 직전 확인: "My rules" 목록과 사이드바 라벨 칩이
+**사용자가 고른 색과 다른 색**을 그리고 있었다. Google 라벨과 실제 분류는
+정상이고 표시 경로만 깨진 상태 — 이대로 찍으면 잘못된 UI 를 i18n 증거로
+동결하게 되므로 먼저 고쳤다 (PR #168).
+
+원인은 팔레트 왕복의 정보 손실: 픽커의 24색 hex → `nearestClassicColorId`
+→ `colorId` '1'..'11' 만 저장(hex 폐기) → GAS 가 그 colorId 를 다시 모던
+hex 로 되돌려 렌더. 24 → 11 축소라 되돌릴 수 없고, 최근접 계산조차 픽커와
+다른 좌표계(파스텔 `colors.get` 기준표)에서 이뤄졌다. **24색 중 19색 불일치**
+(cocoa 갈색 → basil 초록, wisteria 연보라 → 파랑, graphite 진회색 → 초록).
+
+수정: 라벨 실제 hex 를 `categories.background_color` 로 보존(`0021`), 애드온이
+그 값으로 정확 매칭. `getSwatchForRule` 이 유일한 진입점이고
+`src/__tests__/gasSwatch.test.ts` 가 `gas/i18n.js` 실물을 평가해 24색 항등성을
+고정한다. 함께 고친 잠복 결함 2건: `CLASSIC_EVENT_COLOR_HEX` 파스텔 오염
+(컷오버가 팔레트에 없는 색을 라벨에 심을 뻔했다 — #04 미실행이라 잠복),
+reconcile 이 Google 쪽 recolor 를 영원히 무시하던 문제.
+
+**배포 완료 (2026-07-30)**: prod DB `0021` 적용 → Worker 배포 → GAS **@59**
+(deployment ID 2개 불변, URL 동결 준수). 마이그레이션은 `main` 의
+`0020_dark_thor_girl` 과 인덱스 충돌해 `0021_curious_morlocks` 로 재번호했다.
+
+곁가지로 머지 게이트 findings 가 라벨 고아 누수를 잡아 함께 고쳤다 (PR #169):
+동명 동시 생성(저장 더블클릭)이 고아 라벨을 남기고 reconcile 이 이를 치울 수
+없었다 — Google 이 동명 라벨을 허용하므로 reconcile 이 지우면 사용자가 의도적으로
+만든 라벨을 파괴한다. 민팅한 라우트가 회수하도록 바꿨다.
+
+**남은 것은 4로케일 스크린샷 1장씩뿐이다** (아래 AC). 이제 색이 맞으므로
+`#d81b60`(cherry blossom) 미실측 1색도 같은 화면에서 확인할 수 있다.
+
 ### 2026-07-28 — 생성한 라벨이 Google 색 선택 창에 즉시 안 뜬다 (호스트 캐시, 우회 불가)
 
 라이브 확인: 규칙 생성은 성공하고 애드온 목록에도 즉시 반영되지만, **Google
