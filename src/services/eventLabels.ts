@@ -79,3 +79,38 @@ export async function appendEventLabel(
   ]);
   return { id: entry.id };
 }
+
+// The ONE sanctioned exception to the append-only contract above: retracting a
+// label THIS request minted moments ago via `appendEventLabel`, when the work
+// it was minted for then failed. It is scoped to make that the only thing it
+// can do — a single caller-supplied id is dropped and every other entry is
+// carried through verbatim from a fresh read.
+//
+// Why the exception is needed: the create flow mints the label before inserting
+// the Rule, so a losing race on the name's unique constraint leaves a label with
+// no Rule. Reconcile cannot clean that up — Google permits two labels with the
+// same name, so treating same-name duplicates as garbage would delete labels the
+// user made on purpose. Only the request that minted the orphan knows it is one.
+//
+// Do NOT reach for this to implement user-facing label deletion; that is
+// Google's UI to own (ADR-0006 Decision 3).
+export async function removeEventLabel(
+  accessToken: string,
+  calendarId: string,
+  labelId: string,
+): Promise<void> {
+  const { calendarId: resolvedCalendarId, eventLabels: existing } =
+    await getCalendarLabelProperties(accessToken, calendarId);
+  if (resolvedCalendarId === null) {
+    throw new UnresolvedCalendarIdError(calendarId);
+  }
+  const remaining = existing.filter((l) => l.id !== labelId);
+  // Not there (already gone, or never landed) — skip the write. A full-replace
+  // PATCH that changes nothing is still a lost-update window for no gain.
+  if (remaining.length === existing.length) return;
+  await patchCalendarLabelProperties(
+    accessToken,
+    resolvedCalendarId,
+    remaining,
+  );
+}
