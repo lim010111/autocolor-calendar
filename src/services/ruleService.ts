@@ -693,42 +693,84 @@ export async function deleteRule(
   // finds it in `rulesByLabelId` and skips. Never auto-clear the stamp, and
   // never turn this back into `db.delete(categories)`.
   //
-  // ADR-0008 — the returning clause also carries the label columns so the
-  // DELETE route can decide whether it may remove the Google label without
-  // a second SELECT. Keep this ONE guarded atomic UPDATE: `isNull(
-  // ruleDeletedAt)` is what makes exactly one of two concurrent deletes get
-  // a non-empty returning, and therefore what stops both of them reaching
-  // Google. Splitting it into SELECT-then-UPDATE reopens that race.
-  const deleted = await db
-    .update(categories)
-    .set({ ruleDeletedAt: sql`now()` as unknown as Date })
-    .where(
-      and(
-        eq(categories.userId, userId),
-        eq(categories.id, ruleId),
-        // Already-tombstoned rows match nothing → the route 404s, exactly
-        // as a repeated delete did when this was a hard DELETE.
-        isNull(categories.ruleDeletedAt),
-      ),
-    )
-    .returning({
-      id: categories.id,
-      labelId: categories.labelId,
-      labelOrigin: categories.labelOrigin,
-      labelDeletedAt: categories.labelDeletedAt,
-    });
-  const tombstoned = deleted[0];
-  if (tombstoned === undefined) return null;
+  // ATOMIC WITH THE SEED PURGE. The tombstone and the `rule_seeds` purge are
+  // ONE unit of work, so both DB legs run inside a single transaction. Left
+  // as separate autocommitting statements, a transient failure of the purge
+  // (dropped Hyperdrive socket, statement timeout, the Workers Free
+  // subrequest cap firing mid-request) committed the tombstone anyway and
+  // stranded the rule in the one state that has no way out: hidden from the
+  // user (`listRules` / `getRule` / `updateRule` all filter the stamp) while
+  // its seed vectors keep scoring in `knnByUser` — "deleted to the user,
+  // alive to the classifier". Nothing re-drives that cleanup: the retry
+  // matches the `isNull(ruleDeletedAt)` guard zero times → 404, and
+  // `labelReconcile`'s deactivate branch `continue`s on a tombstone before
+  // reaching its own purge. Rolling the stamp back instead is what keeps the
+  // delete RETRYABLE — the user (or `gas/api.js`'s 5xx retry) simply asks
+  // again and the whole unit re-runs.
+  //
+  // Ordering discipline (`addExample` insert-before-delete, the consent
+  // revoke's purge-before-stamp) is the tool for statements that CANNOT be
+  // atomic — it only picks the least-bad half-done state. Here both legs
+  // speak to the same Postgres, so there is a strictly better answer than a
+  // least-bad ordering: no half-done state at all, and no window in which a
+  // rule the user is still shown has already lost the `example` seeds they
+  // fed it. BEGIN/COMMIT ride the single postgres.js socket getDb opens
+  // (`max: 1`), so this costs round-trips, not Worker subrequests.
+  //
+  // Only the queue fan-out below stays outside — enqueue is a network write
+  // to SYNC_QUEUE that a Postgres rollback could not undo, and holding the
+  // row lock across it would serialise deletes behind Cloudflare's queue.
+  const committed = await db.transaction(async (tx) => {
+    // ADR-0008 — the returning clause also carries the label columns so the
+    // DELETE route can decide whether it may remove the Google label without
+    // a second SELECT. Keep this ONE guarded atomic UPDATE: `isNull(
+    // ruleDeletedAt)` is what makes exactly one of two concurrent deletes get
+    // a non-empty returning, and therefore what stops both of them reaching
+    // Google. Splitting it into SELECT-then-UPDATE reopens that race. The
+    // transaction does not weaken it — the guard is still one statement, and
+    // the loser of the race now blocks on the winner's row lock and re-checks
+    // the predicate after it commits, so it still returns zero rows.
+    const deleted = await tx
+      .update(categories)
+      .set({ ruleDeletedAt: sql`now()` as unknown as Date })
+      .where(
+        and(
+          eq(categories.userId, userId),
+          eq(categories.id, ruleId),
+          // Already-tombstoned rows match nothing → the route 404s, exactly
+          // as a repeated delete did when this was a hard DELETE.
+          isNull(categories.ruleDeletedAt),
+        ),
+      )
+      .returning({
+        id: categories.id,
+        labelId: categories.labelId,
+        labelOrigin: categories.labelOrigin,
+        labelDeletedAt: categories.labelDeletedAt,
+      });
+    const tombstoned = deleted[0];
+    // Nothing was stamped, so there is nothing to commit or roll back — and
+    // returning null (not throwing) keeps "already deleted" a 404 rather
+    // than a 500 that `gas/api.js` would retry.
+    if (tombstoned === undefined) return null;
 
-  // The hard DELETE used to take the rule's seed vectors with it via
-  // `rule_seeds.rule_id ON DELETE cascade`. The tombstone keeps the row, so
-  // the seeds must go explicitly — otherwise `knnByUser` (which ranks
-  // `rule_seeds` with no join to `categories`) keeps scoring a rule the user
-  // deleted, and `decideStage1` either mis-ranks against it or fires a
-  // spurious `ambiguous`. Tenant-scoped per "Tenant isolation".
-  await db
-    .delete(ruleSeeds)
-    .where(and(eq(ruleSeeds.userId, userId), eq(ruleSeeds.ruleId, ruleId)));
+    // The hard DELETE used to take the rule's seed vectors with it via
+    // `rule_seeds.rule_id ON DELETE cascade`. The tombstone keeps the row, so
+    // the seeds must go explicitly — otherwise `knnByUser` (which ranks
+    // `rule_seeds` with no join to `categories`) keeps scoring a rule the user
+    // deleted, and `decideStage1` either mis-ranks against it or fires a
+    // spurious `ambiguous`. Tenant-scoped per "Tenant isolation".
+    await tx
+      .delete(ruleSeeds)
+      .where(and(eq(ruleSeeds.userId, userId), eq(ruleSeeds.ruleId, ruleId)));
+
+    // Read the rollback targets inside the transaction too: it is the last
+    // statement that can fail, and a failure here must leave the rule
+    // deletable again rather than tombstoned with no rollback ever enqueued.
+    const calendarIds = await listCalendarsForUser(tx, userId);
+    return { tombstoned, calendarIds };
+  });
+  if (committed === null) return null;
 
   // §5 후속 B — fan out per-calendar rollback jobs so events painted by
   // this rule revert to the calendar's default color. sync_state holds
@@ -736,20 +778,26 @@ export async function deleteRule(
   // deactivated rows — include them all because events painted before
   // deactivation still wear our marker.
   //
-  // Failure model: enqueue writes the job into SYNC_QUEUE outside any
-  // Postgres transaction, so a partial failure (e.g. queue binding
-  // transient error on the 2nd of 3 calendars) leaves orphan markers.
-  // We log explicitly so §6 observability can surface the rate, and the
-  // route still returns 200 — re-deleting the same rule won't help (row
-  // is gone), the recovery path is a future manual "resync cleanup" tool.
-  const calendarIds = await listCalendarsForUser(db, userId);
-  const sideEffects = fanOutColorRollback(env, userId, ruleId, calendarIds);
+  // Failure model: enqueue writes the job into SYNC_QUEUE after the
+  // transaction above has committed, so a partial failure (e.g. queue
+  // binding transient error on the 2nd of 3 calendars) leaves orphan
+  // markers. We log explicitly so §6 observability can surface the rate,
+  // and the route still returns 200 — re-deleting the same rule won't help
+  // (the tombstone guard 404s), the recovery path is a future manual
+  // "resync cleanup" tool. That residue is cosmetic (a stale colour on an
+  // event), unlike the seed leak above, which changed classification.
+  const sideEffects = fanOutColorRollback(
+    env,
+    userId,
+    ruleId,
+    committed.calendarIds,
+  );
 
   return {
     sideEffects,
-    labelId: tombstoned.labelId,
-    labelOrigin: tombstoned.labelOrigin,
-    labelDeletedAt: tombstoned.labelDeletedAt,
+    labelId: committed.tombstoned.labelId,
+    labelOrigin: committed.tombstoned.labelOrigin,
+    labelDeletedAt: committed.tombstoned.labelDeletedAt,
   };
 }
 

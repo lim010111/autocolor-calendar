@@ -265,6 +265,15 @@ Consequences that must be preserved together:
   so orphaned seeds keep scoring for a rule the user deleted. The same purge
   now rides along with reconcile's `label_deleted_at` stamp (that leak was
   live independently; `drizzle/0022_*.sql` cleans up the existing rows).
+  The stamp and the purge are **one `db.transaction`** — the only transaction
+  in `src/`, and deliberately so. Autocommitting them separately let a
+  transient purge failure strand the rule "deleted to the user, alive to the
+  classifier", with no way back: the retry matches the `rule_deleted_at IS
+  NULL` guard zero times (404) and no cron, consumer, or reconcile branch
+  purges a tombstoned rule's seeds. Rolling the stamp back is what keeps the
+  delete retryable. The queue fan-out stays outside the transaction (a
+  network write Postgres cannot roll back); its residue is a stale colour,
+  not a classification change.
 - `listRules` excludes tombstones from **both** shapes — `includeLabelDeleted`
   is about `label_deleted_at` only and must never reach this column.
   `getRule` and `updateRule` filter it too, so a stale card 404s instead of

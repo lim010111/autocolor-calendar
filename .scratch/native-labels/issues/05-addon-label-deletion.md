@@ -63,6 +63,31 @@ ADR-0006 Decision 3 의 삭제 비대칭을 **좁히는** 변경 — 뒤집는 �
 추측 백필은 하지 않기로 했다(사용자 확인 2026-07-30). 회복 경로는
 "규칙을 지우고 새로 만든다" — 새 규칙부터 provenance 가 정확하다.
 
+### 2026-07-31 — 머지게이트 findings 패스 1: blocking 2건 모두 진짜였다
+
+둘 다 **마커를 커밋한 뒤 정리가 따라오는 비원자적 순서**였고, 둘 다 직전
+세션의 툼스톤 수정이 들여온 것이다. 각각 HEAD 에서 실패하는 오라클로 증명한
+뒤 고쳤다.
+
+- **finding-0 `deleteRule`** — 툼스톤 UPDATE 가 autocommit 된 뒤 `rule_seeds`
+  purge 가 별개 문장으로 돈다. purge 가 실패하면 규칙은 사용자에게 숨겨진 채
+  씨앗이 `knnByUser` 에서 계속 점수를 내고("사용자에겐 삭제, 분류기에겐 생존"),
+  재시도는 `isNull(rule_deleted_at)` 가드에 걸려 404 라 복구 경로가 없다.
+  → 툼스톤·purge·캘린더 조회를 **하나의 `db.transaction`** 으로 묶었다
+  (`src/` 최초의 트랜잭션). 큐 fan-out 만 밖에 남는다 — Postgres 가 되돌릴 수
+  없는 네트워크 쓰기라서. 동시 삭제 가드는 그대로: 여전히 같은 단일 guarded
+  UPDATE 이고, 경쟁에서 진 쪽은 행 잠금 뒤 술어를 재평가해 0행을 받는다.
+- **finding-1 `labelReconcile`** — `label_deleted_at` 스탬프 후 purge. purge 가
+  던지면 warn-only 핸들러가 삼키고, 이후 모든 런은 `labelDeletedAt` 가드에서
+  purge 전에 skip 한다. → **purge 를 스탬프보다 먼저** 로 순서를 바꿨다.
+  `revokeExampleConsent` 가 이미 쓰는 규율과 동일(실측 확인).
+
+오라클 2개는 회귀 테스트로 함께 커밋했다. fakeDb 는 `failSeedDeleteWith`
+훅과 `transaction` arm 을 얻었고, 후자는 **비원자적 수정을 통과시키지 못한다**
+— purge 를 트랜잭션 밖으로 빼는 변이를 넣으면 오라클이 다시 빨개진다(확인).
+드리즐 트랜잭션 자체도 `getDb` 와 동일한 드라이버 옵션으로 실제 Postgres 에
+대해 rollback/commit 을 실측했다.
+
 ### 2026-07-31 — 라벨까지 지운 뒤 Google 에서 동명 라벨을 새로 만들면
 
 `deletedRuleNames` 블랙리스트가 영원히 무시한다(부활 금지 장치). 회복은

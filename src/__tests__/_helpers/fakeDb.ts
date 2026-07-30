@@ -400,6 +400,11 @@ export type FakeDbInitial = {
   users?: UserRow[];
   failInsertWith?: Error;
   failUpdateWith?: Error;
+  // Makes every `rule_seeds` DELETE fail, leaving the rows untouched — the
+  // mirror of `failUpdateWith` for the seed-purge leg. Read lazily on each
+  // call, so a test may set it to `undefined` mid-run to model a transient
+  // DB error that clears before the caller retries.
+  failSeedDeleteWith?: Error;
   // ADR-0007 — makes every `users` UPDATE fail, for the revoke
   // purge-before-stamp ordering oracle.
   failUserUpdateWith?: Error;
@@ -431,7 +436,39 @@ export function makeFakeDb(initial: FakeDbInitial = {}): FakeDbHandle {
     users: [...(initial.users ?? [])],
   };
 
+  // Snapshot every mutable table. Rows are copied one level deep because the
+  // update arms mutate row objects in place (`r[k] = val`) while the delete
+  // arms replace whole arrays — a shallow array copy alone would not survive
+  // a rollback.
+  const snapshot = (): FakeDbState => ({
+    categories: state.categories.map((r) => ({ ...r })),
+    syncStates: state.syncStates.map((r) => ({ ...r })),
+    ruleSeeds: state.ruleSeeds.map((r) => ({ ...r })),
+    users: state.users.map((r) => ({ ...r })),
+  });
+
   const db = {
+    // `db.transaction(cb)` — drizzle hands the callback a tx handle carrying
+    // the same query builders. The double models the ONE property the
+    // production code depends on: staged mutations are discarded when the
+    // callback throws. Mutations are applied to live `state` as they happen
+    // (a test is single-threaded, so no other reader can observe them
+    // mid-flight) and the pre-BEGIN snapshot is restored on the way out of a
+    // failed transaction. Statements that a fix left OUTSIDE the callback
+    // still commit — that is deliberate, so a non-atomic "fix" cannot pass
+    // by borrowing this arm's rollback.
+    async transaction<T>(cb: (tx: unknown) => Promise<T>): Promise<T> {
+      const before = snapshot();
+      try {
+        return await cb(db);
+      } catch (err) {
+        state.categories = before.categories;
+        state.syncStates = before.syncStates;
+        state.ruleSeeds = before.ruleSeeds;
+        state.users = before.users;
+        throw err;
+      }
+    },
     select(_cols: unknown) {
       return {
         from(table: unknown) {
@@ -682,6 +719,22 @@ export function makeFakeDb(initial: FakeDbInitial = {}): FakeDbHandle {
       if (table === ruleSeeds) {
         return {
           where(whereSql: unknown) {
+            // Injected failure: reject BEFORE touching `state.ruleSeeds`, so
+            // the rows survive exactly as they would after a failed statement.
+            const seedDeleteErr = initial.failSeedDeleteWith;
+            if (seedDeleteErr) {
+              return {
+                then(
+                  _onFulfilled?: (value: undefined) => unknown,
+                  onRejected?: (reason: unknown) => unknown,
+                ) {
+                  return Promise.reject(seedDeleteErr).then(undefined, onRejected);
+                },
+                returning: async (_cols?: unknown) => {
+                  throw seedDeleteErr;
+                },
+              };
+            }
             const removed: RuleSeedRow[] = [];
             const eqc = extractEq(whereSql);
             const nec = extractNe(whereSql);

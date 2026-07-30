@@ -316,13 +316,6 @@ export async function reconcileLabels(args: {
       // again would only add a "라벨 삭제됨" reading to a row nobody renders.
       if (rule.ruleDeletedAt !== null) continue;
       if (namedLabelIds.has(rule.labelId)) continue;
-      await db
-        .update(categories)
-        .set({
-          labelDeletedAt: sql`now()` as unknown as Date,
-          updatedAt: sql`now()` as unknown as Date,
-        })
-        .where(and(eq(categories.userId, userId), eq(categories.id, rule.id)));
       // Drop the seed vectors with the stamp. `knnByUser` ranks `rule_seeds`
       // with no join to `categories`, so a deactivated rule's seeds would
       // otherwise keep competing in the kNN pool forever — winning the top
@@ -330,11 +323,30 @@ export async function reconcileLabels(args: {
       // `lookupRuleRef` cannot find the rule in the filtered list) or the
       // second slot (firing a spurious `ambiguous`). `labelDeletedAt` is
       // never auto-cleared, so the seeds can never be needed again.
+      //
+      // **Purge BEFORE the stamp** — same discipline as the consent-revoke
+      // purge (src/AGENTS.md "Example storage consent"), for the same
+      // reason: there is no transaction here (reconcile is warn-only and
+      // must never abort the sync run), so each statement autocommits. The
+      // stamp is what makes the row skip this loop at the guard above, so
+      // stamping first turns any purge failure into permanently orphaned
+      // seeds — nothing revisits the row. In this order a failed purge
+      // leaves the whole deactivation un-stamped and the next reconcile run
+      // retries it; a failed stamp after a successful purge re-purges
+      // (a no-op) and stamps. Both orders converge, only this one is
+      // retryable.
       await db
         .delete(ruleSeeds)
         .where(
           and(eq(ruleSeeds.userId, userId), eq(ruleSeeds.ruleId, rule.id)),
         );
+      await db
+        .update(categories)
+        .set({
+          labelDeletedAt: sql`now()` as unknown as Date,
+          updatedAt: sql`now()` as unknown as Date,
+        })
+        .where(and(eq(categories.userId, userId), eq(categories.id, rule.id)));
       summary.deactivated += 1;
     }
 
