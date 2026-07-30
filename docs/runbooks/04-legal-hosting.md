@@ -226,7 +226,14 @@ curl -s https://<prod-domain>/terms | grep -E "(서비스 이용약관|Terms)"
 
 §2 row 121-122 status `초안` → `완료` + URL 추가. §5 row 254-255 동일 변경.
 
-### 6B — `gas/addon.js:119` placeholder 교체
+### 6B — `gas/addon.js` placeholder 교체 (완료 — 실제 구현은 아래와 다르다)
+
+> **(2026-07-30 주석)** 이 절의 스니펫은 2026-05-05 시점의 계획이고,
+> 실제로는 텍스트 한 줄이 아니라 **clickwrap 섹션**으로 구현됐다
+> (`gas/addon.js:118-128` — `welcome.legal.notice` + 이용약관·처리방침
+> 링크 버튼 2개, 서명 버튼 **앞에** 렌더). ToS §0.3 이 요구하는 동의
+> 절차라서 그렇다. `grep "정식 링크" gas/` 는 이제 0행이다. 아래는
+> 이력으로만 남긴다.
 
 ```js
 // gas/addon.js (수정 전)

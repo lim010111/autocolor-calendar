@@ -97,8 +97,16 @@ scope list; no scope is requested opportunistically.
 ### Canonical pointers
 
 - Backend scopes: `src/config/constants.ts:1-6` (`openid`, `email`,
-  `calendar`, `calendar.events`). `calendar` is Restricted,
-  `calendar.events` is Sensitive under Google's current classification.
+  `calendar`, `calendar.events`). **Classification 정본 = GCP Console →
+  Data Access.** 2026-07-28 실측: `calendar` · `calendar.events` ·
+  `script.external_request` 3종이 모두 "Your **sensitive** scopes" 에
+  있고 "Your restricted scopes" 는 0행이다 — 즉 이 앱에는 restricted
+  스코프가 없다. 2026-05-09 제출 회차의 문서들은 `calendar` 를
+  "Restricted" 로 표기했고 그 표기가 CASA acknowledgement 로 이어졌으나,
+  Console 이 그것을 부정했다(아래 "CASA security assessment" 행). 제출
+  당시 문구를 보존한 곳(`scope-justifications.md` §1 제목, 데모 영상
+  스크립트, 06 runbook 의 검수 회차 명칭)은 **이력 기록**이며 현재
+  분류가 아니다.
 - GAS-side scopes: `gas/appsscript.json:5-12`. Unchanged since commit
   `5318fde` (2026-05-14) — i.e. no scope or consent-screen change has
   occurred since the 2026-07-24 approval, so the re-verification trigger
@@ -130,10 +138,10 @@ and is not adjudicated here.
 | Authorized domain(s) | `autocolorcal.app` | 완료 | Ops | OAuth Consent Screen "Authorized domains" 입력값. apex + 모든 subdomain(`legal.autocolorcal.app` 포함) 자동 커버. GSC verified 2026-05-04. |
 | Scope list (backend) | `src/config/constants.ts:1-6` | 완료 | Eng | Matches `OAUTH_SCOPES` |
 | Scope list (GAS manifest) | `gas/appsscript.json:5-12` | 완료 | Eng | |
-| `calendar` (Restricted) justification | `docs/assets/marketplace/scope-justifications.md` | 완료 | Eng + Product | Final per `docs/runbooks/06-oauth-verification.md` Step 1 (2026-05-04) |
+| `calendar` (Sensitive) justification | `docs/assets/marketplace/scope-justifications.md` | 완료 | Eng + Product | Final per `docs/runbooks/06-oauth-verification.md` Step 1 (2026-05-04). 정당화 본문의 §1 제목은 제출 당시 표기(`(Restricted)`)를 그대로 보존 — 현재 분류는 위 canonical pointer 참조 |
 | `calendar.events` (Sensitive) justification | `docs/assets/marketplace/scope-justifications.md` | 완료 | Eng + Product | Same final review |
 | `userinfo.email` justification | `docs/assets/marketplace/scope-justifications.md` | 완료 | Eng | Same final review |
-| Demo video (restricted-scope usage) | https://youtu.be/5hzXGmM_dQc | 완료 | Product | §1 "Promotional video (optional)" 행과 같은 정본 — YouTube unlisted (2026-05-09). Required by Google's Restricted Scope policy. |
+| Demo video (restricted-scope usage) | https://youtu.be/5hzXGmM_dQc | 완료 | Product | §1 "Promotional video (optional)" 행과 같은 정본 — YouTube unlisted (2026-05-09). Google 의 sensitive-scope verification 요구사항 — 이 앱에 restricted 스코프는 없다(위 canonical pointer). 게이트 이름의 "Restricted-scope" 는 제출 회차 명칭이다. |
 | Verification status | GCP Console → OAuth consent screen | 완료 | Ops | 2026-05-09 1차 Submit → brand 거절 3건(홈페이지 privacy 링크 가시성 / 영문 purpose 부재 / OAuth App name `autocolor-dev` ↔ 홈페이지 `AutoColor for Calendar` 미스매치) → `src/routes/home.ts` 보강(commit `c08e2d6`) + Worker prod redeploy(Version `fa63d651`) + GCP App name → "AutoColor for Calendar" 후 재제출 → **Brand verified** (consent screen이 unverified warning 없이 노출). Restricted/Sensitive scope review는 별도 트랙 — 100명 사용자 cap 유지, Marketplace publish는 scope review 통과 후 가능. 2026-05-09 오후 OAuth Verification Questionnaire 제출(personal/internal/dev/wordpress 모두 No + CASA acknowledgement 체크) → sensitive scope justification 통합 본문 + demo video URL 입력 완료. Google CASA Tier 결정 + scope review 통보 대기. → 라운드 2 반려(demo video 가 OAuth consent 화면 미노출, 2026-07-03) → 재편집 영상 제출(2026-07-17) → 라운드 3 반려(consent 요청 스코프 ↔ Console 등록 스코프 불일치, 2026-07-20) → Console 에 `script.external_request` 추가 + 영상 링크 갱신 후 답장(2026-07-23) → **승인 (2026-07-24)**: `script.external_request` / `calendar` / `calendar.events` 3종. 승인 메일 조건 — 신규 스코프 요청 또는 **consent screen 설정 변경 시 재검수 필요**, verification 은 상속 불가. **2026-07-28 Console 실측**: Verification Center = "Your branding has been verified" + "Your app's data access has been verified"; Data Access sensitive 3종 전부 `This scope is verified`; Audience = Publishing status **In production** / External / 4 users of 100 user cap — 단 Console 안내문대로 "승인된 sensitive/restricted 스코프만 요청하면 user cap 은 적용되지 않는다" 이므로 **100명 상한은 실효 해제**. |
 | CASA security assessment | Console → Data Access "Your restricted scopes" | 해당 없음 | Ops | 2026-05-09 questionnaire 에서 CASA acknowledgement 를 체크했으나 **CASA 는 트리거되지 않았다** — 2026-07-28 Console 실측: Data Access 페이지의 "Your restricted scopes" 표가 **0행**이고, `calendar` 는 "Your sensitive scopes" 에 분류되어 3종 모두 "This scope is verified". CASA(Tier 2 self-assessment / Tier 3 LoA)는 *restricted* 스코프 앱의 연례 트랙이므로 현 스코프 구성에서는 대상 아님. **restricted 스코프를 추가하면 이 행이 되살아난다** (예: Gmail·Drive 전체 접근). |
 | Onboarding-card copy refresh | `gas/addon.js:110-125` | 완료 | Eng | URL을 `legal.autocolorcal.app/{privacy,terms}` 로 갱신 (2026-05-05). GAS New version 배포 완료 (2026-05-08). |

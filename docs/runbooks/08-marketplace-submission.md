@@ -1,6 +1,6 @@
 # 08 — Marketplace submission
 
-> 이 runbook은 [`TODO.md` §7 line 134](../../TODO.md) "Google Workspace
+> 이 runbook은 [`TODO.md` §7 line 137](../../TODO.md) "Google Workspace
 > Marketplace 등록" 정본 절차다. 다른 모든 게이트(G1·G2·G4·G5·G6·G7)의
 > **수렴 지점** — 자료 / 인프라 / 검수 산출물을 모아 Marketplace에
 > 정식 등록한다. Google admin 검수 통상 1-3주.
@@ -44,8 +44,12 @@
 각 행의 정본 pointer를 따라가서 status가 실제 상태와 일치하는지 확인.
 
 ```bash
-# 본 runbook 실행자가 cross-check할 grep 명령 모음
-grep -E "^\| (Owned domain|Prod Supabase|Privacy Policy|Terms of Service|Scope justifications|Demo video|CI/CD|Backup|Listing assets)" docs/marketplace-readiness.md
+# §5 표에서 아직 `완료`가 아닌 행을 전부 뽑는다. 출력이 비어야 publish 가능.
+# (행 이름 allowlist 를 쓰지 않는다 — 새 게이트 행이 추가될 때 조용히
+#  빠져나가는 경로가 되기 때문이다. 실제로 "접속기록 1년 보관" 행이
+#  그렇게 빠졌다.)
+awk '/^## 5\. Launch Gate/,0' docs/marketplace-readiness.md \
+  | grep '^| ' | grep -v '^|---' | grep -v '^| Gate ' | grep -v '완료'
 ```
 
 | 항목 | 확인 명령 |
@@ -80,7 +84,7 @@ GCP Console → APIs & Services → Marketplace SDK → "App Configuration"
 | Support URL | GitHub Issues 또는 dedicated support page. |
 | Privacy Policy URL | `legal.<prod-domain>/privacy` 200 응답. |
 | Terms of Service URL | `legal.<prod-domain>/terms` 200 응답. |
-| OAuth scopes 4개 | `src/config/constants.ts` + `gas/appsscript.json` 일치. |
+| OAuth scopes | 두 목록은 **의도적으로 다르다** — 백엔드 4종(`src/config/constants.ts`: openid / email / calendar / calendar.events)과 GAS 6종(`gas/appsscript.json`: script.external_request / script.locale / calendar.addons.execute / addons.current.event.read·write / userinfo.email). 확인할 것은 "일치"가 아니라 **각각이 Console 등록 스코프의 부분집합인지**다 (2026-07-20 반려 사유가 정확히 이 불일치였다). |
 | Distribution | Step 3에서 결정. |
 | Pricing model | "Free". |
 
@@ -195,9 +199,13 @@ publish 통과 후 본 서비스 long-running 운영 책임:
   impact" 절차. 운영자 procedure를 1년 단위로 재실행.
 - **OAuth 검수 만료 갱신** — Google이 검수 만료를 자동 통지하면 본
   메일 받고 [06 runbook]의 자료를 최신화 + 재제출.
-- **CASA 재인증** — Tier 통보 후 1년마다 self-assessment workbook 또는
-  third-party Letter of Assessment 갱신. 만료 통지 수신 시 본 절 + [06 runbook]
-  (참고) CASA 보안 평가 절 동시 갱신. 트리거/Tier 상태는 [`docs/marketplace-readiness.md` §2 row 131](../marketplace-readiness.md) 정본.
+- **CASA 재인증 — 현재 해당 없음.** 2026-07-28 Console 실측에서 이 앱의
+  restricted 스코프가 0행이고 `calendar` 는 sensitive 로 분류돼 CASA 가
+  트리거되지 않았다. **restricted 스코프(예: Gmail·Drive 전체)를 추가하는
+  순간 연 1회 트랙이 되살아난다** — 그때 Tier 통보 후 1년마다
+  self-assessment workbook 또는 third-party Letter of Assessment 갱신.
+  상태 정본은 [`docs/marketplace-readiness.md`](../marketplace-readiness.md)
+  §2 "CASA security assessment" 행.
 
 ### 사고 발생 시
 
@@ -245,7 +253,7 @@ publish 자체는 mutation이지만 **회수 가능**:
 
 ## Cross-references
 
-- [`TODO.md` §7 line 134](../../TODO.md) — 작업 정본
+- [`TODO.md` §7 line 137](../../TODO.md) — 작업 정본
 - [`docs/completion-roadmap.md`](../completion-roadmap.md) — G8 절 + "완성 정의"
 - [`docs/marketplace-readiness.md`](../marketplace-readiness.md) — 모든 §status 표가 G8 prerequisite
 - [`docs/runbooks/01-domain-and-search-console.md`](./01-domain-and-search-console.md) — Domain prerequisite
