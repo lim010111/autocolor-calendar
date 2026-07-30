@@ -32,6 +32,14 @@ export type Row = {
   // literal rows; `fillRowDefaults` normalizes inserts to null.
   labelId?: string | null;
   labelDeletedAt?: Date | null;
+  // native-labels — user-deleted Rule tombstone (`categories.rule_deleted_at`).
+  ruleDeletedAt?: Date | null;
+  // ADR-0008 — label provenance. Optional like the columns above so existing
+  // literal test rows compile unchanged; `fillRowDefaults` normalizes inserts
+  // to the DB default 'unknown'. A literal row that omits it reads as
+  // undefined, which is NOT 'addon' — tests exercising the label-deletion
+  // path must set it explicitly.
+  labelOrigin?: string;
   createdAt: Date;
   updatedAt: Date;
 };
@@ -97,6 +105,10 @@ const COL_MAP: Record<string, keyof Row> = {
   color_id: "colorId",
   background_color: "backgroundColor",
   priority: "priority",
+  label_id: "labelId",
+  label_deleted_at: "labelDeletedAt",
+  rule_deleted_at: "ruleDeletedAt",
+  label_origin: "labelOrigin",
   created_at: "createdAt",
   updated_at: "updatedAt",
 };
@@ -179,6 +191,41 @@ export function extractNe(
   return out;
 }
 
+// Walks a drizzle SQL tree collecting the columns of `isNull(col)` fragments.
+// drizzle renders these as `[Column, StringChunk(" is null")]` — no Param at
+// all, which is why `extractEq` (it requires a trailing Param) and
+// `extractNe` both skip them entirely.
+//
+// Without this the fake was BLIND to the tombstone filters: `listRules`'
+// `isNull(label_deleted_at)` / `isNull(rule_deleted_at)` predicates simply
+// evaporated, so a test could assert a deleted rule was hidden while the
+// fake was in fact returning every row. That blindness is why the rule
+// resurrection bug had passing tests on both sides of it. Behavior is
+// pinned by `fakeDb.guard.test.ts` alongside the other walkers.
+export function extractIsNull(node: unknown, out: string[] = []): string[] {
+  if (!node || typeof node !== "object") return out;
+  const chunks = (node as { queryChunks?: unknown[] }).queryChunks;
+  if (!Array.isArray(chunks)) return out;
+  for (let i = 0; i < chunks.length; i++) {
+    const c = chunks[i] as { name?: string; queryChunks?: unknown[] };
+    if (
+      c &&
+      typeof c.name === "string" &&
+      !Array.isArray((c as { queryChunks?: unknown }).queryChunks)
+    ) {
+      const nxt = chunks[i + 1] as { value?: unknown };
+      const sepArr = (nxt as { value?: unknown[] })?.value;
+      if (Array.isArray(sepArr) && String(sepArr[0]).toLowerCase().includes(" is null")) {
+        out.push(c.name);
+      }
+    }
+    if (Array.isArray((c as { queryChunks?: unknown }).queryChunks)) {
+      extractIsNull(c, out);
+    }
+  }
+  return out;
+}
+
 // Collects the scalar values of an IN list from a drizzle SQL subtree.
 // drizzle renders `inArray(col, ["a","b"])` with the JS array placed *directly*
 // as a query chunk (constructor `Array`), so the values are bare primitives —
@@ -208,9 +255,7 @@ function gatherParams(node: unknown, out: unknown[]): void {
 // the `rule_seeds` delete (ADR-0004 #03 — `seed_text IN (…)`) needs this
 // companion walker. Behavior is pinned by `fakeDb.guard.test.ts` alongside
 // `extractEq` — a drizzle-orm bump that reshapes the AST fails there.
-export function extractInArray(
-  node: unknown,
-): { column: string; values: unknown[] } | null {
+export function extractInArray(node: unknown): { column: string; values: unknown[] } | null {
   if (!node || typeof node !== "object") return null;
   const chunks = (node as { queryChunks?: unknown[] }).queryChunks;
   if (!Array.isArray(chunks)) return null;
@@ -243,6 +288,13 @@ function matches(r: Row, whereSql: unknown): boolean {
     if (!field) return false;
     if (r[field] !== val) return false;
   }
+  for (const sqlCol of extractIsNull(whereSql)) {
+    const field = COL_MAP[sqlCol];
+    if (!field) return false;
+    // `undefined` counts as NULL — literal test rows omit the nullable
+    // tombstone columns, and `fillRowDefaults` only normalizes inserts.
+    if (r[field] !== null && r[field] !== undefined) return false;
+  }
   return true;
 }
 
@@ -264,9 +316,7 @@ function firstColumnName(node: unknown): string | null {
 }
 
 function sortBy(rows: Row[], orderArgs: unknown[]): Row[] {
-  const cols = orderArgs
-    .map(firstColumnName)
-    .filter((v): v is string => typeof v === "string");
+  const cols = orderArgs.map(firstColumnName).filter((v): v is string => typeof v === "string");
   const sorted = [...rows];
   sorted.sort((a, b) => {
     for (const sqlCol of cols) {
@@ -304,6 +354,8 @@ function fillRowDefaults(v: Partial<Row>): Row {
     priority: v.priority ?? 100,
     labelId: v.labelId ?? null,
     labelDeletedAt: v.labelDeletedAt ?? null,
+    ruleDeletedAt: v.ruleDeletedAt ?? null,
+    labelOrigin: v.labelOrigin ?? "unknown",
     createdAt: v.createdAt ?? now,
     updatedAt: v.updatedAt ?? now,
   };
@@ -388,9 +440,7 @@ export function makeFakeDb(initial: FakeDbInitial = {}): FakeDbHandle {
               where(whereSql: unknown) {
                 const constraints = extractEq(whereSql);
                 const uid = constraints["user_id"];
-                const filtered = state.syncStates.filter(
-                  (r) => r.userId === uid,
-                );
+                const filtered = state.syncStates.filter((r) => r.userId === uid);
                 return Promise.resolve(filtered);
               },
             };
@@ -404,12 +454,9 @@ export function makeFakeDb(initial: FakeDbInitial = {}): FakeDbHandle {
                 const c = extractEq(whereSql);
                 const filtered = state.ruleSeeds.filter(
                   (r) =>
-                    (c["rule_id"] === undefined ||
-                      r["ruleId"] === c["rule_id"]) &&
-                    (c["user_id"] === undefined ||
-                      r["userId"] === c["user_id"]) &&
-                    (c["seed_type"] === undefined ||
-                      r["seedType"] === c["seed_type"]),
+                    (c["rule_id"] === undefined || r["ruleId"] === c["rule_id"]) &&
+                    (c["user_id"] === undefined || r["userId"] === c["user_id"]) &&
+                    (c["seed_type"] === undefined || r["seedType"] === c["seed_type"]),
                 );
                 return Promise.resolve(filtered);
               },
@@ -437,9 +484,7 @@ export function makeFakeDb(initial: FakeDbInitial = {}): FakeDbHandle {
           void table;
           return {
             where(whereSql: unknown) {
-              const filtered = state.categories.filter((r) =>
-                matches(r, whereSql),
-              );
+              const filtered = state.categories.filter((r) => matches(r, whereSql));
               return {
                 orderBy: async (...args: unknown[]) => sortBy(filtered, args),
                 limit: async (n: number) => filtered.slice(0, n),
@@ -469,8 +514,7 @@ export function makeFakeDb(initial: FakeDbInitial = {}): FakeDbHandle {
             return {
               onConflictDoUpdate: async (_cfg?: unknown) => {
                 const idx = state.ruleSeeds.findIndex(
-                  (r) =>
-                    r["ruleId"] === v["ruleId"] && r["seedType"] === "name",
+                  (r) => r["ruleId"] === v["ruleId"] && r["seedType"] === "name",
                 );
                 if (idx >= 0) state.ruleSeeds[idx] = fillSeedDefaults(v);
                 else state.ruleSeeds.push(fillSeedDefaults(v));
@@ -493,8 +537,12 @@ export function makeFakeDb(initial: FakeDbInitial = {}): FakeDbHandle {
           return {
             returning: async (_cols?: unknown) => {
               if (initial.failInsertWith) throw initial.failInsertWith;
+              // Mirrors the PARTIAL unique index
+              // `(user_id, name) WHERE rule_deleted_at IS NULL` — a deleted
+              // rule's name is free to reuse.
               const dup = state.categories.find(
-                (r) => r.userId === v.userId && r.name === v.name,
+                (r) =>
+                  r.userId === v.userId && r.name === v.name && (r.ruleDeletedAt ?? null) === null,
               );
               if (dup) throw new DuplicateNameError();
               const inserted = fillRowDefaults(v);
@@ -520,9 +568,7 @@ export function makeFakeDb(initial: FakeDbInitial = {}): FakeDbHandle {
                 const c = extractEq(whereSql);
                 const matched = initial.userUpdateMatchesNone
                   ? []
-                  : state.users.filter(
-                      (r) => c["id"] === undefined || r.id === c["id"],
-                    );
+                  : state.users.filter((r) => c["id"] === undefined || r.id === c["id"]);
                 const apply = () => {
                   for (const r of matched) {
                     for (const [k, v] of Object.entries(patch)) {
@@ -543,10 +589,7 @@ export function makeFakeDb(initial: FakeDbInitial = {}): FakeDbHandle {
                       );
                     }
                     apply();
-                    return Promise.resolve(undefined).then(
-                      onFulfilled,
-                      onRejected,
-                    );
+                    return Promise.resolve(undefined).then(onFulfilled, onRejected);
                   },
                   returning: async (cols?: unknown) => {
                     if (initial.failUserUpdateWith) {
@@ -565,29 +608,62 @@ export function makeFakeDb(initial: FakeDbInitial = {}): FakeDbHandle {
         set(patch: Partial<Row>) {
           return {
             where(whereSql: unknown) {
-              return {
-                returning: async (_cols?: unknown) => {
-                  if (initial.failUpdateWith) throw initial.failUpdateWith;
-                  const matched = state.categories.filter((r) =>
-                    matches(r, whereSql),
-                  );
-                  if (matched.length === 0) return [];
-                  for (const r of matched) {
-                    if (
-                      patch.name !== undefined &&
-                      patch.name !== r.name &&
-                      state.categories.some(
-                        (o) =>
-                          o !== r &&
-                          o.userId === r.userId &&
-                          o.name === patch.name,
-                      )
-                    ) {
-                      throw new DuplicateNameError();
-                    }
-                    Object.assign(r, patch);
+              const apply = (): Row[] => {
+                if (initial.failUpdateWith) throw initial.failUpdateWith;
+                const matched = state.categories.filter((r) => matches(r, whereSql));
+                if (matched.length === 0) return [];
+                for (const r of matched) {
+                  if (
+                    patch.name !== undefined &&
+                    patch.name !== r.name &&
+                    state.categories.some(
+                      (o) =>
+                        o !== r &&
+                        o.userId === r.userId &&
+                        o.name === patch.name &&
+                        (o.ruleDeletedAt ?? null) === null,
+                    )
+                  ) {
+                    throw new DuplicateNameError();
                   }
-                  return matched.slice();
+                  // `sql\`now()\`` patches (the tombstone stamp, reconcile's
+                  // updatedAt) arrive as drizzle SQL objects — normalize to
+                  // a Date so state reads like the real table. Mirrors the
+                  // `users` arm above.
+                  for (const [k, val] of Object.entries(patch)) {
+                    (r as Record<string, unknown>)[k] =
+                      val !== null &&
+                      typeof val === "object" &&
+                      !(val instanceof Date) &&
+                      !Array.isArray(val)
+                        ? new Date()
+                        : val;
+                  }
+                }
+                return matched.slice();
+              };
+              // Both terminators, because drizzle's builder is thenable: an
+              // `update().set().where()` that is simply AWAITED (no
+              // `.returning()`) must still apply the patch. Exposing only
+              // `.returning()` made such a call resolve to the builder object
+              // and silently write nothing — a test would then "prove" a
+              // stamp that never happened.
+              return {
+                returning: async (_cols?: unknown) => apply(),
+                then(
+                  onFulfilled?: (value: undefined) => unknown,
+                  onRejected?: (reason: unknown) => unknown,
+                ) {
+                  try {
+                    apply();
+                  } catch (err) {
+                    return Promise.resolve().then(() =>
+                      onRejected ? onRejected(err) : Promise.reject(err),
+                    );
+                  }
+                  return Promise.resolve().then(() =>
+                    onFulfilled ? onFulfilled(undefined) : undefined,
+                  );
                 },
               };
             },
@@ -611,16 +687,13 @@ export function makeFakeDb(initial: FakeDbInitial = {}): FakeDbHandle {
             const nec = extractNe(whereSql);
             const inClause = extractInArray(whereSql);
             const inSet = inClause ? new Set(inClause.values) : null;
-            const inField = inClause
-              ? (SEED_COL_MAP[inClause.column] ?? inClause.column)
-              : null;
+            const inField = inClause ? (SEED_COL_MAP[inClause.column] ?? inClause.column) : null;
             state.ruleSeeds = state.ruleSeeds.filter((r) => {
               const eqMatch = Object.entries(eqc).every(([sqlCol, val]) => {
                 const field = SEED_COL_MAP[sqlCol];
                 return field !== undefined && r[field] === val;
               });
-              const inMatch =
-                inSet && inField ? inSet.has(r[inField]) : true;
+              const inMatch = inSet && inField ? inSet.has(r[inField]) : true;
               // `ne(col, v)` targets rows where col <> v — a row whose
               // field EQUALS v falls outside the delete and is kept.
               const neMatch = Object.entries(nec).every(([sqlCol, val]) => {
@@ -643,8 +716,7 @@ export function makeFakeDb(initial: FakeDbInitial = {}): FakeDbHandle {
               ) {
                 return Promise.resolve(undefined).then(onFulfilled, onRejected);
               },
-              returning: async (_cols?: unknown) =>
-                removed.map((r) => ({ id: r["id"] })),
+              returning: async (_cols?: unknown) => removed.map((r) => ({ id: r["id"] })),
             };
           },
         };
@@ -653,12 +725,8 @@ export function makeFakeDb(initial: FakeDbInitial = {}): FakeDbHandle {
         where(whereSql: unknown) {
           return {
             returning: async (_cols?: unknown) => {
-              const toDelete = state.categories.filter((r) =>
-                matches(r, whereSql),
-              );
-              state.categories = state.categories.filter(
-                (r) => !toDelete.includes(r),
-              );
+              const toDelete = state.categories.filter((r) => matches(r, whereSql));
+              state.categories = state.categories.filter((r) => !toDelete.includes(r));
               return toDelete.map((r) => ({ id: r.id }));
             },
           };

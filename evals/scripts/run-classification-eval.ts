@@ -630,6 +630,7 @@ function buildCategory(
     priority: 100 + i,
     labelId: null,
     labelDeletedAt: null,
+    labelOrigin: "unknown",
     seeds: synthesizeSeeds({ name: c.name, keywords: c.keywords }),
     createdAt: now,
     updatedAt: now,

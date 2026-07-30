@@ -623,6 +623,140 @@ describe("deleteRule", () => {
     expect(await deleteRule(db as never, env, USER_A, RULE_A)).toBeNull();
     expect(vi.mocked(enqueueSync)).not.toHaveBeenCalled();
   });
+
+  // The rule-resurrection regression. A hard DELETE here left the Google
+  // label with no attached rule, and `labelReconcile` — which treats exactly
+  // that shape as a brand-new label — re-created the rule on the next sync
+  // run. Six deletions undid themselves within seconds and the user saw
+  // freshly created events still being auto-colored.
+  it("leaves a tombstone row instead of deleting, so reconcile can tell deleted from never-seen", async () => {
+    const { db, state } = makeFakeDb({
+      // `row()` does not carry labelId; the linkage matters here.
+      categories: [{ ...row({ id: RULE_A, userId: USER_A }), labelId: "L1" }],
+      syncStates: [{ userId: USER_A, calendarId: "primary" }],
+    });
+
+    expect(await deleteRule(db as never, env, USER_A, RULE_A)).not.toBeNull();
+
+    expect(state.categories).toHaveLength(1);
+    const tombstone = state.categories[0]!;
+    expect(tombstone.ruleDeletedAt).toBeInstanceOf(Date);
+    // The label linkage MUST survive too — it is the key reconcile matches
+    // on. Clearing it would put the label back in the "never seen" bucket.
+    expect(tombstone.labelId).toBe("L1");
+  });
+
+  it("hides the tombstone from every read path", async () => {
+    const { db } = makeFakeDb({
+      categories: [row({ id: RULE_A, userId: USER_A })],
+      syncStates: [{ userId: USER_A, calendarId: "primary" }],
+    });
+    await deleteRule(db as never, env, USER_A, RULE_A);
+
+    // classifier list, editor list (includeLabelDeleted), and single-get
+    expect(await listRules(db as never, USER_A)).toHaveLength(0);
+    expect(
+      await listRules(db as never, USER_A, { includeLabelDeleted: true }),
+    ).toHaveLength(0);
+    expect(await getRule(db as never, USER_A, RULE_A)).toBeNull();
+  });
+
+  it("drops the rule's seed vectors, as the ON DELETE cascade used to", async () => {
+    // `knnByUser` ranks `rule_seeds` with no join to `categories`, so a
+    // tombstone that kept its seeds would keep winning the kNN pool for a
+    // rule the user deleted.
+    const { db, state } = makeFakeDb({
+      categories: [row({ id: RULE_A, userId: USER_A })],
+      syncStates: [{ userId: USER_A, calendarId: "primary" }],
+      ruleSeeds: [
+        { ruleId: RULE_A, userId: USER_A, seedType: "name", seedText: "회의" },
+        { ruleId: RULE_A, userId: USER_A, seedType: "keyword", seedText: "미팅" },
+        // another rule's seed must survive
+        { ruleId: RULE_B, userId: USER_A, seedType: "name", seedText: "운동" },
+      ],
+    });
+
+    await deleteRule(db as never, env, USER_A, RULE_A);
+
+    expect(state.ruleSeeds.map((s) => s["seedText"])).toEqual(["운동"]);
+  });
+
+  it("does not touch another tenant's rule", async () => {
+    const { db, state } = makeFakeDb({
+      categories: [row({ id: RULE_A, userId: USER_A })],
+      syncStates: [{ userId: USER_A, calendarId: "primary" }],
+    });
+    expect(await deleteRule(db as never, env, USER_B, RULE_A)).toBeNull();
+    expect(state.categories[0]!.ruleDeletedAt ?? null).toBeNull();
+    expect(vi.mocked(enqueueSync)).not.toHaveBeenCalled();
+  });
+
+  // ADR-0008 — the route decides whether the Google label may go, and it
+  // decides from THIS return value rather than a follow-up SELECT. The
+  // guarded UPDATE's returning clause is the only read that cannot lose a
+  // race with a concurrent delete: exactly one caller gets a non-empty
+  // result, so exactly one caller can reach Google.
+  it("returns the tombstoned row's label columns for the route to gate on", async () => {
+    const { db } = makeFakeDb({
+      categories: [
+        {
+          ...row({ id: RULE_A, userId: USER_A }),
+          labelId: "L1",
+          labelOrigin: "addon",
+          labelDeletedAt: null,
+        },
+      ],
+      syncStates: [{ userId: USER_A, calendarId: "primary" }],
+    });
+
+    const res = await deleteRule(db as never, env, USER_A, RULE_A);
+
+    expect(res).not.toBeNull();
+    expect(res!.labelId).toBe("L1");
+    expect(res!.labelOrigin).toBe("addon");
+    expect(res!.labelDeletedAt).toBeNull();
+  });
+});
+
+describe("createRule — label provenance (ADR-0008)", () => {
+  it("claims 'addon' only when the route minted a label for it", async () => {
+    // A labelId can only reach `createRule` from the POST route's
+    // `createLabelForRule`, which mints it — so this is the one writer
+    // entitled to claim we own the label.
+    const { db, state } = makeFakeDb({
+      syncStates: [{ userId: USER_A, calendarId: "primary" }],
+    });
+
+    const { sideEffects } = await createRule(
+      db as never,
+      env,
+      USER_A,
+      { name: "회의", colorId: "9", keywords: ["회의"], labelId: "L-new" },
+      vi.fn(async (texts: string[]) => texts.map(() => [0.1, 0.2, 0.3])),
+    );
+    await sideEffects;
+
+    expect(state.categories[0]!.labelOrigin).toBe("addon");
+  });
+
+  it("leaves the DB default on the legacy colorId-only path", async () => {
+    // No label was minted, so there is nothing to own. 'unknown' (the column
+    // default) is the honest answer, not 'discovered'.
+    const { db, state } = makeFakeDb({
+      syncStates: [{ userId: USER_A, calendarId: "primary" }],
+    });
+
+    const { sideEffects } = await createRule(
+      db as never,
+      env,
+      USER_A,
+      { name: "회의", colorId: "9", keywords: ["회의"] },
+      vi.fn(async (texts: string[]) => texts.map(() => [0.1, 0.2, 0.3])),
+    );
+    await sideEffects;
+
+    expect(state.categories[0]!.labelOrigin).toBe("unknown");
+  });
 });
 
 describe("addExample (ADR-0004 #05 — 저장 경로 + 생애주기)", () => {

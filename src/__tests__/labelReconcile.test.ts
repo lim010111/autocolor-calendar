@@ -48,19 +48,24 @@ type RuleRow = {
   backgroundColor?: string | null;
   labelId: string | null;
   labelDeletedAt: Date | null;
+  // Optional so the pre-tombstone cases stay literal; makeDb normalizes.
+  ruleDeletedAt?: Date | null;
 };
 
-// Minimal db double for labelReconcile's four query shapes: a thenable
-// where() for the direct-await rules select, update().set().where(), and
-// insert().values().returning().
+// Minimal db double for labelReconcile's five query shapes: a thenable
+// where() for the direct-await rules select, update().set().where(),
+// insert().values().returning(), and delete().where() (the seed purge that
+// rides along with a deactivation stamp).
 function makeDb(rules: RuleRow[]) {
   const updates: Array<Record<string, unknown>> = [];
   const inserts: Array<Record<string, unknown>> = [];
+  const deletes: number[] = [];
+  const rows = rules.map((r) => ({ ruleDeletedAt: null, ...r }));
   const db = {
     select: () => ({
       from: () => ({
         where: () => ({
-          then: (resolve: (v: RuleRow[]) => unknown) => resolve(rules),
+          then: (resolve: (v: RuleRow[]) => unknown) => resolve(rows),
         }),
       }),
     }),
@@ -76,8 +81,14 @@ function makeDb(rules: RuleRow[]) {
         return { returning: async () => [{ id: "new-rule-id" }] };
       },
     }),
+    delete: () => ({
+      where: async () => {
+        deletes.push(deletes.length);
+        return undefined;
+      },
+    }),
   };
-  return { db: db as never, updates, inserts };
+  return { db: db as never, updates, inserts, deletes };
 }
 
 const embed = vi.fn(async (texts: string[]) => texts.map(() => [0.1, 0.2]));
@@ -256,6 +267,11 @@ describe("reconcileLabels — Google labelProperties is canonical (ADR-0006)", (
       labelId: "L9",
       colorId: "11", // nearest classic for #dc2127
       backgroundColor: "#dc2127", // the real hex — what the editor renders
+      // ADR-0008 — this label came from Google, so the Add-on must never be
+      // allowed to delete it. Written explicitly rather than left to the
+      // column default: the default means "we never recorded it", which is a
+      // weaker claim than the fact this branch actually knows.
+      labelOrigin: "discovered",
     });
     expect(mockedSeed).toHaveBeenCalledTimes(1);
     expect(mockedSeed.mock.calls[0]![2]).toEqual({
@@ -292,8 +308,146 @@ describe("reconcileLabels — Google labelProperties is canonical (ADR-0006)", (
 
     expect(updates).toHaveLength(1);
     // linking also adopts the label's color — Google is canonical from here
-    expect(updates[0]).toMatchObject({ labelId: "L2", backgroundColor: "#5484ed" });
+    expect(updates[0]).toMatchObject({
+      labelId: "L2",
+      backgroundColor: "#5484ed",
+      // ADR-0008 — adopting a label the user already had never confers
+      // deletion rights on it, however the pairing was made.
+      labelOrigin: "discovered",
+    });
     expect(inserts).toHaveLength(0);
+  });
+
+  // The rule-resurrection regression. Deleting a Rule in the Add-on editor
+  // leaves the Google label alone (label removal is Google's UI to own,
+  // ADR-0006 Decision 3), so reconcile MUST recognise the tombstone —
+  // otherwise the surviving named label reads as brand new and the rule is
+  // re-created seconds later, which is exactly what made six user deletions
+  // silently undo themselves.
+  describe("user-deleted Rule (rule_deleted_at) is never resurrected", () => {
+    const DELETED = new Date("2026-07-30T00:00:00Z");
+
+    it("does not re-create a Rule for the label the deleted rule was attached to", async () => {
+      mockedLabels.mockResolvedValueOnce(labelsRead([
+        { id: "L1", backgroundColor: "#ad1457", name: "회의" },
+      ]));
+      const { db, updates, inserts } = makeDb([
+        {
+          id: "r1",
+          name: "회의",
+          backgroundColor: "#ad1457",
+          labelId: "L1",
+          labelDeletedAt: null,
+          ruleDeletedAt: DELETED,
+        },
+      ]);
+
+      await reconcileLabels({ db, userId: USER, calendarId: CAL, accessToken: AT, embed });
+
+      expect(inserts).toHaveLength(0);
+      expect(updates).toHaveLength(0);
+      expect(mockedSeed).not.toHaveBeenCalled();
+    });
+
+    it("does not rename or recolor a tombstoned rule when the label changes in Google", async () => {
+      mockedLabels.mockResolvedValueOnce(labelsRead([
+        { id: "L1", backgroundColor: "#0b8043", name: "새이름" },
+      ]));
+      const { db, updates } = makeDb([
+        {
+          id: "r1",
+          name: "옛이름",
+          backgroundColor: "#ad1457",
+          labelId: "L1",
+          labelDeletedAt: null,
+          ruleDeletedAt: DELETED,
+        },
+      ]);
+
+      await reconcileLabels({ db, userId: USER, calendarId: CAL, accessToken: AT, embed });
+
+      expect(updates).toHaveLength(0);
+      expect(mockedSeed).not.toHaveBeenCalled();
+    });
+
+    it("does not insert for a same-named label when the tombstone has no labelId", async () => {
+      // Pre-cutover shape: the deleted rule never carried a labelId, so the
+      // labelId lookup cannot protect it — the name check has to.
+      mockedLabels.mockResolvedValueOnce(labelsRead([
+        { id: "L7", backgroundColor: "#0b8043", name: "운동" },
+      ]));
+      const { db, updates, inserts } = makeDb([
+        {
+          id: "r1",
+          name: "운동",
+          labelId: null,
+          labelDeletedAt: null,
+          ruleDeletedAt: DELETED,
+        },
+      ]);
+
+      await reconcileLabels({ db, userId: USER, calendarId: CAL, accessToken: AT, embed });
+
+      expect(inserts).toHaveLength(0);
+      expect(updates).toHaveLength(0);
+    });
+
+    it("still creates a Rule for an unrelated new label while a tombstone exists", async () => {
+      // The guard must be narrow: it blocks the deleted rule's own label,
+      // not label discovery in general.
+      mockedLabels.mockResolvedValueOnce(labelsRead([
+        { id: "L1", backgroundColor: "#ad1457", name: "회의" },
+        { id: "L2", backgroundColor: "#0b8043", name: "운동" },
+      ]));
+      const { db, inserts } = makeDb([
+        {
+          id: "r1",
+          name: "회의",
+          backgroundColor: "#ad1457",
+          labelId: "L1",
+          labelDeletedAt: null,
+          ruleDeletedAt: DELETED,
+        },
+      ]);
+
+      await reconcileLabels({ db, userId: USER, calendarId: CAL, accessToken: AT, embed });
+
+      expect(inserts).toHaveLength(1);
+      expect(inserts[0]).toMatchObject({ name: "운동", labelId: "L2" });
+    });
+
+    it("does not re-stamp label_deleted_at on a tombstoned rule whose label vanished", async () => {
+      mockedLabels.mockResolvedValueOnce(labelsRead([]));
+      const { db, updates, deletes } = makeDb([
+        {
+          id: "r1",
+          name: "회의",
+          labelId: "L1",
+          labelDeletedAt: null,
+          ruleDeletedAt: DELETED,
+        },
+      ]);
+
+      await reconcileLabels({ db, userId: USER, calendarId: CAL, accessToken: AT, embed });
+
+      expect(updates).toHaveLength(0);
+      expect(deletes).toHaveLength(0);
+    });
+  });
+
+  it("deactivation drops the rule's seed vectors along with the stamp", async () => {
+    // `knnByUser` ranks `rule_seeds` with no join to `categories`, so seeds
+    // left behind by a deactivation keep competing in the kNN pool forever.
+    mockedLabels.mockResolvedValueOnce(labelsRead([]));
+    const { db, updates, deletes } = makeDb([
+      { id: "r1", name: "회의", labelId: "L1", labelDeletedAt: null },
+    ]);
+
+    await reconcileLabels({ db, userId: USER, calendarId: CAL, accessToken: AT, embed });
+
+    expect(updates).toHaveLength(1);
+    expect(updates[0]).toHaveProperty("labelDeletedAt");
+    expect(deletes).toHaveLength(1);
   });
 
   it("labelProperties fetch failure is warn-only — sync proceeds on the cache", async () => {

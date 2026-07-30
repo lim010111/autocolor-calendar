@@ -167,17 +167,57 @@ export const categories = pgTable(
     // column suffices — multi-calendar splits into a mapping table when
     // that lands). NULL = pre-cutover rule; the #04 migration backfills.
     labelId: text("label_id"),
+    // ADR-0008 — who made the Google label this Rule hangs off. Decides
+    // whether the Add-on may DELETE that label when the user deletes the
+    // Rule, and nothing else. Three values because there are genuinely three
+    // states, not two:
+    //   'addon'      — we minted it (`createLabelForRule` → `appendEventLabel`,
+    //                  or the cutover CLI's append branch). Deleting it is
+    //                  bounded: it can only be on events we painted, plus any
+    //                  the user hand-applied it to since.
+    //   'discovered' — it already existed in Google when reconcile found it
+    //                  (ADR-0006 Decision 2, 출처 불문 동일 취급). May be on
+    //                  hundreds of events we have never touched, and
+    //                  `color_rollback` only visits marker-bearing ones — so
+    //                  deleting it is an unbounded blast radius.
+    //   'unknown'    — pre-ADR-0008 row. NOT a synonym for 'discovered': the
+    //                  population is a MIX (the cutover CLI produced both
+    //                  kinds and the distinction is unrecoverable after the
+    //                  fact), so stamping them 'discovered' would assert a
+    //                  fact we do not have. Behaves like 'discovered' at the
+    //                  gate; kept distinct so a future promotion pass can tell
+    //                  "we never recorded it" from "we checked, it's theirs".
+    // Deletion is gated on `=== 'addon'` — 'unknown' and 'discovered' both
+    // keep today's one-sided behavior (label survives, user removes it in
+    // Google Calendar).
+    labelOrigin: text("label_origin").notNull().default("unknown"),
     // Stamped when the backing Google label was deleted (or lost its name).
     // A stamped rule is excluded from classification and shown as "라벨
     // 삭제됨" in the editor. Never auto-cleared — deleted rules do not
     // revive (ADR-0006 Decision 4: 사용자 편집이 이긴다).
     labelDeletedAt: timestamp("label_deleted_at", { withTimezone: true }),
+    // Stamped when the USER deleted the Rule from the Add-on editor, while
+    // the backing Google label lives on. Distinct from `labelDeletedAt`
+    // (which means "Google lost the label") and load-bearing for a reason
+    // that is not obvious: rule deletion cannot be a hard DELETE. Under
+    // ADR-0006 Decision 2 a named label with no attached rule is treated as
+    // brand new, so `labelReconcile` re-INSERTed the rule on the very next
+    // sync run — the user's delete silently undid itself. The row must
+    // survive as the tombstone reconcile reads. Never auto-cleared, same
+    // 부활 금지 discipline as `labelDeletedAt`.
+    ruleDeletedAt: timestamp("rule_deleted_at", { withTimezone: true }),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [
     index("categories_user_priority_idx").on(t.userId, t.priority),
-    unique("categories_user_id_name_unique").on(t.userId, t.name),
+    // Partial so a deleted Rule's name can be reused. The index KEEPS the
+    // old constraint's name on purpose: `ruleService.isDuplicateNameError`
+    // matches Postgres' reported `constraint_name`, and a unique index
+    // reports its own name exactly as the old table constraint did.
+    uniqueIndex("categories_user_id_name_unique")
+      .on(t.userId, t.name)
+      .where(sql`${t.ruleDeletedAt} IS NULL`),
     // One Rule per Google label per user — reconcile's create/link paths
     // race-guard (partial: pre-cutover rows all have NULL labelId).
     uniqueIndex("categories_user_label_unique")
@@ -188,6 +228,12 @@ export const categories = pgTable(
     check(
       "categories_color_id_check",
       sql`${t.colorId} IN ('1','2','3','4','5','6','7','8','9','10','11')`,
+    ),
+    // ADR-0008 — see the `labelOrigin` column comment for what each value
+    // means and why 'unknown' is not folded into 'discovered'.
+    check(
+      "categories_label_origin_check",
+      sql`${t.labelOrigin} IN ('addon','discovered','unknown')`,
     ),
   ],
 );

@@ -200,9 +200,12 @@ async function main(): Promise<void> {
 
       const result = await applyUserPlan(plan, {
         appendLabel: (input) => appendEventLabel(accessToken, CALENDAR_ID, input),
-        linkCategory: async (categoryId, labelId) => {
+        linkCategory: async (categoryId, labelId, origin) => {
           const updated = await sql`
-            UPDATE categories SET label_id = ${labelId}, updated_at = now()
+            UPDATE categories
+               SET label_id = ${labelId},
+                   label_origin = ${origin},
+                   updated_at = now()
             WHERE id = ${categoryId} AND user_id = ${user.id} AND label_id IS NULL
             RETURNING id
           `;

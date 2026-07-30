@@ -23,6 +23,8 @@ export type GasSwatchApi = {
   }) => Swatch;
 };
 
+export type GasMessages = Record<string, Record<string, string>>;
+
 const I18N_PATH = fileURLToPath(
   new URL("../../../gas/i18n.js", import.meta.url),
 );
@@ -40,6 +42,18 @@ export function loadGasSwatchApi(): GasSwatchApi {
       getSwatchForRule: getSwatchForRule,
     };`,
   ) as () => GasSwatchApi;
+  return factory();
+}
+
+/**
+ * The Add-on's four locale bundles, straight from `gas/i18n.js`. Same
+ * evaluate-the-real-file trick as `loadGasSwatchApi` — a copy on this side
+ * would drift and prove nothing.
+ */
+export function loadGasMessages(): GasMessages {
+  const source = readFileSync(I18N_PATH, "utf8");
+  const factory = new Function(`${source}\nreturn MESSAGES;`) as () =>
+    GasMessages;
   return factory();
 }
 

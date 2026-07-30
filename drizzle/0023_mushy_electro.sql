@@ -1,0 +1,2 @@
+ALTER TABLE "categories" ADD COLUMN "label_origin" text DEFAULT 'unknown' NOT NULL;--> statement-breakpoint
+ALTER TABLE "categories" ADD CONSTRAINT "categories_label_origin_check" CHECK ("categories"."label_origin" IN ('addon','discovered','unknown'));

@@ -203,7 +203,17 @@ var MESSAGES = {
     'rules.btn.delete': 'Delete',
     'rules.badge.labelDeleted': 'Label deleted in Google Calendar',
     'rules.list.note': 'ℹ️ Already-colored events are not changed automatically. To apply a new rule to existing events, tap <b>Dashboard → "Apply rules now"</b>.',
-    'rules.manageInGoogle': 'ℹ️ Rename, recolor, or delete labels in Google Calendar — your rules follow automatically.',
+    'rules.manageInGoogle': 'ℹ️ Rename or recolor labels in Google Calendar — your rules follow automatically. Labels you created there must also be deleted there.',
+
+    // buildRuleDeleteConfirmCard (ADR-0008)
+    'rules.delete.title': 'Delete rule',
+    'rules.delete.subtitle': '“{{name}}” will be removed',
+    'rules.delete.warning': 'The rule, its keywords, and any correction examples you saved for it are deleted permanently. Colors already applied by this rule revert shortly. This cannot be undone.',
+    'rules.delete.alsoDeleteLabel': 'Also delete the color label in Google Calendar',
+    'rules.delete.alsoDeleteLabel.hint': '⚠️ Events you colored with this label by hand will lose their color too.',
+    'rules.delete.labelFromGoogle': 'ℹ️ The color label stays in Google Calendar — it was created there, so delete it there if you no longer want it.',
+    'rules.delete.btn.cancel': '⬅ Cancel',
+    'rules.delete.btn.confirm': 'Delete',
 
     // actionAddRule
     'rules.toast.nameRequired': 'Please enter a rule name.',
@@ -217,6 +227,8 @@ var MESSAGES = {
     'rules.toast.deleteIdMissing': 'Could not find the rule to delete.',
     'rules.toast.deleted': 'Rule deleted. Applied colors will revert shortly.',
     'rules.toast.deleteFailed': 'Failed to delete rule: {{message}}',
+    'rules.toast.deletedWithLabel': 'Rule and color label deleted. Applied colors will revert shortly.',
+    'rules.toast.deletedLabelFailed': 'Rule deleted, but the color label could not be removed — delete it in Google Calendar.',
 
     // buildSettingsCard
     'settings.section.examples': 'Correction examples',
@@ -408,7 +420,17 @@ var MESSAGES = {
     'rules.btn.delete': '삭제',
     'rules.badge.labelDeleted': 'Google 캘린더에서 라벨 삭제됨',
     'rules.list.note': "ℹ️ 이미 색이 지정된 일정은 자동 변경되지 않습니다. 새 규칙을 기존 일정에 적용하려면 <b>대시보드 → '지금 즉시 동기화'</b>를 눌러주세요.",
-    'rules.manageInGoogle': 'ℹ️ 이름·색 변경과 라벨 삭제는 Google 캘린더에서 하세요 — 규칙 목록이 자동으로 따라갑니다.',
+    'rules.manageInGoogle': 'ℹ️ 라벨 이름·색 변경은 Google 캘린더에서 하세요 — 규칙 목록이 자동으로 따라갑니다. Google 캘린더에서 만든 라벨은 거기서 삭제해야 합니다.',
+
+    // buildRuleDeleteConfirmCard (ADR-0008)
+    'rules.delete.title': '규칙 삭제',
+    'rules.delete.subtitle': '“{{name}}” 규칙을 삭제합니다',
+    'rules.delete.warning': '규칙과 키워드, 이 규칙에 저장한 정정 예시가 모두 영구 삭제됩니다. 이 규칙이 칠한 색은 곧 원래대로 돌아갑니다. 되돌릴 수 없습니다.',
+    'rules.delete.alsoDeleteLabel': 'Google 캘린더의 색상 라벨도 함께 삭제',
+    'rules.delete.alsoDeleteLabel.hint': '⚠️ 이 라벨을 직접 칠한 일정도 색을 잃습니다.',
+    'rules.delete.labelFromGoogle': 'ℹ️ 색상 라벨은 Google 캘린더에 남습니다 — 거기서 만든 라벨이라, 지우려면 Google 캘린더에서 삭제하세요.',
+    'rules.delete.btn.cancel': '⬅ 취소',
+    'rules.delete.btn.confirm': '삭제',
 
     'rules.toast.nameRequired': '규칙 이름을 입력해주세요.',
     'rules.toast.colorFirst': '색상을 먼저 선택해주세요.',
@@ -420,6 +442,8 @@ var MESSAGES = {
     'rules.toast.deleteIdMissing': '삭제할 규칙을 찾을 수 없습니다.',
     'rules.toast.deleted': '규칙이 삭제되었습니다. 적용된 색상은 곧 원상복구됩니다.',
     'rules.toast.deleteFailed': '규칙 삭제 실패: {{message}}',
+    'rules.toast.deletedWithLabel': '규칙과 색상 라벨을 삭제했습니다. 적용된 색상은 곧 원상복구됩니다.',
+    'rules.toast.deletedLabelFailed': '규칙은 삭제했지만 색상 라벨을 지우지 못했습니다 — Google 캘린더에서 삭제해 주세요.',
 
     'settings.section.examples': '정정 예시',
     'settings.examples.granted': '정정 내용 저장: 사용 중 ({{date}} 동의)',
@@ -605,7 +629,17 @@ var MESSAGES = {
     'rules.btn.delete': '删除',
     'rules.badge.labelDeleted': '标签已在 Google 日历中删除',
     'rules.list.note': "ℹ️ 已经设置颜色的日程不会自动更改。要将新规则应用到现有日程,请点击 <b>仪表板 → 「立即同步」</b>。",
-    'rules.manageInGoogle': 'ℹ️ 重命名、更改颜色或删除标签请在 Google 日历中操作 — 规则列表会自动跟随。',
+    'rules.manageInGoogle': 'ℹ️ 重命名或更改标签颜色请在 Google 日历中操作 — 规则列表会自动跟随。在那里创建的标签也需要在那里删除。',
+
+    // buildRuleDeleteConfirmCard (ADR-0008)
+    'rules.delete.title': '删除规则',
+    'rules.delete.subtitle': '将删除“{{name}}”',
+    'rules.delete.warning': '规则、关键词以及为该规则保存的更正示例都会被永久删除。该规则已应用的颜色稍后会自动还原。此操作无法撤销。',
+    'rules.delete.alsoDeleteLabel': '同时删除 Google 日历中的颜色标签',
+    'rules.delete.alsoDeleteLabel.hint': '⚠️ 你手动用该标签上色的日程也会失去颜色。',
+    'rules.delete.labelFromGoogle': 'ℹ️ 颜色标签会保留在 Google 日历中 — 它是在那里创建的，如不再需要请在 Google 日历中删除。',
+    'rules.delete.btn.cancel': '⬅ 取消',
+    'rules.delete.btn.confirm': '删除',
 
     'rules.toast.nameRequired': '请输入规则名称。',
     'rules.toast.colorFirst': '请先选择颜色。',
@@ -617,6 +651,8 @@ var MESSAGES = {
     'rules.toast.deleteIdMissing': '找不到要删除的规则。',
     'rules.toast.deleted': '规则已删除。已应用的颜色将很快还原。',
     'rules.toast.deleteFailed': '删除规则失败: {{message}}',
+    'rules.toast.deletedWithLabel': '已删除规则和颜色标签。已应用的颜色稍后会还原。',
+    'rules.toast.deletedLabelFailed': '规则已删除，但颜色标签未能移除 — 请在 Google 日历中删除。',
 
     'settings.section.examples': '更正示例',
     'settings.examples.granted': '保存更正：已开启（{{date}} 同意）',
@@ -802,7 +838,17 @@ var MESSAGES = {
     'rules.btn.delete': '刪除',
     'rules.badge.labelDeleted': '標籤已在 Google 日曆中刪除',
     'rules.list.note': "ℹ️ 已設定顏色的活動不會自動變更。要將新規則套用至現有活動,請點選 <b>資訊主頁 → 「立即同步」</b>。",
-    'rules.manageInGoogle': 'ℹ️ 重新命名、變更顏色或刪除標籤請在 Google 日曆中操作 — 規則清單會自動跟隨。',
+    'rules.manageInGoogle': 'ℹ️ 重新命名或變更標籤顏色請在 Google 日曆中操作 — 規則清單會自動跟隨。在那裡建立的標籤也需要在那裡刪除。',
+
+    // buildRuleDeleteConfirmCard (ADR-0008)
+    'rules.delete.title': '刪除規則',
+    'rules.delete.subtitle': '將刪除「{{name}}」',
+    'rules.delete.warning': '規則、關鍵字以及為此規則儲存的更正範例都會被永久刪除。此規則已套用的顏色稍後會自動還原。此操作無法復原。',
+    'rules.delete.alsoDeleteLabel': '同時刪除 Google 日曆中的顏色標籤',
+    'rules.delete.alsoDeleteLabel.hint': '⚠️ 你手動用此標籤上色的行程也會失去顏色。',
+    'rules.delete.labelFromGoogle': 'ℹ️ 顏色標籤會保留在 Google 日曆中 — 它是在那裡建立的，若不再需要請在 Google 日曆中刪除。',
+    'rules.delete.btn.cancel': '⬅ 取消',
+    'rules.delete.btn.confirm': '刪除',
 
     'rules.toast.nameRequired': '請輸入規則名稱。',
     'rules.toast.colorFirst': '請先選擇顏色。',
@@ -814,6 +860,8 @@ var MESSAGES = {
     'rules.toast.deleteIdMissing': '找不到要刪除的規則。',
     'rules.toast.deleted': '規則已刪除。已套用的顏色將很快還原。',
     'rules.toast.deleteFailed': '刪除規則失敗: {{message}}',
+    'rules.toast.deletedWithLabel': '已刪除規則與顏色標籤。已套用的顏色稍後會還原。',
+    'rules.toast.deletedLabelFailed': '規則已刪除，但顏色標籤未能移除 — 請在 Google 日曆中刪除。',
 
     'settings.section.examples': '更正範例',
     'settings.examples.granted': '儲存更正：已開啟（{{date}} 同意）',

@@ -1,9 +1,9 @@
-import { and, eq, inArray } from "drizzle-orm";
+import { and, eq, inArray, isNull } from "drizzle-orm";
 import { describe, expect, it } from "vitest";
 
 import { categories, ruleSeeds } from "../../db/schema";
 
-import { extractEq, extractInArray } from "./fakeDb";
+import { extractEq, extractInArray, extractIsNull } from "./fakeDb";
 
 // drizzle-orm SQL-AST shape guard. The FakeDb helper relies on the AST
 // of `eq(table.column, value)` to be `queryChunks =
@@ -52,5 +52,27 @@ describe("fakeDb.guard: drizzle-orm AST shape invariant", () => {
       user_id: "U1",
       seed_type: "keyword",
     });
+  });
+
+  it("extractIsNull pulls the columns of isNull(...) fragments", () => {
+    // `listRules`' real shape: a tenant eq plus the two tombstone filters.
+    // Before this walker existed the fake was blind to `isNull`, so a test
+    // could assert "the deleted rule is hidden" while the fake was in fact
+    // returning every row — which is how a rule-resurrection bug shipped
+    // with green tests on both sides of it.
+    const where = and(
+      eq(categories.userId, "U1"),
+      isNull(categories.ruleDeletedAt),
+      isNull(categories.labelDeletedAt),
+    );
+
+    expect(
+      extractIsNull(where).sort(),
+      "fakeDb.guard: drizzle-orm isNull AST shape changed — update " +
+        "extractIsNull in src/__tests__/_helpers/fakeDb.ts.",
+    ).toEqual(["label_deleted_at", "rule_deleted_at"]);
+
+    // eq still resolves and does NOT pick up the isNull columns.
+    expect(extractEq(where)).toEqual({ user_id: "U1" });
   });
 });

@@ -1,7 +1,7 @@
 import { and, eq, sql } from "drizzle-orm";
 import type { PostgresJsDatabase } from "drizzle-orm/postgres-js";
 
-import { categories } from "../db/schema";
+import { categories, ruleSeeds } from "../db/schema";
 import type { EmbedTexts } from "./embeddings";
 import { getCalendarLabelProperties } from "./googleCalendar";
 import { writeNameSeed } from "./ruleService";
@@ -30,6 +30,16 @@ import { writeNameSeed } from "./ruleService";
 //   duplicate-name insert loop every run); otherwise INSERT a fresh rule
 //   with keyword fallback `[name]` and a name seed. Unnamed labels (the 24
 //   default palette slots) are never rules.
+//
+// **"New" is decided against tombstones, not against live rules.** A Rule
+// deleted in the Add-on editor (`categories.rule_deleted_at`) keeps its row
+// precisely so this module can tell "the user is done with this label" from
+// "we have never seen this label". Reading only live rules made every
+// editor deletion undo itself on the next sync run — the label survives the
+// delete (label removal is Google's UI to own, Decision 3), so the create
+// branch below saw a named label with no rule and re-created it seconds
+// later, with `keywords` reset to `[name]`. Every branch here therefore
+// checks `ruleDeletedAt` before it writes.
 //
 // Failure model: warn-only. A reconcile failure must never abort the sync
 // run — classification proceeds on the cached rules (eventually consistent,
@@ -149,14 +159,31 @@ export async function reconcileLabels(args: {
         backgroundColor: categories.backgroundColor,
         labelId: categories.labelId,
         labelDeletedAt: categories.labelDeletedAt,
+        ruleDeletedAt: categories.ruleDeletedAt,
       })
       .from(categories)
       .where(eq(categories.userId, userId));
 
+    // Tombstoned rows (user deleted the Rule in the editor) are read but
+    // never acted on — see the `ruleDeletedAt` guards below. They are the
+    // reason this SELECT has no `ruleDeletedAt IS NULL` filter: dropping
+    // them here would make every branch treat the surviving Google label as
+    // new and re-create the rule, which is the resurrection bug itself.
     const rulesByLabelId = new Map(
       rules.filter((r) => r.labelId !== null).map((r) => [r.labelId!, r]),
     );
-    const rulesByName = new Map(rules.map((r) => [r.name, r]));
+    // Name lookups drive link/insert decisions, so they must see only LIVE
+    // rules — a tombstone is not a link target. Its name is tracked
+    // separately below.
+    const rulesByName = new Map(
+      rules.filter((r) => r.ruleDeletedAt === null).map((r) => [r.name, r]),
+    );
+    // Names of user-deleted rules, for the labelId-less case: a pre-cutover
+    // tombstone has no labelId to match on, so without this a same-named
+    // Google label would still resurrect it through the insert branch.
+    const deletedRuleNames = new Set(
+      rules.filter((r) => r.ruleDeletedAt !== null).map((r) => r.name),
+    );
     const namedLabelIds = new Set<string>();
 
     for (const label of labels) {
@@ -167,6 +194,11 @@ export async function reconcileLabels(args: {
       const attached = rulesByLabelId.get(label.id);
       if (attached) {
         if (attached.labelDeletedAt !== null) continue; // 부활 금지
+        // Same 부활 금지, other direction: the user deleted the Rule while
+        // the label lives on. Skipping here is what makes editor deletion
+        // stick — and it also stops the rename/recolor writes below from
+        // silently maintaining a rule the user is done with.
+        if (attached.ruleDeletedAt !== null) continue;
 
         // recolor: a separate UPDATE from the rename below on purpose — a
         // rename can hit the unique-name constraint, and a color edit must
@@ -220,6 +252,12 @@ export async function reconcileLabels(args: {
           .update(categories)
           .set({
             labelId: label.id,
+            // ADR-0008 — written explicitly, never left to the column
+            // default. This branch KNOWS the label was already in Google
+            // when we found it, and that knowledge is exactly what the
+            // deletion gate needs; the default is 'unknown' (= "we never
+            // recorded it"), which would be a different, weaker claim.
+            labelOrigin: "discovered",
             ...(linkHex !== null
               ? { backgroundColor: linkHex, colorId: nearestClassicColorId(linkHex) }
               : {}),
@@ -237,6 +275,12 @@ export async function reconcileLabels(args: {
         warnReconcile(userId, "duplicate name for new label — skipped");
         continue;
       }
+      if (deletedRuleNames.has(name)) {
+        // A user-deleted Rule carried this name and had no labelId to match
+        // on (pre-cutover row). Inserting here would resurrect it under a
+        // new uuid — the exact defect the tombstone exists to prevent.
+        continue;
+      }
       try {
         const inserted = await db
           .insert(categories)
@@ -247,6 +291,9 @@ export async function reconcileLabels(args: {
             backgroundColor: normalizeHex(label.backgroundColor),
             keywords: [name],
             labelId: label.id,
+            // ADR-0008 — same as the link branch above: this label came
+            // from Google, so the Add-on must never delete it.
+            labelOrigin: "discovered",
           })
           .returning({ id: categories.id });
         const ruleId = inserted[0]?.id;
@@ -265,6 +312,9 @@ export async function reconcileLabels(args: {
     // Deactivate rules whose label vanished or lost its name.
     for (const rule of rules) {
       if (rule.labelId === null || rule.labelDeletedAt !== null) continue;
+      // A user-deleted Rule is already out of classification; stamping it
+      // again would only add a "라벨 삭제됨" reading to a row nobody renders.
+      if (rule.ruleDeletedAt !== null) continue;
       if (namedLabelIds.has(rule.labelId)) continue;
       await db
         .update(categories)
@@ -273,6 +323,18 @@ export async function reconcileLabels(args: {
           updatedAt: sql`now()` as unknown as Date,
         })
         .where(and(eq(categories.userId, userId), eq(categories.id, rule.id)));
+      // Drop the seed vectors with the stamp. `knnByUser` ranks `rule_seeds`
+      // with no join to `categories`, so a deactivated rule's seeds would
+      // otherwise keep competing in the kNN pool forever — winning the top
+      // slot (the event then degrades to the LLM leg, because
+      // `lookupRuleRef` cannot find the rule in the filtered list) or the
+      // second slot (firing a spurious `ambiguous`). `labelDeletedAt` is
+      // never auto-cleared, so the seeds can never be needed again.
+      await db
+        .delete(ruleSeeds)
+        .where(
+          and(eq(ruleSeeds.userId, userId), eq(ruleSeeds.ruleId, rule.id)),
+        );
       summary.deactivated += 1;
     }
 

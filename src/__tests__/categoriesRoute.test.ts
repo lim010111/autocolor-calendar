@@ -701,15 +701,59 @@ describe("/api/categories — patch (PATCH)", () => {
 });
 
 describe("/api/categories — delete (DELETE)", () => {
-  it("200 on success and removes the row", async () => {
-    currentDb.state.categories.push(row({ id: CAT_A_ID, userId: USER_A }));
+  it("200 on success and tombstones the row rather than deleting it", async () => {
+    currentDb.state.categories.push(
+      row({ id: CAT_A_ID, userId: USER_A, labelId: "L1" }),
+    );
     const res = await invoke(`/api/categories/${CAT_A_ID}`, {
       method: "DELETE",
       userToken: "token-a",
     });
     // card-latency #02 — 204 → 200 with the updated list in the body.
     expect(res.status).toBe(200);
-    expect(currentDb.state.categories).toHaveLength(0);
+    // The row MUST survive. It is the tombstone `labelReconcile` reads to
+    // tell "the user deleted this Rule" from "here is a label we have never
+    // seen" — a hard delete let the surviving Google label re-create the
+    // rule on the next sync run. Asserting length 0 here is what made the
+    // old behavior look correct.
+    expect(currentDb.state.categories).toHaveLength(1);
+    expect(currentDb.state.categories[0]!.ruleDeletedAt).toBeInstanceOf(Date);
+    // …and it is invisible to every read path, so the user still sees it gone.
+    const body = (await res.json()) as { categories: unknown[] };
+    expect(body.categories).toHaveLength(0);
+  });
+
+  it("a deleted rule's name is free to reuse", async () => {
+    // The unique index is partial (`WHERE rule_deleted_at IS NULL`) so the
+    // tombstone does not lock the user out of a name they can no longer see.
+    currentDb.state.categories.push(
+      row({ id: CAT_A_ID, userId: USER_A, name: "회의", labelId: "L1" }),
+    );
+    await invoke(`/api/categories/${CAT_A_ID}`, {
+      method: "DELETE",
+      userToken: "token-a",
+    });
+    const res = await invoke("/api/categories", {
+      method: "POST",
+      userToken: "token-a",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ name: "회의", colorId: "5", keywords: ["회의"] }),
+    });
+    expect(res.status).toBe(201);
+  });
+
+  it("a second delete of the same rule 404s", async () => {
+    currentDb.state.categories.push(row({ id: CAT_A_ID, userId: USER_A }));
+    const first = await invoke(`/api/categories/${CAT_A_ID}`, {
+      method: "DELETE",
+      userToken: "token-a",
+    });
+    expect(first.status).toBe(200);
+    const second = await invoke(`/api/categories/${CAT_A_ID}`, {
+      method: "DELETE",
+      userToken: "token-a",
+    });
+    expect(second.status).toBe(404);
   });
 
   it("card-latency #02 — response carries the updated categories list (tenant-scoped)", async () => {
@@ -800,6 +844,237 @@ describe("/api/categories — delete (DELETE)", () => {
       userToken: "token-a",
     });
     expect(res.status).toBe(400);
+  });
+});
+
+// ADR-0008 — deleting the backing Google label along with the Rule. The gate
+// is `label_origin = 'addon'`: we may remove a label we minted, never one the
+// user made in Google Calendar, because `color_rollback` only visits
+// marker-bearing events and a user-made label may be worn by hundreds we have
+// never touched.
+describe("/api/categories — delete with ?deleteLabel=1 (ADR-0008)", () => {
+  // Two fake-DB details this helper exists to get right:
+  // 1. Spread order — `row()` builds from a fixed field list and silently
+  //    drops anything it does not know about, so label columns go AFTER it.
+  // 2. `labelDeletedAt: null`, spelled out. Rows pushed straight into
+  //    `state.categories` skip `fillRowDefaults`, so an omitted column reads
+  //    as `undefined`, whereas Postgres hands the route a real `null`. The
+  //    gate compares `=== null`, so an implicit omission would silently make
+  //    every label deletion a no-op here and the tests would prove nothing.
+  const addonRule = (over: Partial<Row> = {}): Row => ({
+    ...row({ id: CAT_A_ID, userId: USER_A }),
+    labelId: LABEL_ID,
+    labelOrigin: "addon",
+    labelDeletedAt: null,
+    ...over,
+  });
+
+  const del = (query = "?deleteLabel=1") =>
+    invoke(`/api/categories/${CAT_A_ID}${query}`, {
+      method: "DELETE",
+      userToken: "token-a",
+    });
+
+  it("removes the Google label when the Add-on minted it", async () => {
+    currentDb.state.categories.push(addonRule());
+
+    const res = await del();
+
+    expect(res.status).toBe(200);
+    expect(removeEventLabelMock).toHaveBeenCalledWith(
+      "at-test",
+      "primary",
+      LABEL_ID,
+    );
+    const body = (await res.json()) as { labelDeleted: boolean };
+    expect(body.labelDeleted).toBe(true);
+    // Both stamps: the Rule is user-deleted AND its label really is gone.
+    // Without the second one the tombstone claims a live backing label we
+    // just destroyed — nothing reads it today, which is exactly why it would
+    // rot undetected.
+    const stored = currentDb.state.categories[0]!;
+    expect(stored.ruleDeletedAt).toBeInstanceOf(Date);
+    expect(stored.labelDeletedAt).toBeInstanceOf(Date);
+  });
+
+  it("ignores the flag for a label discovered in Google Calendar", async () => {
+    currentDb.state.categories.push(
+      addonRule({ labelOrigin: "discovered" }),
+    );
+
+    const res = await del();
+
+    expect(res.status).toBe(200);
+    // The flag is a request, never an authorisation — the server re-derives
+    // the predicate against the row it just tombstoned.
+    expect(removeEventLabelMock).not.toHaveBeenCalled();
+    expect(getValidAccessTokenMock).not.toHaveBeenCalled();
+    const body = (await res.json()) as { labelDeleted: boolean };
+    expect(body.labelDeleted).toBe(false);
+    expect(currentDb.state.categories[0]!.labelDeletedAt ?? null).toBeNull();
+  });
+
+  it("ignores the flag for a pre-ADR-0008 row ('unknown' provenance)", async () => {
+    // 'unknown' is not a synonym for 'discovered' in the column, but it must
+    // behave identically at the gate — we never recorded who made this label.
+    currentDb.state.categories.push(
+      addonRule({ labelOrigin: "unknown" }),
+    );
+
+    const res = await del();
+
+    expect(res.status).toBe(200);
+    expect(removeEventLabelMock).not.toHaveBeenCalled();
+    expect(((await res.json()) as { labelDeleted: boolean }).labelDeleted).toBe(
+      false,
+    );
+  });
+
+  it("does not touch Google when the flag is absent", async () => {
+    currentDb.state.categories.push(addonRule());
+
+    const res = await del("");
+
+    expect(res.status).toBe(200);
+    expect(removeEventLabelMock).not.toHaveBeenCalled();
+    expect(((await res.json()) as { labelDeleted: boolean }).labelDeleted).toBe(
+      false,
+    );
+  });
+
+  it("skips Google entirely for a rule with no label", async () => {
+    currentDb.state.categories.push({
+      ...row({ id: CAT_A_ID, userId: USER_A }),
+      labelOrigin: "addon",
+      labelId: null,
+      labelDeletedAt: null,
+    });
+
+    const res = await del();
+
+    expect(res.status).toBe(200);
+    expect(getValidAccessTokenMock).not.toHaveBeenCalled();
+    expect(removeEventLabelMock).not.toHaveBeenCalled();
+  });
+
+  it("skips Google when reconcile already stamped the label gone", async () => {
+    currentDb.state.categories.push(
+      addonRule({ labelDeletedAt: new Date("2026-07-01T00:00:00Z") }),
+    );
+
+    const res = await del();
+
+    expect(res.status).toBe(200);
+    expect(removeEventLabelMock).not.toHaveBeenCalled();
+  });
+
+  it("still 200s (rule stays deleted) when the label removal fails", async () => {
+    // The tombstone is already committed. Failing the response would be a
+    // lie, and `gas/api.js` retries 5xx — the retry would hit the tombstone
+    // guard and surface a 404 "failed" toast for a completed, irreversible
+    // action.
+    currentDb.state.categories.push(addonRule());
+    removeEventLabelMock.mockRejectedValueOnce(new Error("boom"));
+
+    const res = await del();
+
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as {
+      labelDeleted: boolean;
+      labelDeleteError?: string;
+      categories: unknown[];
+    };
+    expect(body.labelDeleted).toBe(false);
+    expect(body.labelDeleteError).toBe("unknown");
+    // The rule is still gone from the user's list, and the label stamp was
+    // NOT written — the label really is still there.
+    expect(body.categories).toHaveLength(0);
+    expect(currentDb.state.categories[0]!.ruleDeletedAt).toBeInstanceOf(Date);
+    expect(currentDb.state.categories[0]!.labelDeletedAt ?? null).toBeNull();
+  });
+
+  it("maps a reauth failure to 200 + reason, never 503", async () => {
+    // The create path answers `reauth_required` with 503 because no Rule may
+    // exist without its label. Here the Rule is already deleted, so the same
+    // condition is only a footnote on a successful operation.
+    currentDb.state.categories.push(addonRule());
+    getValidAccessTokenMock.mockRejectedValueOnce(
+      new ReauthRequiredError("no_refresh_token"),
+    );
+
+    const res = await del();
+
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as {
+      labelDeleted: boolean;
+      labelDeleteError?: string;
+    };
+    expect(body.labelDeleted).toBe(false);
+    expect(body.labelDeleteError).toBe("reauth");
+  });
+
+  it("a repeated delete 404s before reaching Google", async () => {
+    currentDb.state.categories.push(addonRule());
+    expect((await del()).status).toBe(200);
+    removeEventLabelMock.mockClear();
+
+    const second = await del();
+
+    expect(second.status).toBe(404);
+    expect(removeEventLabelMock).not.toHaveBeenCalled();
+  });
+
+  it("another user's rule 404s without touching their label", async () => {
+    currentDb.state.categories.push({
+      ...row({ id: CAT_B_ID, userId: USER_B }),
+      labelId: LABEL_ID,
+      labelOrigin: "addon",
+    });
+
+    const res = await invoke(`/api/categories/${CAT_B_ID}?deleteLabel=1`, {
+      method: "DELETE",
+      userToken: "token-a",
+    });
+
+    expect(res.status).toBe(404);
+    expect(removeEventLabelMock).not.toHaveBeenCalled();
+  });
+});
+
+describe("toWire.labelDeletable (ADR-0008)", () => {
+  const listFor = async (over: Partial<Row>) => {
+    currentDb.state.categories.push({
+      ...row({ id: CAT_A_ID, userId: USER_A }),
+      // Explicit nulls, not omissions — see `addonRule`'s note.
+      labelId: null,
+      labelDeletedAt: null,
+      ...over,
+    });
+    const res = await invoke("/api/categories", { userToken: "token-a" });
+    const body = (await res.json()) as {
+      categories: Array<{ labelDeletable: boolean }>;
+    };
+    return body.categories[0]!.labelDeletable;
+  };
+
+  it("true only for an addon-minted, still-live label", async () => {
+    expect(await listFor({ labelId: LABEL_ID, labelOrigin: "addon" })).toBe(true);
+  });
+
+  it("false for a discovered label", async () => {
+    expect(
+      await listFor({ labelId: LABEL_ID, labelOrigin: "discovered" }),
+    ).toBe(false);
+  });
+
+  it("false for a pre-ADR-0008 row", async () => {
+    expect(await listFor({ labelId: LABEL_ID, labelOrigin: "unknown" })).toBe(
+      false,
+    );
+  });
+
+  it("false when the rule has no label at all", async () => {
+    expect(await listFor({ labelOrigin: "addon" })).toBe(false);
   });
 });
 

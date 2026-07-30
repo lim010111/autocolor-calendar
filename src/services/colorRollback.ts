@@ -50,6 +50,15 @@ export type RollbackSummary = {
   pages: number;
   seen: number;
   cleared: number;
+  // ADR-0008 — marker-only sweeps: the event bore our marker but had no
+  // color left to revert, so nothing of the user's was undone. Counted
+  // apart from `cleared` so `rollback_runs.cleared` keeps meaning "an
+  // app-painted event was un-painted". Feeds the progress gate below
+  // (these sweeps shrink the marker filter set exactly like a real clear)
+  // and rides the consumer's completion log, which serialises this whole
+  // object — deliberately NOT a `rollback_runs` column, which would be a
+  // migration for an observability nicety.
+  cleared_orphan_marker: number;
   skipped_stale_marker: number;
   skipped_manual_override: number;
   skipped_version_mismatch: number;
@@ -89,6 +98,7 @@ function makeSummary(): RollbackSummary {
     pages: 0,
     seen: 0,
     cleared: 0,
+    cleared_orphan_marker: 0,
     skipped_stale_marker: 0,
     skipped_manual_override: 0,
     skipped_version_mismatch: 0,
@@ -247,7 +257,25 @@ export async function runColorRollback(
         summary.skipped_manual_override += 1;
         continue;
       }
-      if (!appOwned) {
+      // ADR-0008 — order independence. An event that carries our marker but
+      // has NO color at all has nothing of the user's left to preserve, so
+      // the manual-override gate below would be defending a choice that no
+      // longer exists: it skips forever, and our four `autocolor_*` keys are
+      // stranded on the user's event because a tombstoned rule leaves no
+      // user-reachable path that re-triggers this rollback (the dead end
+      // described in the module header). Two ways to land here — the user
+      // cleared the color by hand, or the Add-on deleted the backing label
+      // DEFINITION (ADR-0008) and Google dropped the now-dangling
+      // `eventLabelId` before this queue job ran. The second case is why
+      // label deletion does not need to be sequenced after the rollback:
+      // whichever order they happen in, the marker gets swept.
+      //
+      // `appOwned` is always false here — both probes require a non-empty
+      // current color to match against — so this reads as a narrowing of
+      // "not ours", not a competing branch.
+      const colorless =
+        (event.eventLabelId ?? "") === "" && (event.colorId ?? "") === "";
+      if (!appOwned && !colorless) {
         // Marker predates a user-initiated color change — the user re-
         // painted this event after our last PATCH, so we treat it as
         // manual and leave it alone (same invariant §5.4 uses in sync).
@@ -267,7 +295,8 @@ export async function runColorRollback(
         // Counted before issuing — a PATCH that throws still consumed budget.
         fetches.used += ROLLBACK_EVENT_FETCH_COST;
         await clearEventLabel(accessToken, ctx.calendarId, event.id);
-        summary.cleared += 1;
+        if (appOwned) summary.cleared += 1;
+        else summary.cleared_orphan_marker += 1;
       } catch (err) {
         if (err instanceof CalendarApiError) {
           if (err.kind === "auth") {
@@ -332,10 +361,15 @@ export async function runColorRollback(
     summary.budget_stopped = true;
     warnBudgetStop();
     // Progress gate — the restart chain must strictly shrink the marked set
-    // to terminate. `cleared` events lose the marker; `not_found` events are
-    // gone from the calendar. Anything else (forbidden, skips) would recur
-    // verbatim on restart, so a no-progress stop abandons like MAX_PAGES.
-    if (summary.cleared + summary.not_found > 0) {
+    // to terminate. `cleared` and `cleared_orphan_marker` events both lose
+    // the marker (same PATCH, they differ only in whether a color was
+    // undone); `not_found` events are gone from the calendar. Anything else
+    // (forbidden, skips) would recur verbatim on restart, so a no-progress
+    // stop abandons like MAX_PAGES.
+    if (
+      summary.cleared + summary.cleared_orphan_marker + summary.not_found >
+      0
+    ) {
       return { ok: true, summary, continuation: true };
     }
   }

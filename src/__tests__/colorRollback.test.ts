@@ -162,9 +162,16 @@ describe("runColorRollback", () => {
     expect(mockedClear).not.toHaveBeenCalled();
   });
 
-  it("skips v2-marked events whose label was cleared by the user", async () => {
-    // current eventLabelId absent but marker claims label-ours — the user
-    // detached our label; !appOwned and no label → manual-override skip.
+  // ADR-0008 — this pair pins the boundary the order-independence clause
+  // draws. Both events carry our v2 marker and neither is `appOwned`; what
+  // separates them is whether the user has a colour choice left to protect.
+  it("sweeps the marker off a v2-marked event that has no colour at all", async () => {
+    // No eventLabelId and no colorId. Two ways to get here: the user cleared
+    // the colour by hand, or the Add-on deleted the backing label DEFINITION
+    // and Google dropped the dangling id. Either way there is nothing of the
+    // user's to preserve, and skipping (the old behaviour) stranded our four
+    // `autocolor_*` keys on the event forever — a tombstoned rule leaves no
+    // user-reachable path that re-triggers this rollback.
     mockedList.mockResolvedValueOnce({
       items: [markedEventV2("e-v2-cleared", "", "label-ours")],
     });
@@ -173,7 +180,32 @@ describe("runColorRollback", () => {
 
     expect(res.ok).toBe(true);
     if (!res.ok) return;
+    expect(mockedClear).toHaveBeenCalledTimes(1);
+    // Counted apart from `cleared` — no colour was undone, so
+    // `rollback_runs.cleared` must not claim one was.
+    expect(res.summary.cleared_orphan_marker).toBe(1);
+    expect(res.summary.cleared).toBe(0);
+    expect(res.summary.skipped_manual_override).toBe(0);
+  });
+
+  it("still skips a v2-marked event the user re-coloured with a classic colorId", async () => {
+    // Label detached but `colorId` set — the user made a choice after our
+    // PATCH. Not colourless, so the manual gate holds and we leave it alone.
+    mockedList.mockResolvedValueOnce({
+      items: [
+        {
+          ...markedEventV2("e-v2-recoloured", "", "label-ours"),
+          colorId: "5",
+        },
+      ],
+    });
+
+    const res = await runColorRollback(ctx, CAT);
+
+    expect(res.ok).toBe(true);
+    if (!res.ok) return;
     expect(res.summary.skipped_manual_override).toBe(1);
+    expect(res.summary.cleared_orphan_marker).toBe(0);
     expect(mockedClear).not.toHaveBeenCalled();
   });
 

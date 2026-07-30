@@ -517,7 +517,8 @@ function fetchCategoriesOrError() {
 
 /**
  * Maps the backend wire shape (`{ id, name, colorId, labelId, ... }`) to the
- * trimmed `{ id, keyword, colorId, backgroundColor, labelId, labelDeleted }`
+ * trimmed `{ id, keyword, colorId, backgroundColor, labelId, labelDeleted,
+ * labelDeletable }`
  * rule rows the
  * card builders consume. Shared by fetchCategoriesOrError and the
  * mutation-response fast path below.
@@ -538,6 +539,10 @@ function mapWireCategoriesToRules(categories) {
       // labelDeleted renders the editor's "라벨 삭제됨" badge.
       labelId: c.labelId || null,
       labelDeleted: !!c.labelDeletedAt,
+      // ADR-0008 — server-derived capability ("may the Add-on delete this
+      // rule's Google label too?"), NOT the raw provenance enum. The policy
+      // stays on the backend; this side only renders a checkbox from it.
+      labelDeletable: !!c.labelDeletable,
     };
   });
 }
@@ -1132,7 +1137,7 @@ var CATEGORIES_SNAPSHOT_PARAM_MAX_CHARS = 8192;
 
 /**
  * card-latency #01 — serializes the trimmed `{id, keyword, colorId,
- * backgroundColor, labelId, labelDeleted}` rules list for the grid
+ * backgroundColor, labelId, labelDeleted, labelDeletable}` rules list for the grid
  * pass-through parameter.
  * Returns null when the list is unavailable (fetch error) or the JSON
  * exceeds the parameter budget, so callers omit the parameter and the
@@ -1150,6 +1155,7 @@ function serializeCategoriesSnapshot(rules) {
         backgroundColor: r.backgroundColor || null,
         labelId: r.labelId || null,
         labelDeleted: !!r.labelDeleted,
+        labelDeletable: !!r.labelDeletable,
       };
     }));
   } catch (_err) {
@@ -1189,7 +1195,7 @@ function readCategoriesSnapshot(e) {
  * Screen 4: Rule Management Card.
  *
  * `categoriesSnapshot` (optional) — a trimmed `[{id, keyword, colorId,
- * backgroundColor, labelId, labelDeleted}]` list already fetched earlier in
+ * backgroundColor, labelId, labelDeleted, labelDeletable}]` list already fetched earlier in
  * the same render
  * cycle (card-latency #01).
  * When present, the builder reuses it instead of re-fetching
@@ -1348,11 +1354,21 @@ function buildRuleManagementCard(e, categoriesSnapshot) {
       // `backgroundColor`; the legacy colorId is too lossy to draw from).
       var colorUrl = getSwatchForRule(rule).url;
 
+      // ADR-0008 — the row button no longer deletes; it opens a confirm card.
+      // Deletion is irreversible (the backend tombstone is never cleared) and
+      // takes the rule's saved correction examples with it, none of which is
+      // visible from this row. The card also hosts the "delete the Google
+      // label too" choice, so one surface covers both variants.
+      // Action parameters must be strings.
       var deleteButton = CardService.newTextButton()
         .setText(t('rules.btn.delete', null, L))
         .setOnClickAction(CardService.newAction()
-          .setFunctionName("actionDeleteRule")
-          .setParameters({id: rule.id}));
+          .setFunctionName("actionGoToRuleDeleteConfirm")
+          .setParameters({
+            id: rule.id,
+            name: rule.keyword || '',
+            labelDeletable: rule.labelDeletable ? '1' : ''
+          }));
 
       var rowText = CardService.newDecoratedText()
         .setStartIcon(CardService.newIconImage().setIconUrl(colorUrl).setImageCropType(CardService.ImageCropType.CIRCLE))
@@ -1486,24 +1502,121 @@ function actionAddRule(e) {
   }
 }
 
-function actionDeleteRule(e) {
+/**
+ * ADR-0008 — reads an action parameter across the two shapes the framework
+ * flips between (same convention as `readCategoriesSnapshot`).
+ */
+function readActionParam(e, key) {
+  var p1 = (e && e.parameters) || {};
+  var p2 = (e && e.commonEventObject && e.commonEventObject.parameters) || {};
+  return p1[key] || p2[key] || '';
+}
+
+/**
+ * ADR-0008 — rule deletion confirm card.
+ *
+ * Two reasons this card exists, and both matter:
+ *  1. Deletion is irreversible. The backend writes a tombstone that is never
+ *     auto-cleared (부활 금지), and it drops the rule's `rule_seeds` — which
+ *     include the correction examples the user taught it. None of that is
+ *     visible from the row's Delete button, which until now fired instantly.
+ *  2. It hosts the "delete the Google colour label too" choice.
+ *
+ * The checkbox is rendered ONLY when the backend says `labelDeletable` — i.e.
+ * the Add-on minted that label. A label the user made in Google Calendar may
+ * be worn by events this app has never touched, so removing it is theirs to
+ * do; that case gets an explanatory line instead. Default CHECKED: rule
+ * creation makes the name and the colour in one step, so deletion mirroring
+ * it is the least surprising default, and the hint spells out the cost.
+ */
+function buildRuleDeleteConfirmCard(L, params) {
+  var builder = CardService.newCardBuilder();
+  builder.setHeader(CardService.newCardHeader()
+    .setTitle(t('rules.delete.title', null, L))
+    .setSubtitle(t('rules.delete.subtitle', { name: params.name }, L)));
+
+  var warnSection = CardService.newCardSection();
+  warnSection.addWidget(CardService.newDecoratedText()
+    .setText(t('rules.delete.warning', null, L))
+    .setWrapText(true));
+
+  if (params.labelDeletable) {
+    var checkbox = CardService.newSelectionInput()
+      .setType(CardService.SelectionInputType.CHECK_BOX)
+      .setFieldName("deleteLabel")
+      .addItem(t('rules.delete.alsoDeleteLabel', null, L), "on", true);
+    warnSection.addWidget(checkbox);
+    warnSection.addWidget(CardService.newDecoratedText()
+      .setText(t('rules.delete.alsoDeleteLabel.hint', null, L))
+      .setWrapText(true));
+  } else {
+    warnSection.addWidget(CardService.newDecoratedText()
+      .setText(t('rules.delete.labelFromGoogle', null, L))
+      .setWrapText(true));
+  }
+  builder.addSection(warnSection);
+
+  // Same shape as buildAccountDeleteConfirmCard: cancel first and plain,
+  // destructive action last and FILLED.
+  var actionSection = CardService.newCardSection();
+  actionSection.addWidget(CardService.newButtonSet()
+    .addButton(CardService.newTextButton()
+      .setText(t('rules.delete.btn.cancel', null, L))
+      .setOnClickAction(CardService.newAction().setFunctionName("actionGoBack")))
+    .addButton(CardService.newTextButton()
+      .setText(t('rules.delete.btn.confirm', null, L))
+      .setTextButtonStyle(CardService.TextButtonStyle.FILLED)
+      .setOnClickAction(CardService.newAction()
+        .setFunctionName("actionDeleteRule")
+        .setParameters({ id: params.id }))));
+  builder.addSection(actionSection);
+
+  return builder.build();
+}
+
+function actionGoToRuleDeleteConfirm(e) {
   var L = pickLocale(e);
-  var id = e.parameters && e.parameters.id;
+  var id = readActionParam(e, 'id');
   if (!id) {
     return CardService.newActionResponseBuilder()
       .setNotification(CardService.newNotification().setText(t('rules.toast.deleteIdMissing', null, L)))
       .build();
   }
+  return CardService.newActionResponseBuilder()
+    .setNavigation(CardService.newNavigation().pushCard(buildRuleDeleteConfirmCard(L, {
+      id: id,
+      name: readActionParam(e, 'name'),
+      labelDeletable: readActionParam(e, 'labelDeletable') === '1'
+    })))
+    .build();
+}
+
+/**
+ * ADR-0008 — confirmed rule deletion. Reached from the confirm card, so the
+ * checkbox (when rendered) arrives as a form input on this very click.
+ */
+function actionDeleteRule(e) {
+  var L = pickLocale(e);
+  var id = readActionParam(e, 'id');
+  if (!id) {
+    return CardService.newActionResponseBuilder()
+      .setNotification(CardService.newNotification().setText(t('rules.toast.deleteIdMissing', null, L)))
+      .build();
+  }
+  // Absent checkbox (label not ours) reads as "" → no flag. The backend
+  // re-checks provenance regardless; this only asks.
+  var alsoDeleteLabel = readRuleFormValue(e, 'deleteLabel') === 'on';
+  // `fetchBackend` has no params option — the query string is part of the path.
+  var endpoint = '/api/categories/' + encodeURIComponent(id) +
+    (alsoDeleteLabel ? '?deleteLabel=1' : '');
   try {
-    var res = AutoColorAPI.fetchBackend('/api/categories/' + encodeURIComponent(id), {
-      method: 'delete'
-    });
+    var res = AutoColorAPI.fetchBackend(endpoint, { method: 'delete' });
     // card-latency #02 — rebuild from the DELETE response's updated list;
     // null (missing/unparsable) falls back to the builder's own fetch.
     var updatedRules = readCategoriesFromMutationResponse(res);
     return CardService.newActionResponseBuilder()
-      .setNavigation(CardService.newNavigation().updateCard(buildRuleManagementCard(e, updatedRules)))
-      .setNotification(CardService.newNotification().setText(t('rules.toast.deleted', null, L)))
+      .setNavigation(CardService.newNavigation().popCard().updateCard(buildRuleManagementCard(e, updatedRules)))
+      .setNotification(CardService.newNotification().setText(ruleDeleteToast(res, alsoDeleteLabel, L)))
       .build();
   } catch (err) {
     if (err.message === 'AUTH_EXPIRED') {
@@ -1511,10 +1624,42 @@ function actionDeleteRule(e) {
         .setNavigation(CardService.newNavigation().popToRoot().updateCard(buildReconnectCard(null, L)))
         .build();
     }
+    // A 404 here means the rule is already gone, which is the outcome the
+    // user asked for — not a failure. `api.js` retries 5xx three times, so a
+    // Worker that committed the delete and then dropped the connection gets a
+    // second DELETE that trips the tombstone guard and 404s. Reporting that
+    // as "삭제 실패" on an irreversible action would be actively misleading;
+    // the route's 404 contract stays as-is and is absorbed here.
+    if (err.message && err.message.indexOf('CLIENT_ERROR: 404') === 0) {
+      return CardService.newActionResponseBuilder()
+        .setNavigation(CardService.newNavigation().popCard().updateCard(buildRuleManagementCard(e, null)))
+        .setNotification(CardService.newNotification().setText(t('rules.toast.deleted', null, L)))
+        .build();
+    }
     return CardService.newActionResponseBuilder()
       .setNotification(CardService.newNotification().setText(t('rules.toast.deleteFailed', { message: err.message }, L)))
       .build();
   }
+}
+
+/**
+ * ADR-0008 — picks the delete toast from what the backend actually did, not
+ * from what was asked. `labelDeleted` is authoritative: the request may have
+ * carried the flag and still been declined (provenance) or failed (Google).
+ */
+function ruleDeleteToast(res, alsoDeleteLabel, L) {
+  if (!alsoDeleteLabel) return t('rules.toast.deleted', null, L);
+  var labelDeleted = false;
+  try {
+    var body = JSON.parse(res.getContentText() || '{}');
+    labelDeleted = !!(body && body.labelDeleted);
+  } catch (_err) {
+    // Unparsable body — fall through to the conservative message rather than
+    // claiming a deletion we cannot confirm.
+  }
+  return labelDeleted
+    ? t('rules.toast.deletedWithLabel', null, L)
+    : t('rules.toast.deletedLabelFailed', null, L);
 }
 
 /**

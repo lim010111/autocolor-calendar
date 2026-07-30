@@ -245,6 +245,91 @@ unconfirmed path) is invisible to the API and cannot be protected; a v1
 marker whose colorId best-matches a user label reads as app-owned until the
 #04 re-stamp (ADR-0006 잔여 리스크 ②).
 
+**Rule deletion is a TOMBSTONE, never a hard DELETE (`categories.rule_deleted_at`).**
+`DELETE /api/categories/:id` stamps the column and leaves the row; the row is
+the only thing that stops `labelReconcile` re-creating the Rule. Creation is
+two-sided (the Add-on mints the Google label AND the Rule) but deletion is
+one-sided by design — label removal is Google's UI to own (ADR-0006 Decision
+3), so the label outlives the Rule. Reconcile's create branch treats "named
+label with no attached rule" as brand new (Decision 2, 출처 불문 동일 취급),
+so a hard DELETE made every editor deletion undo itself on the next sync run,
+re-inserting the rule under a fresh uuid with `keywords` reset to `[name]`.
+Observed in prod 2026-07-30: six deleted rules were all back, and newly
+created events were still being auto-colored by them.
+
+Consequences that must be preserved together:
+
+- `deleteRule` stamps `rule_deleted_at` and **explicitly deletes the rule's
+  `rule_seeds` rows** — the hard DELETE used to take them via `ON DELETE
+  cascade`, and `knnByUser` ranks `rule_seeds` with no join to `categories`,
+  so orphaned seeds keep scoring for a rule the user deleted. The same purge
+  now rides along with reconcile's `label_deleted_at` stamp (that leak was
+  live independently; `drizzle/0022_*.sql` cleans up the existing rows).
+- `listRules` excludes tombstones from **both** shapes — `includeLabelDeleted`
+  is about `label_deleted_at` only and must never reach this column.
+  `getRule` and `updateRule` filter it too, so a stale card 404s instead of
+  editing a deleted rule.
+- Every `labelReconcile` branch checks `ruleDeletedAt` before writing, and the
+  module's rules SELECT deliberately has **no** tombstone filter — filtering
+  there would restore the resurrection.
+- The `(user_id, name)` unique is **partial** (`WHERE rule_deleted_at IS NULL`)
+  so a deleted rule's name stays reusable; the index keeps the old constraint
+  name because `isDuplicateNameError` matches on it.
+- Never auto-clear the stamp (same 부활 금지 discipline as `label_deleted_at`).
+  A deleted Rule's Google label can no longer be re-attached from the Add-on —
+  that is the accepted cost of "사용자 편집이 항상 이긴다".
+
+**The Add-on may delete the Google label too — only one it minted (ADR-0008).**
+`categories.label_origin` (`'addon'|'discovered'|'unknown'`, default
+`'unknown'`) records who made the backing label, and
+`DELETE /api/categories/:id?deleteLabel=1` removes it when — and only when —
+`label_origin='addon' && label_id IS NOT NULL && label_deleted_at IS NULL`.
+This narrows ADR-0006 Decision 3; it does not reverse it. The gate is about
+**blast radius**, not knowledge: a label the user made in Google Calendar may
+be worn by events this app has never touched, and `colorRollback` only visits
+marker-bearing events, so those would go colourless with no rollback and no
+warning. Never widen the gate to `'discovered'`/`'unknown'` without reading
+ADR-0008's Consequences.
+
+- **Who writes `label_origin`.** `'addon'` has exactly ONE writer: `createRule`,
+  and only when a `labelId` was passed — which can only come from the POST
+  route's `createLabelForRule` mint. `labelReconcile`'s create/link branches
+  write `'discovered'` **explicitly** (not via the default: they *know* the
+  label came from Google, and the default means "we never recorded it").
+  `scripts/cutover-labels-core.ts` produces BOTH kinds and takes an `origin`
+  argument per link site.
+- **The query flag is a request, never an authorisation.** The route re-derives
+  the same predicate `toWire.labelDeletable` published, against the row it just
+  tombstoned. The wire carries only that derived boolean — never the enum — so
+  the policy can move without a GAS redeploy.
+- **Awaited, best-effort, never status-changing.** Once the rule is a tombstone
+  its id is gone from every list, so nothing will ever retry the label removal
+  — a `waitUntil` failure would recreate the orphan-label problem invisibly.
+  Every exception is swallowed into `{ labelDeleted: false, labelDeleteError }`
+  on a 200; letting one escape would 500 a delete that succeeded, and
+  `gas/api.js` retries 5xx into the tombstone guard's 404.
+- **On success, stamp `label_deleted_at` as well** — otherwise the tombstone
+  claims a live backing label that was just destroyed. Nothing reads it today,
+  which is exactly why it would rot undetected.
+
+**`colorRollback` order independence (ADR-0008).** An event bearing our marker
+with **no colour at all** (`eventLabelId` and `colorId` both empty) is cleared,
+not skipped as a manual override — there is no user choice left to protect, and
+skipping stranded the four `autocolor_*` keys forever (a tombstoned rule leaves
+no user-reachable path that re-triggers the rollback). Counted as
+`cleared_orphan_marker`, apart from `cleared`, so `rollback_runs.cleared` keeps
+meaning "an app-painted event was un-painted"; the counter rides the consumer's
+completion log and has no DB column.
+
+Measured 2026-07-31 (the `dangling-label-probe.ts` spike, under
+`.scratch/native-labels/spike/`):
+deleting a label DEFINITION leaves the event's `eventLabelId` **dangling but
+intact**, so `appOwned` stays true and the rollback already worked on that
+path — the clause above is insurance there, not a fix. It IS a fix for the
+independent leak it names (user clears the colour by hand → marker litter
+forever), and it is what keeps label deletion and the queued rollback
+order-independent if that undocumented Google behaviour ever changes.
+
 **Label reconciliation fetch budget (native-labels #02).** Each sync run
 issues exactly ONE extra fetch — `calendars.get?fields=labelProperties` in
 `labelReconcile.ts`, before categories load — plus Workers-AI embed calls

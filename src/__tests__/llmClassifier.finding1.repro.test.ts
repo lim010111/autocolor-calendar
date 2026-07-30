@@ -45,6 +45,7 @@ function cat(partial: Partial<Rule> = {}): Rule {
     priority: partial.priority ?? 100,
     labelId: partial.labelId ?? null,
     labelDeletedAt: partial.labelDeletedAt ?? null,
+    labelOrigin: partial.labelOrigin ?? "unknown",
     seeds: partial.seeds ?? synthesizeSeeds({ name, keywords }),
     createdAt: partial.createdAt ?? new Date("2026-04-19T00:00:00Z"),
     updatedAt: partial.updatedAt ?? new Date("2026-04-19T00:00:00Z"),

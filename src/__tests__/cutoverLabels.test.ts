@@ -174,9 +174,14 @@ describe("applyUserPlan", () => {
       }),
       { appendLabel, linkCategory },
     );
-    expect(linkCategory).toHaveBeenNthCalledWith(1, "c1", "lbl-work");
+    // ADR-0008 — the two link kinds must carry DIFFERENT provenance. Call 1
+    // adopts a label that was already in Google; call 2 attaches the label
+    // this run just minted. Collapsing them onto one constant would either
+    // let the Add-on delete labels the user made, or block deletion of the
+    // ones it made itself.
+    expect(linkCategory).toHaveBeenNthCalledWith(1, "c1", "lbl-work", "discovered");
     expect(appendLabel).toHaveBeenCalledWith({ name: "Gym", backgroundColor: "#fbd75b" });
-    expect(linkCategory).toHaveBeenNthCalledWith(2, "c2", "minted-1");
+    expect(linkCategory).toHaveBeenNthCalledWith(2, "c2", "minted-1", "addon");
     expect(result).toEqual({
       linked: 2,
       appended: 1,
@@ -232,7 +237,7 @@ describe("applyUserPlan", () => {
     );
     expect(result.failures).toEqual([{ categoryId: "c1", name: "A", error: "boom" }]);
     expect(result.appended).toBe(1);
-    expect(linkCategory).toHaveBeenCalledWith("c2", "minted-2");
+    expect(linkCategory).toHaveBeenCalledWith("c2", "minted-2", "addon");
   });
 
   it("isolates a failing link — remaining links still run", async () => {

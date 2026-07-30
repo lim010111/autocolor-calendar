@@ -118,7 +118,18 @@ export async function applyUserPlan(
       name: string;
       backgroundColor: string;
     }) => Promise<{ id: string }>;
-    linkCategory: (categoryId: string, labelId: string) => Promise<boolean>;
+    // ADR-0008 — `origin` records who made the label being linked, which is
+    // the only thing that decides whether the Add-on may later delete it.
+    // This CLI is the one writer that produces both kinds, so it is also the
+    // one place the distinction can be lost: a planned link adopts a label
+    // that was already in Google ('discovered'), while a post-append link
+    // attaches the label we just minted ('addon'). Passing a single constant
+    // for both would silently mislabel half the rows.
+    linkCategory: (
+      categoryId: string,
+      labelId: string,
+      origin: "addon" | "discovered",
+    ) => Promise<boolean>;
   },
 ): Promise<ApplyResult> {
   const result: ApplyResult = {
@@ -131,7 +142,9 @@ export async function applyUserPlan(
 
   for (const link of plan.links) {
     try {
-      if (await deps.linkCategory(link.categoryId, link.labelId)) {
+      if (
+        await deps.linkCategory(link.categoryId, link.labelId, "discovered")
+      ) {
         result.linked += 1;
       } else {
         result.linkMissed += 1;
@@ -159,7 +172,7 @@ export async function applyUserPlan(
         backgroundColor: append.backgroundColor,
       });
       result.appended += 1;
-      if (await deps.linkCategory(append.categoryId, id)) {
+      if (await deps.linkCategory(append.categoryId, id, "addon")) {
         result.linked += 1;
       } else {
         // 0 rows AFTER a real append: a concurrent writer linked the row

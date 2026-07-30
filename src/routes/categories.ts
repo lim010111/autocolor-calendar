@@ -17,6 +17,7 @@ import {
   deleteRule,
   DuplicateRuleNameError,
   listRules,
+  stampLabelDeleted,
   updateRule,
   type Rule,
 } from "../services/ruleService";
@@ -151,6 +152,46 @@ async function createLabelForRule(
   }
 }
 
+// ADR-0008 — the delete-side counterpart of `createLabelForRule`, and
+// deliberately NOT shaped like it. `createLabelForRule` returns HTTP
+// outcomes because a failed mint must abort the create (반쪽 상태 금지); here
+// the Rule is ALREADY tombstoned and committed, so no failure may change the
+// response status. It swallows everything and reports a reason the toast can
+// speak, including `UnresolvedCalendarIdError` — letting that escape would
+// 500 a delete that actually succeeded, and `gas/api.js` retries 5xx, so the
+// retry would hit the tombstone guard and surface a 404 "failed" toast for a
+// completed, irreversible action.
+//
+// Best-effort with no retry anywhere: once the rule is a tombstone its id is
+// gone from every list, so nothing in the system will ever come back for
+// this label. That is exactly why the caller AWAITS this instead of
+// `waitUntil`-ing it — a silent failure here would recreate, invisibly, the
+// orphan-label problem this feature exists to remove.
+type LabelRemoveOutcome =
+  | { ok: true }
+  | { ok: false; reason: "reauth" | "forbidden" | "upstream" | "unknown" };
+
+async function removeLabelForRule(
+  db: PostgresJsDatabase,
+  env: Bindings,
+  userId: string,
+  labelId: string,
+): Promise<LabelRemoveOutcome> {
+  try {
+    const { accessToken } = await getValidAccessToken(db, env, userId);
+    await removeEventLabel(accessToken, LABEL_CALENDAR_ID, labelId);
+    return { ok: true };
+  } catch (err) {
+    if (err instanceof ReauthRequiredError) return { ok: false, reason: "reauth" };
+    if (err instanceof CalendarApiError) {
+      if (err.kind === "auth") return { ok: false, reason: "reauth" };
+      if (err.kind === "forbidden") return { ok: false, reason: "forbidden" };
+      return { ok: false, reason: "upstream" };
+    }
+    return { ok: false, reason: "unknown" };
+  }
+}
+
 // Wire projection — drops `seeds` and `userId` from the aggregate so the
 // public shape stays unchanged across this PR. ADR-0004 #02 will flip this
 // to include seeds.
@@ -172,6 +213,17 @@ function toWire(rule: Rule) {
     // Additive fields — the pre-#03 GAS client ignores unknown keys.
     labelId: rule.labelId,
     labelDeletedAt: rule.labelDeletedAt,
+    // ADR-0008 — DERIVED capability, not the raw `label_origin` enum. The
+    // client only ever needs "may I offer to delete the colour label too?",
+    // and keeping the enum server-side means the policy can move (a future
+    // promotion pass, or Option B widening the gate) without a GAS redeploy.
+    // It also keeps one meaning in one place: the DELETE handler re-checks
+    // this exact expression against the row it just tombstoned, so client
+    // and server can only ever disagree about staleness, never about rules.
+    labelDeletable:
+      rule.labelOrigin === "addon" &&
+      rule.labelId !== null &&
+      rule.labelDeletedAt === null,
     createdAt: rule.createdAt,
     updatedAt: rule.updatedAt,
   };
@@ -362,11 +414,65 @@ categoriesRoutes.delete("/:id", async (c) => {
     const result = await deleteRule(db, c.env, userId, idParse.data);
     if (!result) return c.json({ error: "not_found" }, 404);
     c.executionCtx.waitUntil(result.sideEffects);
+
+    // ADR-0008 — the caller asked for the backing Google label to go too.
+    // The flag is a REQUEST, never an authorisation: we re-derive the same
+    // predicate `toWire.labelDeletable` published, against the row we just
+    // tombstoned. A stale card, a hand-crafted request, or a rule whose
+    // label reconcile already stamped gone all land on "skip", and skipping
+    // costs nothing — the three Google fetches below could not have
+    // succeeded anyway.
+    const wantsLabelDeleted = c.req.query("deleteLabel") === "1";
+    const mayDeleteLabel =
+      result.labelOrigin === "addon" &&
+      result.labelId !== null &&
+      result.labelDeletedAt === null;
+    let labelDeleted = false;
+    let labelDeleteError: string | undefined;
+    if (wantsLabelDeleted && mayDeleteLabel) {
+      // AWAITED, not `waitUntil`ed — see `removeLabelForRule`'s header for
+      // why a silent failure here is worse than the added latency.
+      const outcome = await removeLabelForRule(
+        db,
+        c.env,
+        userId,
+        result.labelId!,
+      );
+      labelDeleted = outcome.ok;
+      if (!outcome.ok) labelDeleteError = outcome.reason;
+      if (outcome.ok) {
+        // Keep the row honest: without this stamp the tombstone still claims
+        // a live backing label that we just destroyed. Nothing reads it
+        // today (tombstones are filtered out of every list before this
+        // column is consulted), which is precisely why it would rot
+        // undetected until someone writes an admin query on
+        // `label_deleted_at IS NULL`.
+        await stampLabelDeleted(db, userId, idParse.data);
+      }
+      // Counters + userId only. Label NAMES are user content and stay out of
+      // the log stream, same discipline as `labelReconcile`'s summary log.
+      console.log(
+        JSON.stringify({
+          level: "info",
+          msg: "rule delete — addon label removal",
+          userId,
+          ok: outcome.ok,
+          ...(outcome.ok ? {} : { reason: outcome.reason }),
+        }),
+      );
+    }
+
     // card-latency #02 — 204 → 200 with the updated list so GAS skips the
     // follow-up GET. Status change is safe: the GAS client treats any 2xx as
     // success and previously ignored the (empty) DELETE body.
     const rules = await listRules(db, userId, { includeLabelDeleted: true });
-    return c.json({ categories: rules.map(toWire) });
+    return c.json({
+      categories: rules.map(toWire),
+      // Always present so the client can tell "we did not try" (false, no
+      // error) from "we tried and failed" (false + reason) without guessing.
+      labelDeleted,
+      ...(labelDeleteError !== undefined ? { labelDeleteError } : {}),
+    });
   } finally {
     c.executionCtx.waitUntil(close());
   }

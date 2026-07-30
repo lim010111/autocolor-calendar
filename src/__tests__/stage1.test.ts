@@ -20,6 +20,7 @@ function rule(id: string, name = id, colorId = "9"): Rule {
     backgroundColor: null,
     labelId: null,
     labelDeletedAt: null,
+    labelOrigin: "unknown",
     keywords: [],
     priority: 100,
     seeds: synthesizeSeeds({ name, keywords: [] }),

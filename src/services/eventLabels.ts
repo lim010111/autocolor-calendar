@@ -80,20 +80,38 @@ export async function appendEventLabel(
   return { id: entry.id };
 }
 
-// The ONE sanctioned exception to the append-only contract above: retracting a
-// label THIS request minted moments ago via `appendEventLabel`, when the work
-// it was minted for then failed. It is scoped to make that the only thing it
-// can do — a single caller-supplied id is dropped and every other entry is
-// carried through verbatim from a fresh read.
+// The sanctioned exception to the append-only contract above. Scoped so that
+// dropping ONE caller-supplied id is the only thing it can do: every other
+// entry is carried through verbatim from a fresh read, whoever created it.
 //
-// Why the exception is needed: the create flow mints the label before inserting
-// the Rule, so a losing race on the name's unique constraint leaves a label with
-// no Rule. Reconcile cannot clean that up — Google permits two labels with the
-// same name, so treating same-name duplicates as garbage would delete labels the
-// user made on purpose. Only the request that minted the orphan knows it is one.
+// TWO callers are entitled to it, and the boundary between them matters:
 //
-// Do NOT reach for this to implement user-facing label deletion; that is
-// Google's UI to own (ADR-0006 Decision 3).
+// 1. **Orphan retraction** (`routes/categories.ts` POST catch). The create
+//    flow mints the label before inserting the Rule, so a losing race on the
+//    name's unique constraint leaves a label with no Rule. Reconcile cannot
+//    clean that up — Google permits two labels with the same name, so
+//    treating same-name duplicates as garbage would delete labels the user
+//    made on purpose. Only the request that minted the orphan knows it is one.
+//
+// 2. **Add-on-owned label deletion** (ADR-0008, `routes/categories.ts`
+//    DELETE with `?deleteLabel=1`). Permitted ONLY when
+//    `categories.label_origin = 'addon'` — i.e. we minted this label — AND
+//    the user confirmed it on the delete card. The gate is about blast
+//    radius, not knowledge: a label the user made in Google Calendar may be
+//    worn by events this app has never touched, and `color_rollback` only
+//    visits marker-bearing events, so those would go colourless with no
+//    rollback and no warning. That case stays Google's UI to own
+//    (ADR-0006 Decision 3, narrowed by ADR-0008 — never widen the gate to
+//    'discovered'/'unknown' without re-reading that ADR's Consequences).
+//
+// Anything else — reconcile-driven cleanup, dedupe, "tidying" a stale set —
+// is still forbidden.
+//
+// Unchanged risk in both cases: `labelProperties` has no ETag, so the
+// re-read below narrows but does not close the lost-update window. A
+// concurrent writer between our read and PATCH loses its entry. Same
+// "observed, not prevented" posture as the append path and the §5.4
+// concurrent-PATCH race.
 export async function removeEventLabel(
   accessToken: string,
   calendarId: string,

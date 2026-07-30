@@ -1,4 +1,4 @@
-import { and, asc, eq, inArray, isNull, ne } from "drizzle-orm";
+import { and, asc, eq, inArray, isNull, ne, sql } from "drizzle-orm";
 import type { PostgresJsDatabase } from "drizzle-orm/postgres-js";
 
 import { categories, ruleSeeds, syncState } from "../db/schema";
@@ -47,6 +47,10 @@ export type Rule = {
   // rule is excluded from classification (`listRules` default) but still
   // listed to the editor with a "라벨 삭제됨" badge. Never auto-cleared.
   labelDeletedAt: Date | null;
+  // ADR-0008 — who minted the backing Google label ('addon' | 'discovered' |
+  // 'unknown'). Read by the DELETE route to decide whether the Add-on may
+  // remove that label; see the column comment in `db/schema.ts`.
+  labelOrigin: string;
   seeds: Seed[];
   createdAt: Date;
   updatedAt: Date;
@@ -77,6 +81,15 @@ export type RuleUpdateInput = {
 
 export type RuleSideEffects = { sideEffects: Promise<void> };
 export type RuleMutationResult = RuleSideEffects & { rule: Rule };
+// ADR-0008 — the tombstoned row's label columns, read straight off the
+// guarded UPDATE's returning clause so the DELETE route can decide whether
+// to remove the Google label without racing a second SELECT against a
+// concurrent delete. `deleteRule` itself still never talks to Google.
+export type RuleDeleteResult = RuleSideEffects & {
+  labelId: string | null;
+  labelOrigin: string;
+  labelDeletedAt: Date | null;
+};
 
 export class DuplicateRuleNameError extends Error {
   constructor() {
@@ -103,6 +116,7 @@ const SELECT_FIELDS = {
   priority: categories.priority,
   labelId: categories.labelId,
   labelDeletedAt: categories.labelDeletedAt,
+  labelOrigin: categories.labelOrigin,
   createdAt: categories.createdAt,
   updatedAt: categories.updatedAt,
 } as const;
@@ -117,6 +131,7 @@ type CategoriesRow = {
   priority: number;
   labelId: string | null;
   labelDeletedAt: Date | null;
+  labelOrigin: string;
   createdAt: Date;
   updatedAt: Date;
 };
@@ -149,6 +164,13 @@ function toRule(row: CategoriesRow): Rule {
 // (`calendarSync.loadCategories`, preview route) must never assign a rule
 // whose backing Google label is gone. The editor list passes
 // `includeLabelDeleted: true` to render them with a "라벨 삭제됨" badge.
+//
+// User-deleted rules (`ruleDeletedAt`) are excluded from BOTH shapes and
+// there is no opt-in: the row exists only as the tombstone that stops
+// `labelReconcile` re-creating the rule, and every caller of this function —
+// editor list, classifier, the POST duplicate-name pre-check — must see a
+// deleted rule as gone. `includeLabelDeleted` deliberately does not reach
+// it; the two flags mean different things.
 export async function listRules(
   db: PostgresJsDatabase,
   userId: string,
@@ -159,8 +181,15 @@ export async function listRules(
     .from(categories)
     .where(
       opts?.includeLabelDeleted
-        ? eq(categories.userId, userId)
-        : and(eq(categories.userId, userId), isNull(categories.labelDeletedAt)),
+        ? and(
+            eq(categories.userId, userId),
+            isNull(categories.ruleDeletedAt),
+          )
+        : and(
+            eq(categories.userId, userId),
+            isNull(categories.ruleDeletedAt),
+            isNull(categories.labelDeletedAt),
+          ),
     )
     .orderBy(asc(categories.priority), asc(categories.createdAt));
   const rules = rows.map(toRule);
@@ -205,7 +234,13 @@ export async function getRule(
   const rows = await db
     .select(SELECT_FIELDS)
     .from(categories)
-    .where(and(eq(categories.userId, userId), eq(categories.id, ruleId)))
+    .where(
+      and(
+        eq(categories.userId, userId),
+        eq(categories.id, ruleId),
+        isNull(categories.ruleDeletedAt),
+      ),
+    )
     .limit(1);
   const row = rows[0];
   if (!row) return null;
@@ -502,7 +537,16 @@ export async function createRule(
           ? { backgroundColor: input.backgroundColor }
           : {}),
         ...(input.priority !== undefined ? { priority: input.priority } : {}),
-        ...(input.labelId !== undefined ? { labelId: input.labelId } : {}),
+        // ADR-0008 — a labelId here can only have come from the POST route's
+        // `createLabelForRule`, which mints it. That makes this the ONE place
+        // in the codebase entitled to claim 'addon' provenance; every other
+        // writer of `label_id` (labelReconcile's create/link branches, the
+        // cutover CLI's link branch) found the label already in Google. No
+        // labelId = legacy colorId-only create, which leaves the DB default
+        // 'unknown' — the row has no label to own.
+        ...(input.labelId !== undefined
+          ? { labelId: input.labelId, labelOrigin: "addon" }
+          : {}),
       })
       .returning(SELECT_FIELDS);
     row = inserted[0]!;
@@ -563,7 +607,16 @@ export async function updateRule(
     const updated = await db
       .update(categories)
       .set(update)
-      .where(and(eq(categories.userId, userId), eq(categories.id, ruleId)))
+      .where(
+        and(
+          eq(categories.userId, userId),
+          eq(categories.id, ruleId),
+          // A tombstone is not editable — a stale card holding a deleted
+          // rule's id must 404, not silently re-seed and re-sync a rule the
+          // user removed.
+          isNull(categories.ruleDeletedAt),
+        ),
+      )
       .returning(SELECT_FIELDS);
     row = updated[0];
   } catch (err) {
@@ -629,12 +682,53 @@ export async function deleteRule(
   env: Bindings,
   userId: string,
   ruleId: string,
-): Promise<RuleSideEffects | null> {
+): Promise<RuleDeleteResult | null> {
+  // TOMBSTONE, NOT A HARD DELETE. Removing the row looks right and is
+  // wrong: the Google label the Rule hangs off is untouched (label deletion
+  // is Google's UI to own — ADR-0006 Decision 3), and `labelReconcile`
+  // treats a named label with no attached rule as brand new, so the very
+  // next sync run re-INSERTed the rule with a fresh uuid and `keywords:
+  // [name]`. The user's six deletions all silently undid themselves within
+  // seconds. The surviving row IS the mechanism that stops that — reconcile
+  // finds it in `rulesByLabelId` and skips. Never auto-clear the stamp, and
+  // never turn this back into `db.delete(categories)`.
+  //
+  // ADR-0008 — the returning clause also carries the label columns so the
+  // DELETE route can decide whether it may remove the Google label without
+  // a second SELECT. Keep this ONE guarded atomic UPDATE: `isNull(
+  // ruleDeletedAt)` is what makes exactly one of two concurrent deletes get
+  // a non-empty returning, and therefore what stops both of them reaching
+  // Google. Splitting it into SELECT-then-UPDATE reopens that race.
   const deleted = await db
-    .delete(categories)
-    .where(and(eq(categories.userId, userId), eq(categories.id, ruleId)))
-    .returning({ id: categories.id });
-  if (deleted.length === 0) return null;
+    .update(categories)
+    .set({ ruleDeletedAt: sql`now()` as unknown as Date })
+    .where(
+      and(
+        eq(categories.userId, userId),
+        eq(categories.id, ruleId),
+        // Already-tombstoned rows match nothing → the route 404s, exactly
+        // as a repeated delete did when this was a hard DELETE.
+        isNull(categories.ruleDeletedAt),
+      ),
+    )
+    .returning({
+      id: categories.id,
+      labelId: categories.labelId,
+      labelOrigin: categories.labelOrigin,
+      labelDeletedAt: categories.labelDeletedAt,
+    });
+  const tombstoned = deleted[0];
+  if (tombstoned === undefined) return null;
+
+  // The hard DELETE used to take the rule's seed vectors with it via
+  // `rule_seeds.rule_id ON DELETE cascade`. The tombstone keeps the row, so
+  // the seeds must go explicitly — otherwise `knnByUser` (which ranks
+  // `rule_seeds` with no join to `categories`) keeps scoring a rule the user
+  // deleted, and `decideStage1` either mis-ranks against it or fires a
+  // spurious `ambiguous`. Tenant-scoped per "Tenant isolation".
+  await db
+    .delete(ruleSeeds)
+    .where(and(eq(ruleSeeds.userId, userId), eq(ruleSeeds.ruleId, ruleId)));
 
   // §5 후속 B — fan out per-calendar rollback jobs so events painted by
   // this rule revert to the calendar's default color. sync_state holds
@@ -651,7 +745,35 @@ export async function deleteRule(
   const calendarIds = await listCalendarsForUser(db, userId);
   const sideEffects = fanOutColorRollback(env, userId, ruleId, calendarIds);
 
-  return { sideEffects };
+  return {
+    sideEffects,
+    labelId: tombstoned.labelId,
+    labelOrigin: tombstoned.labelOrigin,
+    labelDeletedAt: tombstoned.labelDeletedAt,
+  };
+}
+
+// ADR-0008 — record that the backing Google label is gone, after the DELETE
+// route removed it on the user's behalf. Deliberately narrow: it does NOT
+// take `isNull(labelDeletedAt)` as a guard, because the caller has already
+// established (from `deleteRule`'s returning clause) that the stamp was
+// absent, and re-stamping is harmless anyway. Same 부활 금지 discipline as
+// every other writer of this column — never auto-cleared.
+//
+// Lives here rather than inline in the route so the route keeps needing no
+// schema imports and every tenant-scoped write stays in one file.
+export async function stampLabelDeleted(
+  db: PostgresJsDatabase,
+  userId: string,
+  ruleId: string,
+): Promise<void> {
+  await db
+    .update(categories)
+    .set({
+      labelDeletedAt: sql`now()` as unknown as Date,
+      updatedAt: sql`now()` as unknown as Date,
+    })
+    .where(and(eq(categories.userId, userId), eq(categories.id, ruleId)));
 }
 
 // ADR-0004 #05 — example lifecycle cap: at most 10 example seeds per rule;
