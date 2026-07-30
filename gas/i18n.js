@@ -985,12 +985,50 @@ function getSwatchForHex(hex) {
 }
 
 /**
+ * Nearest of the 24 swatches by RGB distance. Covers custom RGB label
+ * colors (the Google UI allows them) — approximating within the palette
+ * beats falling back to a fixed grey. Returns null for a missing/unparsable
+ * hex so callers can chain to the legacy colorId path.
+ */
+function getNearestSwatchForHex(hex) {
+  var m = /^#?([0-9a-fA-F]{6})$/.exec(String(hex || '').trim());
+  if (!m) return null;
+  var n = parseInt(m[1], 16);
+  var r = (n >> 16) & 0xff, g = (n >> 8) & 0xff, b = n & 0xff;
+  var best = null, bestDist = Infinity;
+  for (var i = 0; i < LABEL_SWATCH_PALETTE.length; i++) {
+    var c = parseInt(LABEL_SWATCH_PALETTE[i].hex.slice(1), 16);
+    var d = Math.pow(r - ((c >> 16) & 0xff), 2) +
+            Math.pow(g - ((c >> 8) & 0xff), 2) +
+            Math.pow(b - (c & 0xff), 2);
+    if (d < bestDist) { bestDist = d; best = LABEL_SWATCH_PALETTE[i]; }
+  }
+  return best;
+}
+
+/**
  * Swatch for a legacy classic colorId cache value (`categories.colorId`).
  * Falls back to graphite for unknown ids so list rows always render an
  * icon. Removed with the native-labels #04 cutover.
  */
 function getSwatchForClassicColorId(colorId) {
   return getSwatchForHex(CLASSIC_COLOR_ID_HEX[String(colorId)] || '#616161');
+}
+
+/**
+ * Swatch for a rule row (`{backgroundColor, colorId}`). `backgroundColor` is
+ * the label's real hex and the display source of truth: `colorId` collapses
+ * the 24 label colors onto 11 classic ids, so rendering from it showed the
+ * wrong color for 19 of the 24 (brown → green, wisteria → blue, …). The
+ * colorId path survives only for rows the backend has not backfilled yet
+ * (reconcile fills them on the next sync) and for pre-cutover rules that
+ * have no label at all.
+ */
+function getSwatchForRule(rule) {
+  var hex = rule && rule.backgroundColor;
+  return getSwatchForHex(hex) ||
+    getNearestSwatchForHex(hex) ||
+    getSwatchForClassicColorId(rule && rule.colorId);
 }
 
 /**

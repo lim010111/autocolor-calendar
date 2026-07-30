@@ -1,17 +1,14 @@
-// `getLabelSwatches()` / `getSwatchForHex(hex)` / `getSwatchForClassicColorId`
-// and the LABEL_SWATCH_PALETTE / CLASSIC_COLOR_ID_HEX data live in gas/i18n.js
-// — all exposed as global functions/vars in Apps Script's flat scope.
+// `getLabelSwatches()` / `getSwatchForHex(hex)` / `getSwatchForRule(rule)` /
+// `getSwatchForClassicColorId` and the LABEL_SWATCH_PALETTE /
+// CLASSIC_COLOR_ID_HEX data live in gas/i18n.js — all exposed as global
+// functions/vars in Apps Script's flat scope.
 
-// Palette-order index for a rule's cached classic colorId (native-labels #03:
-// the editor list still sorts by color; the cache maps to a 24-grid hex).
-function getRuleColorOrderIndex(colorId) {
-  var hex = CLASSIC_COLOR_ID_HEX[String(colorId)];
-  if (!hex) return Number.MAX_SAFE_INTEGER;
-  var swatches = getLabelSwatches();
-  for (var i = 0; i < swatches.length; i++) {
-    if (swatches[i].hex === hex) return i;
-  }
-  return Number.MAX_SAFE_INTEGER;
+// Palette-order index for a rule's resolved swatch (native-labels #03: the
+// editor list sorts by color). Keyed off the same resolver the row icon uses,
+// so the order can never disagree with what is drawn.
+function getRuleColorOrderIndex(rule) {
+  var idx = getLabelSwatches().indexOf(getSwatchForRule(rule));
+  return idx < 0 ? Number.MAX_SAFE_INTEGER : idx;
 }
 
 /**
@@ -520,7 +517,8 @@ function fetchCategoriesOrError() {
 
 /**
  * Maps the backend wire shape (`{ id, name, colorId, labelId, ... }`) to the
- * trimmed `{ id, keyword, colorId, labelId, labelDeleted }` rule rows the
+ * trimmed `{ id, keyword, colorId, backgroundColor, labelId, labelDeleted }`
+ * rule rows the
  * card builders consume. Shared by fetchCategoriesOrError and the
  * mutation-response fast path below.
  */
@@ -532,6 +530,10 @@ function mapWireCategoriesToRules(categories) {
       // 과거에는 keywords[0]만 사용해서 "프로젝트, 개발" 입력이 "프로젝트"로만 표시됐음.
       keyword: c.name || (c.keywords && c.keywords[0]) || "",
       colorId: c.colorId,
+      // ADR-0006 — the label's real hex; what every swatch renders from.
+      // null on rows the backend has not backfilled yet (reconcile fills
+      // them on the next sync) → getSwatchForRule falls back to colorId.
+      backgroundColor: c.backgroundColor || null,
       // native-labels #03 (ADR-0006) — labelId drives the sidebar chip POST;
       // labelDeleted renders the editor's "라벨 삭제됨" badge.
       labelId: c.labelId || null,
@@ -716,10 +718,10 @@ function onEventOpen(e) {
       .setOnClickAction(chipAction);
 
     // Inline data-URI swatches — no external image host (card-latency #03).
-    // The chip icon renders the rule's cached nearest-classic color; the
-    // label's true hex lives in Google (name is what identifies the chip).
+    // The chip icon renders the label's real color (`backgroundColor`), same
+    // resolver as the editor list.
     chips.forEach(function(chip) {
-      var sw = getSwatchForClassicColorId(chip.colorId);
+      var sw = getSwatchForRule(chip);
       var url = (chip.labelId === selectedLabelId) ? sw.selectedUrl : sw.url;
       labelGrid.addItem(CardService.newGridItem()
         .setIdentifier(chip.labelId)
@@ -1130,7 +1132,8 @@ var CATEGORIES_SNAPSHOT_PARAM_MAX_CHARS = 8192;
 
 /**
  * card-latency #01 — serializes the trimmed `{id, keyword, colorId,
- * labelId, labelDeleted}` rules list for the grid pass-through parameter.
+ * backgroundColor, labelId, labelDeleted}` rules list for the grid
+ * pass-through parameter.
  * Returns null when the list is unavailable (fetch error) or the JSON
  * exceeds the parameter budget, so callers omit the parameter and the
  * re-render fetches instead.
@@ -1144,6 +1147,7 @@ function serializeCategoriesSnapshot(rules) {
         id: r.id,
         keyword: r.keyword,
         colorId: r.colorId,
+        backgroundColor: r.backgroundColor || null,
         labelId: r.labelId || null,
         labelDeleted: !!r.labelDeleted,
       };
@@ -1185,7 +1189,8 @@ function readCategoriesSnapshot(e) {
  * Screen 4: Rule Management Card.
  *
  * `categoriesSnapshot` (optional) — a trimmed `[{id, keyword, colorId,
- * labelId, labelDeleted}]` list already fetched earlier in the same render
+ * backgroundColor, labelId, labelDeleted}]` list already fetched earlier in
+ * the same render
  * cycle (card-latency #01).
  * When present, the builder reuses it instead of re-fetching
  * `/api/categories` — a pure-UI re-render (color pick) must not cost a
@@ -1335,12 +1340,13 @@ function buildRuleManagementCard(e, categoriesSnapshot) {
       .setWrapText(true));
   } else {
     rules.sort(function(a, b) {
-      return getRuleColorOrderIndex(a.colorId) - getRuleColorOrderIndex(b.colorId);
+      return getRuleColorOrderIndex(a) - getRuleColorOrderIndex(b);
     });
     rules.forEach(function(rule) {
-      // Row icon renders the cached nearest-classic color (read-only under
-      // ADR-0006 — the label's canonical color lives in Google Calendar).
-      var colorUrl = getSwatchForClassicColorId(rule.colorId).url;
+      // Row icon renders the label's real color (read-only under ADR-0006 —
+      // the canonical value lives in Google Calendar and reaches us as
+      // `backgroundColor`; the legacy colorId is too lossy to draw from).
+      var colorUrl = getSwatchForRule(rule).url;
 
       var deleteButton = CardService.newTextButton()
         .setText(t('rules.btn.delete', null, L))

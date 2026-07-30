@@ -85,7 +85,7 @@ export function planCutover(args: {
     // mirrors `nearestClassicColorId`'s neutral default and only fires if
     // that invariant is somehow violated.
     const backgroundColor =
-      CLASSIC_EVENT_COLOR_HEX[cat.colorId] ?? CLASSIC_EVENT_COLOR_HEX["8"] ?? "#e1e1e1";
+      CLASSIC_EVENT_COLOR_HEX[cat.colorId] ?? CLASSIC_EVENT_COLOR_HEX["8"] ?? "#616161";
     plan.appends.push({ categoryId: cat.id, name, backgroundColor });
   }
 

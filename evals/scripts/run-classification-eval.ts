@@ -625,6 +625,7 @@ function buildCategory(
     userId: "eval-runner",
     name: c.name,
     colorId: c.colorId,
+    backgroundColor: null,
     keywords: c.keywords,
     priority: 100 + i,
     labelId: null,

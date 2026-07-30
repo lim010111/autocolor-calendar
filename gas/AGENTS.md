@@ -16,7 +16,8 @@ or fallbacks** — the backend is the source of truth (see
 - `storage.js` — `PropertiesService` per-user wrappers.
 - `i18n.js` — `pickLocale` / `t` / `MESSAGES` (en, ko, zh-CN, zh-TW) +
   `LABEL_SWATCH_PALETTE` / `getLabelSwatches()` / `getSwatchForHex(hex)` /
-  `getSwatchForClassicColorId(colorId)` / `getAuthErrorBundle`.
+  `getNearestSwatchForHex(hex)` / `getSwatchForClassicColorId(colorId)` /
+  `getSwatchForRule(rule)` / `getAuthErrorBundle`.
 - `appsscript.json` — manifest (scopes / triggers / runtime; already
   declares `useLocaleFromApp: true` + `script.locale` scope).
 
@@ -105,6 +106,14 @@ Reviewer-walkthrough scripts under [../docs/assets/marketplace/reviewer-demo/](.
   `onEventOpen` render path — it would put a `users` read on the sidebar hot
   path for state needed only on a rare action, and the backend's 403 is the
   only authority that honours a withdrawal made on another device.
+- **Swatches render from `backgroundColor`, never from `colorId`.** The rule
+  wire shape carries both; `colorId` is a legacy nearest-classic cache that
+  collapses the 24 label colors onto 11 ids, so drawing from it showed the
+  wrong color for 19 of the 24 (cocoa → basil green, wisteria → blue). Use
+  `getSwatchForRule(rule)` — never `getSwatchForClassicColorId` directly —
+  and keep `CLASSIC_COLOR_ID_HEX` in lockstep with the backend's
+  `CLASSIC_EVENT_COLOR_HEX` (pinned by `src/__tests__/gasSwatch.test.ts`,
+  which evaluates this module's real source).
 - **Gotcha:** `CardService` cannot render arbitrary HTML — every card is
   rebuilt on every action, so do NOT cache view state in module-level vars.
   Per-user state belongs in `storage.js`; per-render state belongs in the

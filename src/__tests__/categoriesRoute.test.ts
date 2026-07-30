@@ -387,6 +387,31 @@ describe("/api/categories — create with backgroundColor (native-labels #03)", 
     expect(currentDb.state.categories[0]?.labelId).toBe(LABEL_ID);
   });
 
+  it("persists and returns the picked hex — the editor's swatch source", async () => {
+    // Regression: only the nearest-classic colorId used to survive, which
+    // collapses 24 label colors onto 11 ids. Cocoa (#795548) came back as
+    // basil green in "My rules"; the hex has to round-trip verbatim.
+    const res = await post({
+      name: "식사",
+      backgroundColor: "#795548",
+      keywords: ["식사"],
+    });
+    expect(res.status).toBe(201);
+    const body = (await res.json()) as {
+      category: { backgroundColor: string | null };
+      categories: Array<{ backgroundColor: string | null }>;
+    };
+    expect(body.category.backgroundColor).toBe("#795548");
+    expect(body.categories[0]?.backgroundColor).toBe("#795548");
+    expect(currentDb.state.categories[0]?.backgroundColor).toBe("#795548");
+
+    const list = await invoke("/api/categories", { userToken: "token-a" });
+    const listed = (await list.json()) as {
+      categories: Array<{ backgroundColor: string | null }>;
+    };
+    expect(listed.categories[0]?.backgroundColor).toBe("#795548");
+  });
+
   it("atomicity — label creation failure returns an error and creates NO rule", async () => {
     appendEventLabelMock.mockRejectedValue(
       new CalendarApiError("server", 500, undefined, "calendars.patch 500"),

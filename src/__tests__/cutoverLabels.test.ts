@@ -9,6 +9,7 @@ import {
 import { CALENDAR_EVENT_LABEL_CAP } from "../services/eventLabels";
 import type { CalendarEventLabel } from "../services/googleCalendar";
 import { CLASSIC_EVENT_COLOR_HEX } from "../services/labelReconcile";
+import { LABEL_PALETTE_HEXES } from "./_helpers/gasSwatches";
 
 const unnamed = (id: string, backgroundColor = "#7986cb"): CalendarEventLabel => ({
   id,
@@ -44,6 +45,20 @@ describe("planCutover", () => {
     expect(plan.links).toEqual([]);
     expect(plan.skips).toEqual([]);
     expect(plan.capExceeded).toBe(false);
+  });
+
+  it("appends a color that exists in the 24-slot label palette", () => {
+    // Regression: the hex table used to hold `colors.get`'s pastel values,
+    // so cutover-created labels got washed-out colors that match no palette
+    // slot (and no swatch in the editor). Every id must map into the grid.
+    for (const colorId of Object.keys(CLASSIC_EVENT_COLOR_HEX)) {
+      const plan = planCutover({
+        labels: [],
+        pending: [cat(`c-${colorId}`, `n-${colorId}`, colorId)],
+        claimedLabelIds: new Set(),
+      });
+      expect(LABEL_PALETTE_HEXES).toContain(plan.appends[0]?.backgroundColor);
+    }
   });
 
   it("links a same-name named label instead of appending (re-run idempotency)", () => {
