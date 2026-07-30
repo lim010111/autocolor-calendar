@@ -288,7 +288,7 @@ runbook이 정본임을 알리는 cross-reference만 추가.
   `e021b47f`, 2026-05-08). `https://autocolorcal.app/` 200 + `text/html`
   active, `/healthz` 회귀 없음. row 120 `완료` 전환.
 - §2 row 132 (Onboarding-card 카피 refresh) — 6B에서 처리.
-- `TODO.md:134` 부분 unblock — Marketplace 등록(08 runbook)이 정식 시점.
+- `TODO.md:137` 부분 unblock — Marketplace 등록(08 runbook)이 정식 시점.
 - §1 row "App icon 128×128 / 32×32" status `초안` → `완료` (Step 5의 아이콘
   URL 200 확인 후). [`gas/appsscript.json:22`](../../gas/appsscript.json)
   `logoUrl`은 이미 `https://legal.autocolorcal.app/icon-128.png`로 가리키고

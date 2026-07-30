@@ -257,7 +257,7 @@ and the §5.4 ownership-marker contract.
   `${GAS_REDIRECT_URL}?error=consent_denied`; GAS `doGet` falls
   through to `authError.html` (`gas/addon.js:1104`). Pointer:
   `gas/authError.html` (current generic surface;
-  per-error-code branches are tracked at `TODO.md:36`).
+  per-error-code branches are tracked at `TODO.md:38`).
 - **Provider error / unexpected exception.** Google sends
   `?error=invalid_request` (or similar) →
   `OAuthError("provider_error")` (`src/routes/oauth.ts:43`). A

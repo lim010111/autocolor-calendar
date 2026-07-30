@@ -50,7 +50,7 @@ URL 을 유일한 `/exec` 인 것처럼 적어 두어 prod 리다이렉트 대�
 
 | Deployment ID | 역할 | 정본 | 버전 |
 |---|---|---|---|
-| `AKfycbxfHV5JvpRF…` | **설치본 Add-on** — 사용자가 Calendar 에서 실행하는 코드 | 2026-07-07 v49 잔류 사고로 확인 | @57 (2026-07-29) |
+| `AKfycbxfHV5JvpRF…` | **설치본 Add-on** — 사용자가 Calendar 에서 실행하는 코드 | 2026-07-07 v49 잔류 사고로 확인 | @59 (2026-07-30, native-labels #03 색 표시 수정 배포) |
 | `AKfycbxKZDXL9_vy…` | **prod 웹앱** — Worker 가 OAuth 결과를 되던지는 `/exec` | `.prod.vars` `GAS_REDIRECT_URL` | @54 |
 | `AKfycby_UpX9PLFS…` | HEAD 추적 배포 — 코드 push 즉시 반영 | `clasp deployments` | @HEAD |
 
@@ -68,9 +68,9 @@ URL 을 유일한 `/exec` 인 것처럼 적어 두어 prod 리다이렉트 대�
   설치본 하나로 충분하다. `doGet` / `auth.js` / `authCallback.html` /
   `authError.html` / `config.js` 처럼 **OAuth 콜백 경로**가 바뀌면 prod 웹앱도
   같이 올려야 한다 — 안 그러면 애드온과 콜백이 서로 다른 버전을 돈다.
-- 2026-07-28 배포 시점의 드리프트: 설치본 @56 vs prod 웹앱 @54. 콜백 경로
+- 2026-07-30 시점의 드리프트: 설치본 @59 vs prod 웹앱 @54. 콜백 경로
   파일은 `e5cd859`(PR #71) 이후 무변경이라 **기능적 문제 없음**. 정렬하고
-  싶으면 `clasp deploy -i AKfycbxKZDXL9_vy… -V 56` 한 줄.
+  싶으면 `clasp deploy -i AKfycbxKZDXL9_vy… -V 59` 한 줄.
 
 ## 자격증명 회전 이력
 

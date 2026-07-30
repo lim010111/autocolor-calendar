@@ -316,7 +316,7 @@ publish 전에는 영향 없음.
 - row 256 (Scope justifications) — `초안` → `완료`.
 - row 257 (Demo video) — `미작성` → `완료`.
 
-`TODO.md:133` 체크박스 `[ ]` → `[x]`.
+`TODO.md:136` 체크박스 `[ ]` → `[x]`.
 
 ## (참고) CASA 보안 평가
 
@@ -351,7 +351,7 @@ Tier 결정에 영향을 줄 수 있는 요인:
 
 - `docs/marketplace-readiness.md` §2 status 표 거의 모두 `완료`.
 - `docs/marketplace-readiness.md` §5 row 256-257 `완료`.
-- `TODO.md:133` 체크박스 `[ ]` → `[x]`.
+- `TODO.md:136` 체크박스 `[ ]` → `[x]`.
 - G8 (Marketplace 등록) unblock — 본 runbook이 G8의 핵심 prerequisite.
 - 사용자 OAuth 흐름의 "100명 제한" 자동 해제.
 

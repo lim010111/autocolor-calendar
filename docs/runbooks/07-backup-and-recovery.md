@@ -1,9 +1,9 @@
 # 07 — Backup and recovery
 
-> 이 runbook은 [`TODO.md` §7 line 132](../../TODO.md) "Supabase 데이터베
+> 이 runbook은 [`TODO.md` §7 line 135](../../TODO.md) "Supabase 데이터베
 > 이스 백업/복구 정책 수립" 정본 절차다. Workspace Marketplace admin
 > 검수에서 자주 묻는 "데이터 복구 절차" 항목 (`docs/marketplace-readiness.md`
-> §3 row 178)의 prerequisite.
+> §3 "Retention policy" 행)의 prerequisite.
 >
 > **현 단계 정책 (2026-05-06 결정): PITR add-on 활성화 보류, Pro plan
 > daily snapshot (7일 보존)만으로 운영 시작.** RPO 24h 허용. 근거 +
@@ -25,11 +25,14 @@
     prod Supabase 프로젝트 + drizzle 마이그레이션 적용.
   - Supabase 프로젝트 owner 또는 admin 권한.
   - Supabase Pro plan 결제 (daily snapshot 7일 보존 prerequisite).
+    **현재 미충족** — 2026-05-06 결제분이 2026-07-01 billing 중단으로
+    끊겨 prod 가 임시 Free 다(pause → Restore). 아래 Step 은 Pro 복구
+    이후에만 수행 가능하다.
 - **Acceptance** (현 단계, PITR 보류):
   - 복구 리허설 1회 성공 — 본 runbook Step 3B 시퀀스 (daily snapshot
     기반) 완수.
   - RPO / RTO 본 문서에 명시 (= Step 2 결과, 현재 RPO 24h).
-  - `docs/marketplace-readiness.md` §5 row 262 status note에 "PITR 보류
+  - `docs/marketplace-readiness.md` §5 "Backup / recovery policy" 행 status note에 "PITR 보류
     + daily snapshot only" 명시.
 - **PITR 활성화 단계 추가 Acceptance** (도입 트리거 충족 후):
   - PITR 활성화 — Supabase Dashboard → Project → Settings → Database →
@@ -41,8 +44,9 @@
 
 ### Supabase 자동 백업 기본 동작 (모든 plan)
 
-- **Daily snapshot**: 매일 1회 자동, 7일 보존. Free / Pro / Team / Enterprise
-  공통.
+- **Daily snapshot**: 매일 1회 자동, 7일 보존 — **Pro 이상 전용**.
+  Free 프로젝트에는 자동 백업이 **없다**(2026-07-01 prod Free 후퇴 시 실측
+  확인). Free 는 여기에 7일 무활동 자동 pause 까지 겹친다.
 - **다운로드 가능**: Dashboard → Database → Backups → "Download backup"
   버튼. SQL dump 파일.
 - **Restore 버튼**: 같은 프로젝트 또는 새 프로젝트로 시점 복구.
@@ -58,7 +62,7 @@ vendor URL 인라인 금지)
 
 | Plan | Daily snapshot | PITR | Storage / Bandwidth quota | 권장 시점 |
 |---|---|---|---|---|
-| Free | 7일 보존 | ❌ | tight | dev 환경만 |
+| Free | ❌ 없음 | ❌ | tight + 7일 무활동 자동 pause | dev 환경만 |
 | Pro | 7일 보존 | ✅ 7일 (add-on) | moderate | **prod 1단계 — PITR add-on은 보류** |
 | Team | 14일 보존 | ✅ 14일 | larger | 사용자 100+ 또는 contractual SLA 시 |
 | Enterprise | 28일 보존 | ✅ 28일 | custom | 대규모·계약 단위 |
@@ -90,12 +94,12 @@ vendor URL 인라인 금지)
 - **계약/SLA 의무**: 특정 고객 또는 Marketplace 후속 심사가 초 단위
   RPO를 요구하는 경우.
 
-도입 시 본 runbook Step 3A + Step 5A를 동시 실행하고 §5 row 262 note를
+도입 시 본 runbook Step 3A + Step 5A를 동시 실행하고 §5 "Backup / recovery policy" 행 note를
 갱신.
 
 ### 결정 기록
 
-현재 결정 (Pro plan + PITR 보류)을 [`docs/marketplace-readiness.md` §5 row 262](../marketplace-readiness.md)
+현재 결정 (Pro plan + PITR 보류)을 [`docs/marketplace-readiness.md` §5 "Backup / recovery policy" 행](../marketplace-readiness.md)
 note에 1줄로 기록. PITR 활성화 시 같은 row만 갱신.
 
 ## Step 2 — RPO / RTO 정의
@@ -131,7 +135,7 @@ PITR 활성화 시 RPO를 **초 단위**로 갱신 (§Step 1 "PITR 도입 트리
 > RPO)로 단계별 업그레이드 예정입니다."
 
 이 문장은 [`docs/marketplace-readiness.md`](../marketplace-readiness.md)
-§5 row 262 status 채울 때 사용. PITR 활성화 시점에 RPO 문구를 초 단위로
+§5 "Backup / recovery policy" 행 status 채울 때 사용. PITR 활성화 시점에 RPO 문구를 초 단위로
 갱신하고 "단계별 업그레이드 예정" 절을 활성화 사실로 바꿈.
 
 ## Step 3 — PITR 활성화 (보류) + 복구 리허설
@@ -293,7 +297,7 @@ DB 연결 실패. Supabase Dashboard 접근 불가 또는 프로젝트 status "I
 
 ## Step 5 — 정합성 갱신
 
-### 5A — `docs/marketplace-readiness.md` §5 row 262 (Backup / recovery policy)
+### 5A — `docs/marketplace-readiness.md` §5 "Backup / recovery policy" 행 (Backup / recovery policy)
 
 기존 `미작성` → `초안` 또는 `완료`. status note는 현 단계에서 다음
 형태:
@@ -309,7 +313,7 @@ Principle 5는 secret 암호화 / 토큰 보호 영역이지만 백업 정책도
 한 axis. Principle 5 본문에 "백업 정책은 [07 runbook](docs/runbooks/07-backup-and-recovery.md)
 참조" 1줄 추가 권장.
 
-### 5C — `TODO.md:132` (Supabase 데이터베이스 백업/복구 정책 수립)
+### 5C — `TODO.md:135` (Supabase 데이터베이스 백업/복구 정책 수립)
 
 현 단계 (PITR 보류 결정 + daily snapshot 리허설 완료) 시점에는 체크박스
 `[ ]` → `[x]` 가능. 도입 트리거 충족 → PITR 활성화 시 별도 후속
@@ -348,9 +352,9 @@ follow-up TODO를 새로 추가 (현재 항목을 `[ ]`로 되돌리지 말 것 
 
 ## Submission-time 영향
 
-- `docs/marketplace-readiness.md` §5 row 262 (Backup / recovery policy)
+- `docs/marketplace-readiness.md` §5 "Backup / recovery policy" 행 (Backup / recovery policy)
   `초안` → `완료` (현 단계 정책 수립 + 리허설 완료 시점).
-- `TODO.md:132` 체크박스 `[ ]` → `[x]` (PITR 보류 + daily snapshot 리허설
+- `TODO.md:135` 체크박스 `[ ]` → `[x]` (PITR 보류 + daily snapshot 리허설
   완료 시점).
 - 본 runbook 자체는 G8 (Marketplace 등록)을 unblock하지 않지만 admin 답변
   품질을 향상시켜 검수 통과 신뢰도 증가.
@@ -359,7 +363,7 @@ follow-up TODO를 새로 추가 (현재 항목을 `[ ]`로 되돌리지 말 것 
 
 - [`TODO.md` §7 line 132](../../TODO.md) — 작업 정본
 - [`docs/completion-roadmap.md`](../completion-roadmap.md) — G7 절
-- [`docs/marketplace-readiness.md`](../marketplace-readiness.md) — §5 row 262 (현 단계 정합성 갱신 대상)
+- [`docs/marketplace-readiness.md`](../marketplace-readiness.md) — §5 "Backup / recovery policy" 행 (현 단계 정합성 갱신 대상)
 - [`docs/security-principles.md`](../security-principles.md) — Principle 5 cross-reference
 - [`docs/runbooks/02-prod-environment-activation.md`](./02-prod-environment-activation.md) — Step 1 prod Supabase 프로젝트 prerequisite, Step 13 세션 GC pg_cron (Retention 정책 일부)
 - [`docs/runbooks/08-marketplace-submission.md`](./08-marketplace-submission.md) — Step 6 정기 운영 트리거에 인용

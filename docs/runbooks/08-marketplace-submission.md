@@ -18,10 +18,18 @@
     (test 계정 OAuth + sync 검증 통과).
   - [04 runbook](./04-legal-hosting.md) — Privacy / ToS URL 공개.
   - [05 runbook](./05-marketplace-listing-assets.md) — 11개 listing 자료
-    Marketplace SDK Draft 입력 완료.
+    Marketplace SDK Draft 입력 완료. **스크린샷은 현행 UI 로 촬영된 것
+    이어야 한다** — 2026-05-09 촬영분은 편집기 개편(07-28)·legal
+    clickwrap(07-29) 이전 화면이라 무효이며, SDK 콘솔에 올라간 자료도
+    같이 교체해야 한다.
   - [06 runbook](./06-oauth-verification.md) — OAuth Consent Screen
-    Verification status `Verified`.
-  - [07 runbook](./07-backup-and-recovery.md) — PITR 활성화 + 복구 리허설.
+    Verification status `Verified` (2026-07-24 승인 완료).
+  - [07 runbook](./07-backup-and-recovery.md) — **Supabase Pro plan +
+    daily snapshot 기반 복구 리허설 1회**. PITR 은 2026-05-06 에 보류
+    결정된 별도 축이므로 G8 의 선행조건이 아니다 (07 runbook Step 1
+    "PITR 보류 결정"). 2026-07-01 billing 중단으로 prod 가 임시 Free —
+    Free 는 백업 0 + 7일 무활동 자동 pause 라 **Pro 복구가 이 행의
+    실질 조건**이다.
   - [03 runbook](./03-cicd-pipeline.md) — 권장이지만 G8 차단 게이트 아님
     (출시 후 추가 가능).
 - **Acceptance**:
@@ -46,10 +54,11 @@ grep -E "^\| (Owned domain|Prod Supabase|Privacy Policy|Terms of Service|Scope j
 | Prod Worker 활성 | `curl https://<prod-domain>/healthz` → 200 |
 | Privacy / ToS URL | `curl -I https://legal.<prod-domain>/privacy` → 200 + content-type (G4 결정: legal subdomain) |
 | OAuth verification | GCP Console → OAuth consent screen → Verification status: Verified |
-| Listing assets | Marketplace SDK 콘솔 → App Configuration 모든 빨간 ! 사라짐 |
-| Backup policy | Supabase Dashboard → Backups → PITR 토글 ON |
-| `gas/appsscript.json:17` | `grep "logoUrl" gas/appsscript.json`이 `gstatic` 아닌 자체 호스팅 URL |
-| `gas/addon.js:119` | `grep "정식 링크" gas/addon.js` 결과 0행 (placeholder 제거됨) |
+| Listing assets | Marketplace SDK 콘솔 → App Configuration 모든 빨간 ! 사라짐 + 업로드된 스크린샷이 현행 UI (라벨 칩 편집기 + welcome clickwrap) |
+| Backup policy | Supabase Dashboard → Settings → Billing 이 **Pro** + Backups 탭에 daily snapshot 존재 (PITR 토글은 보류 결정이라 OFF 가 정상) |
+| 접속기록 보관 | 처리방침 §8.2 가 약속한 1년 보관 루틴 가동 여부 (Audit Log Drain 또는 정기 export) |
+| `gas/appsscript.json` logoUrl | `grep "logoUrl" gas/appsscript.json`이 `gstatic` 아닌 자체 호스팅 URL |
+| `gas/addon.js` placeholder | `grep "정식 링크" gas/addon.js` 결과 0행 (placeholder 제거됨) |
 
 위 check 중 하나라도 실패면 **publish 금지**. 해당 prerequisite runbook으
 로 돌아가 마무리.
