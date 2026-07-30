@@ -5,7 +5,11 @@ import { z } from "zod";
 import { getDb } from "../db";
 import type { Bindings, HonoEnv } from "../env";
 import { authMiddleware } from "../middleware/auth";
-import { appendEventLabel, EventLabelCapError } from "../services/eventLabels";
+import {
+  appendEventLabel,
+  EventLabelCapError,
+  removeEventLabel,
+} from "../services/eventLabels";
 import { CalendarApiError } from "../services/googleCalendar";
 import { nearestClassicColorId } from "../services/labelReconcile";
 import {
@@ -78,7 +82,10 @@ const UuidParam = z.string().uuid();
 const LABEL_CALENDAR_ID = "primary";
 
 type LabelCreateOutcome =
-  | { ok: true; labelId: string }
+  // `accessToken` rides along so a failure downstream of the mint can retract
+  // the label on the token already refreshed here, rather than refreshing again
+  // on an error path.
+  | { ok: true; labelId: string; accessToken: string }
   | {
       ok: false;
       status: 403 | 422 | 429 | 502 | 503;
@@ -109,7 +116,7 @@ async function createLabelForRule(
 
   try {
     const created = await appendEventLabel(accessToken, LABEL_CALENDAR_ID, input);
-    return { ok: true, labelId: created.id };
+    return { ok: true, labelId: created.id, accessToken };
   } catch (err) {
     if (err instanceof EventLabelCapError) {
       // 200-label calendar cap — a typed 4xx instead of Google's opaque 400.
@@ -193,6 +200,9 @@ categoriesRoutes.post("/", async (c) => {
   }
 
   const { db, close } = getDb(c.env);
+  // Declared outside the try so the catch can retract a label this request
+  // minted when the Rule insert then fails (see the TOCTOU note below).
+  let minted: { labelId: string; accessToken: string } | undefined;
   try {
     const input = parsed.data;
     let labelId: string | undefined;
@@ -208,9 +218,12 @@ categoriesRoutes.post("/", async (c) => {
       //
       // Duplicate-name pre-check before touching Google: the Rule insert's
       // unique constraint would 409 AFTER the label existed, leaving an
-      // orphan label per retry. TOCTOU race is backstopped by the
-      // constraint itself (rare concurrent create → one 409 + one orphan
-      // label, absorbed by reconcile's same-name link).
+      // orphan label per retry. The pre-check does not close the window —
+      // two racing creates of the same name (a double-click on 저장 suffices)
+      // both pass it, both mint a label, and one insert then loses to the
+      // constraint. That loser retracts its own label below; reconcile
+      // cannot do it, because Google permits same-name labels and deleting
+      // them wholesale would destroy labels the user made deliberately.
       const existing = await listRules(db, userId, {
         includeLabelDeleted: true,
       });
@@ -232,6 +245,7 @@ categoriesRoutes.post("/", async (c) => {
           : c.json(outcome.body, outcome.status);
       }
       labelId = outcome.labelId;
+      minted = { labelId: outcome.labelId, accessToken: outcome.accessToken };
 
       // Legacy colorId column stays populated as a nearest-classic cache
       // (schema CHECK '1'..'11' holds until the #04 cutover).
@@ -263,6 +277,32 @@ categoriesRoutes.post("/", async (c) => {
     return c.json({ category: toWire(rule), categories: rules.map(toWire) }, 201);
   } catch (err) {
     c.executionCtx.waitUntil(close());
+    // No Rule row survived, so a label minted above is an orphan — retract it.
+    // Awaited, not waitUntil'd: the response tells the user the create failed
+    // and must not be contradicted by a label that outlives the request.
+    // Best-effort — a failure here must not mask the real error the user needs
+    // to see, so it is logged, not thrown.
+    if (minted !== undefined) {
+      try {
+        await removeEventLabel(
+          minted.accessToken,
+          LABEL_CALENDAR_ID,
+          minted.labelId,
+        );
+      } catch (cleanupErr) {
+        console.warn(
+          JSON.stringify({
+            level: "warn",
+            msg: "[categories] orphan label retraction failed",
+            labelId: minted.labelId,
+            error:
+              cleanupErr instanceof Error
+                ? cleanupErr.message
+                : String(cleanupErr),
+          }),
+        );
+      }
+    }
     if (err instanceof DuplicateRuleNameError) {
       return c.json({ error: "duplicate_name" }, 409);
     }

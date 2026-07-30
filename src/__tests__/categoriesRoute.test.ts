@@ -19,6 +19,7 @@ vi.mock("../queues/syncProducer", () => ({
   SyncQueueUnavailableError: class extends Error {},
 }));
 const appendEventLabelMock = vi.fn();
+const removeEventLabelMock = vi.fn();
 vi.mock("../services/eventLabels", async () => {
   const actual = await vi.importActual<typeof EventLabelsModule>(
     "../services/eventLabels",
@@ -26,6 +27,7 @@ vi.mock("../services/eventLabels", async () => {
   return {
     ...actual,
     appendEventLabel: (...args: unknown[]) => appendEventLabelMock(...args),
+    removeEventLabel: (...args: unknown[]) => removeEventLabelMock(...args),
   };
 });
 const getValidAccessTokenMock = vi.fn();
@@ -50,6 +52,7 @@ import { verifySession } from "../services/sessionService";
 import { ReauthRequiredError } from "../services/tokenRefresh";
 
 import {
+  DuplicateNameError,
   type FakeDbHandle,
   type Row,
   makeFakeDb,
@@ -120,6 +123,7 @@ beforeEach(() => {
   });
   getValidAccessTokenMock.mockResolvedValue({ accessToken: "at-test" });
   appendEventLabelMock.mockResolvedValue({ id: LABEL_ID });
+  removeEventLabelMock.mockResolvedValue(undefined);
 });
 
 afterEach(() => {
@@ -385,6 +389,45 @@ describe("/api/categories — create with backgroundColor (native-labels #03)", 
       backgroundColor: "#d50000",
     });
     expect(currentDb.state.categories[0]?.labelId).toBe(LABEL_ID);
+  });
+
+  it("TOCTOU: a duplicate-name insert AFTER the label was minted deletes the orphan label", async () => {
+    // The create flow mints the Google label BEFORE inserting the Rule, and
+    // the duplicate pre-check cannot close the window: two racing creates of
+    // the same name (a double-click on 저장 is enough) both pass the pre-check,
+    // both mint a label, then one Rule insert loses to the unique constraint.
+    //
+    // Reconcile CANNOT clean this up — Google permits two labels with the same
+    // name, so a reconcile that deleted same-name duplicates would destroy
+    // labels the user made deliberately. The route that minted the orphan has
+    // to retract it, or the leak is permanent: event labels are capped at
+    // CALENDAR_EVENT_LABEL_CAP (200) and the duplicate shows up in the user's
+    // color picker forever.
+    currentDb = makeFakeDb({ failInsertWith: new DuplicateNameError() });
+    vi.mocked(getDb).mockImplementation(
+      () => currentDb as unknown as ReturnType<typeof getDb>,
+    );
+
+    const res = await post({
+      name: "주간회의",
+      backgroundColor: "#d50000",
+      keywords: ["주간회의"],
+    });
+
+    expect(res.status).toBe(409);
+    expect((await res.json()) as { error: string }).toMatchObject({
+      error: "duplicate_name",
+    });
+    // the label was minted...
+    expect(appendEventLabelMock).toHaveBeenCalledTimes(1);
+    // ...so it must be retracted, or it is orphaned for good
+    expect(removeEventLabelMock).toHaveBeenCalledTimes(1);
+    expect(removeEventLabelMock).toHaveBeenCalledWith(
+      "at-test",
+      "primary",
+      LABEL_ID,
+    );
+    expect(currentDb.state.categories).toHaveLength(0);
   });
 
   it("persists and returns the picked hex — the editor's swatch source", async () => {

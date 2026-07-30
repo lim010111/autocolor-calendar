@@ -22,6 +22,7 @@ import {
   appendEventLabel,
   CALENDAR_EVENT_LABEL_CAP,
   EventLabelCapError,
+  removeEventLabel,
   UnresolvedCalendarIdError,
 } from "../services/eventLabels";
 
@@ -130,6 +131,48 @@ describe("appendEventLabel — append-only labelProperties writer (ADR-0006)", (
     await expect(
       appendEventLabel(AT, CAL, { name: "x", backgroundColor: "#ffffff" }),
     ).rejects.toThrow();
+    expect(mockedPatch).not.toHaveBeenCalled();
+  });
+});
+
+describe("removeEventLabel — the append-only contract's one exception", () => {
+  it("drops only the named id and carries every other entry through verbatim", async () => {
+    const others: CalendarEventLabel[] = [
+      { id: "keep-1", name: "운동", backgroundColor: "#5484ed" },
+      { id: "keep-2", name: null as unknown as string, backgroundColor: "#a4bdfc" },
+    ];
+    mockedGet.mockResolvedValueOnce(
+      labelsRead([others[0]!, { id: "orphan", name: "회의", backgroundColor: "#d50000" }, others[1]!]),
+    );
+
+    await removeEventLabel(AT, CAL, "orphan");
+
+    expect(mockedPatch).toHaveBeenCalledTimes(1);
+    // resolved id, never the `primary` alias
+    expect(mockedPatch).toHaveBeenCalledWith(AT, RESOLVED_CAL, others);
+  });
+
+  it("writes nothing when the id is already absent", async () => {
+    mockedGet.mockResolvedValueOnce(
+      labelsRead([{ id: "keep-1", name: "운동", backgroundColor: "#5484ed" }]),
+    );
+
+    await removeEventLabel(AT, CAL, "not-there");
+
+    // a full-replace PATCH that changes nothing is a lost-update window for
+    // no gain — the writer must skip it
+    expect(mockedPatch).not.toHaveBeenCalled();
+  });
+
+  it("refuses to write when the read cannot resolve the calendar id", async () => {
+    mockedGet.mockResolvedValueOnce({
+      calendarId: null,
+      eventLabels: [{ id: "orphan", name: "회의", backgroundColor: "#d50000" }],
+    });
+
+    await expect(removeEventLabel(AT, CAL, "orphan")).rejects.toThrow(
+      UnresolvedCalendarIdError,
+    );
     expect(mockedPatch).not.toHaveBeenCalled();
   });
 });
