@@ -3,7 +3,9 @@
  * native-labels #04 — one-shot label cutover migration (ADR-0006 Decision 4).
  *
  * For every user with pre-cutover rules (`categories.label_id IS NULL`,
- * not label-deleted), creates a named Google Calendar event label per rule
+ * not label-deleted, not rule-tombstoned — a user-deleted rule must never
+ * get a label minted for it, ADR-0008), creates a named Google Calendar
+ * event label per rule
  * on the PRIMARY calendar ({name: rule name, backgroundColor: classic hex
  * of its colorId}) and fills `categories.label_id`. Existing same-name
  * named labels are LINKED, never duplicated; unnamed system palette slots
@@ -114,6 +116,7 @@ async function main(): Promise<void> {
       SELECT DISTINCT u.id, u.email, u.created_at FROM users u
       JOIN categories c ON c.user_id = u.id
       WHERE c.label_id IS NULL AND c.label_deleted_at IS NULL
+        AND c.rule_deleted_at IS NULL
       ORDER BY u.created_at
     `) as unknown as UserRow[];
     console.log(
@@ -124,6 +127,7 @@ async function main(): Promise<void> {
       const pendingRows = (await sql`
         SELECT id, name, color_id FROM categories
         WHERE user_id = ${user.id} AND label_id IS NULL AND label_deleted_at IS NULL
+          AND rule_deleted_at IS NULL
         ORDER BY created_at
       `) as unknown as CategoryRow[];
       const claimedRows = (await sql`
@@ -225,6 +229,7 @@ async function main(): Promise<void> {
       const remainRows = (await sql`
         SELECT count(*)::int AS count FROM categories
         WHERE user_id = ${user.id} AND label_id IS NULL AND label_deleted_at IS NULL
+          AND rule_deleted_at IS NULL
       `) as unknown as Array<{ count: number }>;
       const remaining = Number(remainRows[0]?.count ?? 0);
       const expected =

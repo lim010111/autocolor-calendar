@@ -369,8 +369,8 @@ Canvas + background + margins: identical to images 01-04.
 
 Headline block (y 88-250), centered:
   H1  "You always get the last word."
-  Sub "Colors you set by hand are never overwritten. Exclude any event, or
-       correct one and AutoColor remembers."
+  Sub "Colors you set by hand are never overwritten, and you can exclude
+       any single event from auto-coloring."
 
 Stage (y 280-736): one white card, radius 20, centered horizontally,
 about 520px wide, holding cap-event-sidebar.png at a comfortable scale —
@@ -394,7 +394,9 @@ badges, or UI affordances on top of the screenshot.
 
 **검수 체크:** "Corrections are remembered" 는 예시 저장 동의(§12) 를
 켠 사용자에게만 해당한다. 동의 UI 가 캡처에 없다면 이 pill 은 빼는 쪽이
-안전하다 — 프롬프트에 그 규칙을 넣어뒀다.
+안전하다 — 프롬프트에 그 규칙을 넣어뒀다. 같은 이유로 Sub 카피에도 이
+주장을 넣지 않는다 — 저장 개시(2026-08-28) 전에는 누구에게도 참이 아니라,
+헤드라인에 박으면 조건부로 뺄 수도 없는 거짓 광고가 된다.
 
 ---
 
