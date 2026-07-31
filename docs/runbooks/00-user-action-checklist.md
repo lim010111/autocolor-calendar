@@ -78,36 +78,39 @@
 - [x] custom domain 매핑 + 200 응답 확인
 - [x] `gas/addon.js:119` placeholder URL을 실제 URL로 교체 (commit `ae85980` — GAS 새 version 배포는 운영자 수동 단계로 잔존)
 
-### ④ 스크린샷 4장 촬영 (1시간) — 재촬영 필요
+### ④ 리스팅 이미지 5장 제작 — 캡처 촬영 + 디자인 합성
 
 > **1차 촬영분(2026-05-09, `1f41184`)은 무효다.** 그 뒤 UI 가 두 번 바뀌었다:
 > native-labels #03 편집기 개편(07-28 — 이름·색 읽기 전용, 11색 팔레트 →
 > 라벨 칩, 이벤트 사이드바 색 선택도 칩 목록) 과 legal clickwrap(07-29 —
 > welcome 카드에 약관·방침 링크 추가, 설정 카드의 정책 체크박스 3개 제거).
-> `01-welcome` · `03-rules` · `04-event-preview` 는 확실히 낡았고 `02-home`
-> 도 확인이 필요하다.
 >
-> **native-labels #03 의 마지막 AC(4로케일 편집기 각 1장)와 같은 화면**이니
-> 한자리에서 같이 찍는다 — 편집기를 en/ko/zh-CN/zh-TW 로 4장(AC 증거) +
-> 아래 장면 4종(리스팅 자산).
+> **장면 구성도 바뀌었다 (2026-07-30).** 애드온 카드 4종을 생 스크린샷으로
+> 올리던 계획을 폐기하고, **사용자가 설치하고 싶어지는 장면 5종**을 실 캡처
+> 인셋 + 디자인 캔버스로 만든다. 상위 애드온(Zoom·Reclaim·Mailmeteor)이
+> 전부 그 형태이고, 생 캡처는 카탈로그에서 1/3로 축소돼 읽히지 않는다.
+> 4로케일 증거 촬영은 nl#03 AC 제거와 함께 사라졌다 — 이제 이 작업 하나뿐이다.
 
-실제 Google Calendar에서 Add-on 패널 캡처:
+정본 명세: **[`docs/assets/marketplace/listing-image-specs.md`](../assets/marketplace/listing-image-specs.md)**
+— 장별 Claude design 프롬프트와 필요한 캡처 목록이 짝으로 들어 있다.
 
-| #   | 장면           | 어떻게                                   |
-| --- | -------------- | ---------------------------------------- |
-| 1   | Welcome 카드   | OAuth 미연결 상태로 Add-on 첫 진입       |
-| 2   | Home 카드      | 카테고리 2-3개 추가된 상태               |
-| 3   | 규칙 추가 카드 | 키워드 + 색상 입력 중 화면               |
-| 4   | 색칠된 일정    | 캘린더 메인 뷰에서 자동 색상 적용된 일정 |
+| #   | 장면                        | 답하는 질문                       |
+| --- | --------------------------- | --------------------------------- |
+| 01  | Before → After 주간 뷰      | "이게 뭐 하는 앱인데?" (썸네일)   |
+| 02  | 생성 → 5-10초 → 채색        | "매번 내가 눌러야 하나?"          |
+| 03  | 규칙 1개 ↔ 다른 표현 4건    | "키워드를 다 등록해야 하나?"      |
+| 04  | Google 색 선택창 ↔ 규칙목록 | "캘린더에 진짜 남나?"             |
+| 05  | 이벤트 사이드바 + 통제 문구 | "내 캘린더를 마음대로 칠하나?"    |
 
-- **해상도**: 1280×800 권장 (Marketplace 스펙)
+- **해상도**: 1280×800 PNG (Marketplace 스펙, full-bleed)
 - **저장**: `docs/assets/marketplace/screenshots/0X-name.png`
 - **왜 사용자만**: 본인 Google 계정 + prod 환경 캡처
-- **Claude 도움**: 사전 데이터 셋업 가이드 (어떤 카테고리·일정을 미리 만들어둘지), 촬영 후 리뷰
-- **상세**: `docs/runbooks/05-marketplace-listing-assets.md` Step 3
-- [ ] 사전 데이터 셋업 (카테고리 / 규칙 / 일정)
-- [ ] 4장 촬영 + 리사이즈
-- [ ] `docs/assets/marketplace/screenshots/`에 저장
+- **Claude 도움**: 명세·프롬프트 작성(완료), 시드 데이터 가이드, 합성 후 리뷰
+- **상세**: 위 명세 문서 + `docs/runbooks/05-marketplace-listing-assets.md` Step 3
+- [ ] 사전 데이터 셋업 (시드 규칙 5개 + 이벤트)
+- [ ] 캡처 8종 촬영 (명세 §2)
+- [ ] Claude design 으로 5장 합성 + 1280×800 export
+- [ ] `docs/assets/marketplace/screenshots/`에 저장 + SDK 콘솔 교체
 
 ### ⑤ 아이콘 디자인 (직접 채택, 8종 일습 commit 완료)
 

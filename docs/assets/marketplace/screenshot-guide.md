@@ -1,5 +1,18 @@
 # Marketplace screenshots — 촬영 체크리스트 + 시드 데이터 가이드
 
+> **⚠️ 장면 구성은 2026-07-30 에 폐기됐다.** 아래 "화면별 촬영 가이드"의
+> 4종(Welcome / Home / Rules / Event preview)을 생 스크린샷으로 올리는
+> 계획은 더 이상 유효하지 않다. 리스팅 이미지는 이제 **실 캡처 인셋 +
+> 디자인 캔버스 5장**이며, 정본 명세는
+> [`listing-image-specs.md`](./listing-image-specs.md) 다 (장별 Claude
+> design 프롬프트 + 필요한 캡처 목록).
+>
+> **이 문서에서 여전히 유효한 것**: "사전 셋업"(테스트 계정·브라우저 정리·
+> prod 검증), "촬영 후 후처리"(1280×800 crop·PII 마스킹), "자주 거절되는
+> 결함". 시드 데이터 표는 참고용이나 **카테고리는 현행 규칙 생성
+> 플로우**(이름 + 24색 스와치 + 키워드)로 만들 것 — 아래 11색 팔레트
+> 서술은 native-labels #03 이전 UI 다.
+
 > 본 문서는 [`docs/runbooks/05-marketplace-listing-assets.md`](../../runbooks/05-marketplace-listing-assets.md)
 > Step 3 "Promotional screenshots"의 정본 작업 문서다. 4장의 listing
 > 스크린샷 (Welcome / Home / Rules / Event preview) 촬영 직전에 따라가야

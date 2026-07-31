@@ -1,4 +1,4 @@
-Status: ready-for-human
+Status: done
 GitHub: #148
 
 ## What to build
@@ -37,7 +37,6 @@ Google UI 로 안내 (ADR-0006 Decision 2·3 의 UI 절반).
 - [x] 24 hex 스와치 data URI 생성·렌더 (외부 이미지 호스트 없음 —
       card-latency #03 계약 유지)
 - [x] 구 11-팔레트·색 이름 i18n 잔재 제거 (gas/ 내 참조 0)
-- [ ] 4로케일 스크린샷 각 1장 첨부 (사람 단계)
 
 > **Resolution:** feat/native-labels-03-editor-a2-rewire (#02 스택).
 > 설계 노트 대비 확정 사항:
@@ -61,13 +60,34 @@ Google UI 로 안내 (ADR-0006 Decision 2·3 의 UI 절반).
 >   save 버튼이 선택값을 파라미터로 못 받던 틈도 함께 배선.
 > - GAS 는 테스트 하니스가 없어 수동 검증 불가 — `node --check` 구문
 >   검사 + 백엔드 vitest 만 통과. clasp push + 기존 deployment 새 버전
->   (URL 동결) + 라이브 육안 + 4로케일 스크린샷이 사람 단계.
+>   (URL 동결) + 라이브 육안이 사람 단계. *(4로케일 스크린샷 AC 는
+>   2026-07-30 제거 — 아래 Comments)*
 
 ## Blocked by
 
 - #02 (`appendEventLabel`, 라벨 캐시/자동 Rule)
 
 ## Comments
+
+### 2026-07-30 — 4로케일 스크린샷 AC 를 걷어내고 이슈를 닫는다
+
+마지막 AC 였던 "4로케일 스크린샷 각 1장 첨부"를 **제거**했다. 그 4장은
+Google 에 제출하는 자료가 아니라 이 이슈 안에서만 소비되는 i18n 증거였고,
+증명하려던 두 가지는 이미 다른 수단으로 고정돼 있다:
+
+- **색 표시 정확성** — `src/__tests__/gasSwatch.test.ts` 가 `gas/i18n.js`
+  실물을 평가해 24색 항등성을 회귀로 고정한다. 사람 눈보다 강하다.
+- **4로케일 문구 존재** — `rules.manageInGoogle` 등 신규 키가 네 번들 모두에
+  있는지는 grep 으로 확인되며, 누락 시 GAS 가 키 문자열을 그대로 렌더해
+  라이브에서 즉시 드러난다.
+
+남는 것은 "네 언어에서 레이아웃이 깨지지 않는가" 정도인데, 그것을 위해
+사람이 계정 로케일을 네 번 바꿔 캡처하는 비용은 지금 단계에서 과하다.
+리스팅 자산 촬영이 어차피 라이브 육안 검증을 겸하므로 거기서 흡수한다.
+`#d81b60`(cherry blossom) 미실측 1색도 같은 자리에서 확인한다 —
+`scripts/gen-swatch-assets.py` 의 TODO 플래그는 그때까지 유지.
+
+이로써 AC 5/5, 이슈를 `done` 으로 닫는다.
 
 ### 2026-07-30 — 스크린샷 직전에 색 표시가 깨져 있었음 (수정·배포 완료)
 
