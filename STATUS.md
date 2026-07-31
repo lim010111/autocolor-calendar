@@ -6,17 +6,27 @@ outside the narrative block; mechanical sections are regenerated every run._
 <!-- narrative:start -->
 ## Current focus
 
-**nl#03 이 사람의 스크린샷 4장 하나에 걸려 있다.** 그 직전 점검에서 규칙
-편집기가 **24색 중 19색을 틀린 색으로** 그리고 있던 것이 드러나 먼저 고쳤다 —
-Google 라벨과 실제 분류는 정상이고 표시 경로만 깨진 상태였으므로, 그대로
-찍으면 잘못된 UI 를 i18n 증거로 동결하게 된다. 표시의 정본은 이제
-`categories.background_color` (hex) 이고 `colorId` 는 #04 컷오버까지 남는
-레거시 캐시다. 활성 트랙: **native-labels #03**
-(`.scratch/native-labels/issues/03-editor-a2-rewire.md`).
+**표시의 정본은 `categories.background_color` (hex)** 이고 `colorId` 는 #04
+컷오버까지 남는 레거시 캐시다 — 편집기가 24색 중 19색을 틀리게 그리던 원인.
+`src/__tests__/gasSwatch.test.ts` 가 24색 항등성으로 고정한다 (nl#03, 닫힘).
 
-**prod 는 코드·스키마·애드온이 모두 정렬됐다.** DB `0021` 까지 적용(22/22),
-Worker 배포, GAS **@59** — deployment ID 2개 불변(URL 동결). 이전 게시 회차의
+**리스팅 이미지 방침이 바뀌었다.** 애드온 카드 4종(Welcome/Home/Rules/Event
+preview)을 생 스크린샷으로 올리던 계획을 폐기하고, **설치 동기를 만드는 장면
+5종**을 실 캡처 인셋 + 디자인 캔버스로 만든다. 근거는 상위 애드온 실물 조사
+(Zoom·Reclaim·Mailmeteor 전부 디자인 캔버스, 생 캡처는 카탈로그 1/3 축소에서
+안 읽힌다). 장별 Claude design 프롬프트 + 필요 캡처 8종은
+`docs/assets/marketplace/listing-image-specs.md`.
+
+**prod 는 코드·스키마·애드온이 모두 정렬됐다.** DB `0023` 까지 적용(24/24),
+Worker 배포, GAS **@60/@61** — deployment ID 2개 불변(URL 동결). 이전 게시 회차의
 "Worker 미배포" posture 는 더 이상 유효하지 않다.
+
+**규칙 삭제가 이제 실제로 지워진다 (nl#05, ADR-0008).** 삭제는 툼스톤
+(`rule_deleted_at`)이라 `labelReconcile` 이 되살리지 못하고, 애드온이 민팅한
+라벨(`label_origin='addon'`)에 한해 Google 라벨까지 함께 지운다. 게이트의 근거는
+"출처를 알 수 있다"가 아니라 **blast radius**(ADR-0008). **기존 행은 전부
+`'unknown'` 이라 대상이 아니다** — 추측 백필 대신 "지우고 새로 만든다"가 회복
+경로다.
 
 **§12 30일 창은 이제 날짜가 지나면 스스로 열린다.** `EXAMPLE_STORAGE_OPENS_AT`
 (2026-08-28)가 백엔드·GAS 양쪽에 배포된 상수이므로 그날 배포할 것은 없고
@@ -28,16 +38,25 @@ eval-gate → #06 → ④ Marketplace. §2.5 저장 개시 2026-08-28.
 
 ## Start here next session
 
-- **사람 — nl#03 (능동, 유일한 블로커)**: 규칙 편집기 카드를 en/ko/zh-CN/zh-TW
-  **각 1장** 캡처. 홍보용이 아니라 i18n 증거다(색 이름 팔레트 제거 + Google
-  안내 문구가 4개 번들 모두에서 렌더되는지). 언어는 Calendar 설정을 따른다
-  (`useLocaleFromApp`). 색이 맞게 나오므로 `#d81b60`(cherry blossom) 미실측
-  1색도 같은 화면에서 실측할 것 — 프로브로는 못 얻는다.
-- **사람 — Marketplace 리스팅 4장 (병행, 위와 별개)**: 장면 4종 × 1개 언어,
-  1280×800, 사전 데이터 셋업 필요. 데모 영상과 같은 셋업이라 몰아 찍는 게
-  낫다(`docs/runbooks/00-user-action-checklist.md` ④·`:212`).
+- **사람 — 리스팅 이미지 5장 (능동, G5 의 유일한 블로커)**: ① 캡처 8종을 한
+  세션에 촬영 → ② Claude design 에 컨텍스트 블록 + 장별 프롬프트 + 캡처를
+  넣어 1280×800 HTML 5개 → ③ PNG export → SDK 콘솔 교체. 명세는
+  `docs/assets/marketplace/listing-image-specs.md`, 작업 단위는
+  `docs/runbooks/00-user-action-checklist.md` ④. `#d81b60`(cherry blossom)
+  미실측 1색을 시드 규칙에 넣어 같은 자리에서 육안 확인할 것 — 프로브로는
+  못 얻는다. 03 장면은 네 이벤트가 **실제로** 같은 규칙으로 분류되는지 확인
+  후에만 쓴다(확인 없이 그리면 광고가 거짓이 된다).
 - **에이전트 — ec#07 프롬프트 v7 (능동)**: 방향 확정(none 편향 강화).
   `--prompt-version v6` 델타를 같이 재면 ec#05 의 마지막 AC(v6 승격)까지 닫힌다.
+- **nl#05 — PR + prod 재배포 (에이전트, 사람 승인 대기)**: findings 패스 1 완료
+  (`81f04e3`, blocking 2건 재현·수정·오라클 동봉). 남은 것은 PR 오픈과
+  **prod 재배포** — prod Worker `3693d957` 은 수정 이전이라 복구 불가 상태가
+  아직 살아 있다. `src/` 최초의 트랜잭션이 Hyperdrive 를 거치므로 dev 를
+  먼저 통과시킬 것. 패스 2 는 사람이 연다.
+- **사람 — 규칙 재생성 (능동, nl#05 를 실제로 쓰려면 필수)**: 현재 7행이 전부
+  `label_origin='unknown'` 이라 라벨 삭제가 안 걸린다. 애드온에서 규칙 삭제 →
+  Google 캘린더에서 남은 색상 라벨 정리 → 애드온에서 재생성. 그 뒤부터
+  `'addon'` 으로 찍혀 삭제 시 라벨까지 제거된다.
 - **에이전트 — nl#04 full resync (능동, 승인 필요)**: v1 마커 121건 재각인.
   prod 쓰기라 사람 승인 없이는 실행하지 않는다.
 - **W12 는 프롬프트 AC 와 묶어서 (병행)**: 기본 프롬프트를 v6 로 올리면 저장된
@@ -55,6 +74,10 @@ eval-gate → #06 → ④ Marketplace. §2.5 저장 개시 2026-08-28.
 - **세션 GC 부재** — 만료 세션 행이 삭제되지 않고 회원탈퇴까지 남는다.
   처리방침 §6 은 이제 이를 사실대로 적었으므로 **문서 결함이 아니라 구현
   과제**다. PIPA §21①(목적 달성 시 지체 없이 파기) 대응 백로그.
+- **GAS @60 의 로그인 복귀 수정** — 2026-07-31 의 `clasp push` 가 작업 트리에
+  있던 `buildAuthFooter`/`actionCompleteSignIn` 을 같이 배포했다(@59 에는 없던
+  내용). 코드는 커밋됐으므로 이제 repo 와 배포본이 일치하지만, **라이브 육안
+  검증은 아직 없다** — 유지할지 `clasp deploy -i <id> -V 59` 로 되돌릴지 미결.
 - **404 → 502 매핑** — `not_found` 가 `upstream_unavailable` 로 나간다.
   PR #162 진단을 늦춘 원인. 라우트 계약 변경이라 미결.
 - **호스트 탭 캐시** — 새 규칙 직후 미새로고침 탭은 자동 채색을 못 그린다.
@@ -110,14 +133,15 @@ eval-gate → #06 → ④ Marketplace. §2.5 저장 개시 2026-08-28.
 
 ## native-labels
 
-`██████████████████░░░░` 20/25 acceptance criteria met (80%)
+`██████████████████░░░░` 28/35 acceptance criteria met (80%)
 
 | # | Issue | Triage | Criteria | State | Blocked by |
 |---|-------|--------|----------|-------|-----------|
 | 01 | Label aware manual skip | `done` | 7/7 | ✅ done | — |
 | 02 | Label write migration | `done` | 7/7 | ✅ done | — |
-| 03 | Editor a2 rewire | `ready-for-human` | 5/6 | 🔵 in-progress | #02 |
+| 03 | Editor a2 rewire | `done` | 5/5 | ✅ done | #02 |
 | 04 | Cutover migration | `ready-for-human` | 1/5 | 🔵 in-progress | #02, #03 |
+| 05 | Addon label deletion | `ready-for-human` | 8/11 | 🔵 in-progress | — |
 
 ## sync-reliability
 
