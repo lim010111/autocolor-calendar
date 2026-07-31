@@ -134,10 +134,10 @@ curl -s https://autocolorcal.app/healthz
 | 항목 | 내용 |
 |---|---|
 | 화면 1 | Welcome Card 하단의 "Google 계정으로 시작하기" 버튼 (`welcome.cta.login`) |
-| 동작 1 | 버튼 클릭 → `actionStartOAuth` (`gas/addon.js:1161`) 가 새 창에서 OAuth consent URL 오픈 (`OpenAs.FULL_SIZE`, `OnClose.RELOAD_ADD_ON`) |
+| 동작 1 | 버튼 클릭 → footer primary `OpenLink` (`buildAuthFooter`, `gas/addon.js:170`) 가 새 창에서 OAuth consent URL (`oauthAuthUrl()`, `gas/addon.js:63`) 오픈 |
 | 화면 2 | OAuth consent 화면 — `accounts.google.com/o/oauth2/...`. **AutoColor 앱 이름 + 로고 + 4개 scope row 명시적으로 노출**되어야 함 |
 | 동작 2 | 사용자가 scope 목록을 잠깐 hover로 보여주는 듯한 마우스 움직임 (reviewer가 정확한 scope set을 시각 확인) → "Allow" 또는 "Continue" 클릭 |
-| 화면 3 | consent 창 닫힘 → `RELOAD_ADD_ON` 트리거로 사이드바가 Home Card 로 재렌더 (`gas/addon.js:129` `buildHomeCard`) — "AutoColor 대시보드" 헤더 + "지금 모든 일정에 규칙 적용" footer 버튼 노출 |
+| 화면 3 | consent 창 닫힘 → 사이드바가 그대로면 footer 의 "로그인을 마쳤어요" 탭 → `actionCompleteSignIn` (`gas/addon.js:190`) 이 Home Card 로 재렌더 (`gas/addon.js:214` `buildHomeCard`) — "AutoColor 대시보드" 헤더 + "지금 모든 일정에 규칙 적용" footer 버튼 노출. **촬영 주의**: 자동 재렌더는 보장되지 않으므로 이 탭 동작을 컷에 포함할 것 |
 | 자막 (EN) | **"Sign in with Google. AutoColor requests Calendar read and write access to apply colors to events you choose."** |
 | 사용된 scope | `openid`, `userinfo.email`, **`calendar`** (Restricted), **`calendar.events`** (Sensitive) |
 

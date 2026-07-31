@@ -93,6 +93,24 @@ Reviewer-walkthrough scripts under [../docs/assets/marketplace/reviewer-demo/](.
   matters in a dispute. Both URLs come from `config.js` and are already
   covered by `appsscript.json` `openLinkUrlPrefixes`; no manifest change, so
   no OAuth re-review.
+- **Post-OAuth re-render is NOT automatic — `buildAuthFooter`'s second button
+  is load-bearing (2026-07-30).** Google's
+  [connect-third-party-service](https://developers.google.com/workspace/add-ons/guides/connect-third-party-service)
+  guide ends the flow with "the user is prompted to refresh the add-on";
+  automatic re-render after the auth window closes is a **Chat-only**
+  affordance (`completeRedirectUri`). Two host-reload mechanisms were tried
+  against the live add-on and neither fired: `OnClose.RELOAD_ADD_ON`
+  (deprecated by Google, [issue 268427648](https://issuetracker.google.com/issues/268427648))
+  and a button-level `AuthorizationAction`. COOP was measured across the whole
+  redirect chain (Worker → `accounts.google.com` → `script.google.com/…/exec`)
+  and is `unsafe-none`/report-only throughout, so the documented COOP caveat is
+  **not** the cause. So both sign-in surfaces share `buildAuthFooter`: a
+  primary `OpenLink` carrying the best-effort `OnClose.RELOAD` (non-deprecated,
+  the shape Google's own sample uses) **plus** a secondary "로그인을 마쳤어요"
+  button wired to `actionCompleteSignIn`, which re-reads the token `doGet`
+  already wrote and navigates Home. Deleting the secondary button restores the
+  dead end where an authenticated user is stuck on the Welcome card. The auth
+  URL's origin must stay inside `appsscript.json` `openLinkUrlPrefixes`.
 - **Removed on purpose (2026-07-29):** the settings card's `policy_settings`
   checkbox group (`prevent_overwrite` / `use_llm` / `use_description`) is
   gone. It had no `onChange`, no save handler, and no backing column — while

@@ -267,7 +267,11 @@ var MESSAGES = {
 
     // actionLogout
     'auth.toast.loggedOut': 'Signed out.',
+
+    // actionCompleteSignIn — the deterministic half of the OAuth return path.
+    'auth.cta.continue': "I've signed in",
     'auth.toast.loggedIn': 'Signed in.',
+    'auth.toast.notYet': 'Sign-in not confirmed yet. Finish signing in the other window, then tap again.',
 
     // buildAccountDeleteConfirmCard
     'delete.title': 'Cancel service and delete account',
@@ -293,7 +297,7 @@ var MESSAGES = {
     'auth.callback.badge': '✓ Signed in',
     'auth.callback.heading': 'AutoColor connection is complete',
     'auth.callback.body1': 'This window/tab will close automatically in a moment.',
-    'auth.callback.body2': "If it doesn't close, close it yourself and return to the Google Calendar add-on.",
+    'auth.callback.body2': "Return to the Google Calendar add-on. If it still shows the sign-in screen, tap \u201cI've signed in\u201d.",
 
     'auth.error.title': 'Sign-in failed',
     'auth.error.badge': '✕ Sign-in failed',
@@ -480,7 +484,10 @@ var MESSAGES = {
     'settings.btn.deleteAccount': '서비스 해지 및 계정 삭제',
 
     'auth.toast.loggedOut': '로그아웃 되었습니다.',
+
+    'auth.cta.continue': '로그인을 마쳤어요',
     'auth.toast.loggedIn': '인증이 완료되었습니다.',
+    'auth.toast.notYet': '아직 로그인이 확인되지 않았습니다. 열린 창에서 로그인을 마친 뒤 다시 눌러 주세요.',
 
     'delete.title': '서비스 해지 및 계정 삭제',
     'delete.subtitle': '정말 진행하시겠습니까?',
@@ -502,7 +509,7 @@ var MESSAGES = {
     'auth.callback.badge': '✓ 로그인 완료',
     'auth.callback.heading': 'AutoColor 연결이 완료되었습니다',
     'auth.callback.body1': '이 창/탭은 잠시 후 자동으로 닫힙니다.',
-    'auth.callback.body2': '닫히지 않으면 직접 닫고 Google Calendar 애드온으로 돌아가세요.',
+    'auth.callback.body2': 'Google Calendar 애드온으로 돌아가세요. 여전히 로그인 화면이면 \u201c로그인을 마쳤어요\u201d를 눌러 주세요.',
 
     'auth.error.title': '인증 실패',
     'auth.error.badge': '✕ 인증 실패',
@@ -689,7 +696,10 @@ var MESSAGES = {
     'settings.btn.deleteAccount': '取消服务并删除帐号',
 
     'auth.toast.loggedOut': '已退出登录。',
+
+    'auth.cta.continue': '我已登录',
     'auth.toast.loggedIn': '验证完成。',
+    'auth.toast.notYet': '尚未确认登录。请在打开的窗口中完成登录后再次点击。',
 
     'delete.title': '取消服务并删除帐号',
     'delete.subtitle': '确定要继续吗?',
@@ -711,7 +721,7 @@ var MESSAGES = {
     'auth.callback.badge': '✓ 登录完成',
     'auth.callback.heading': 'AutoColor 连接已完成',
     'auth.callback.body1': '此窗口/标签页将很快自动关闭。',
-    'auth.callback.body2': '如果未关闭,请手动关闭并返回 Google 日历插件。',
+    'auth.callback.body2': '请返回 Google 日历插件。若仍显示登录界面,请点击\u201c我已登录\u201d。',
 
     'auth.error.title': '验证失败',
     'auth.error.badge': '✕ 验证失败',
@@ -898,7 +908,10 @@ var MESSAGES = {
     'settings.btn.deleteAccount': '取消服務並刪除帳戶',
 
     'auth.toast.loggedOut': '已登出。',
+
+    'auth.cta.continue': '我已登入',
     'auth.toast.loggedIn': '驗證完成。',
+    'auth.toast.notYet': '尚未確認登入。請在開啟的視窗中完成登入後再次點選。',
 
     'delete.title': '取消服務並刪除帳戶',
     'delete.subtitle': '確定要繼續嗎?',
@@ -920,7 +933,7 @@ var MESSAGES = {
     'auth.callback.badge': '✓ 登入完成',
     'auth.callback.heading': 'AutoColor 連線已完成',
     'auth.callback.body1': '此視窗/分頁將很快自動關閉。',
-    'auth.callback.body2': '如果未關閉,請手動關閉並返回 Google 日曆外掛程式。',
+    'auth.callback.body2': '請返回 Google 日曆外掛程式。若仍顯示登入畫面,請點選\u201c我已登入\u201d。',
 
     'auth.error.title': '驗證失敗',
     'auth.error.badge': '✕ 驗證失敗',

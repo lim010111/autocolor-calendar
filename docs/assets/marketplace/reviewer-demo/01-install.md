@@ -93,14 +93,15 @@ and the §5.4 ownership-marker contract.
 
 - **Reviewer action.** Click the fixed-footer button
   `"Google 계정으로 시작하기"`.
-- **Surface.** A full-size browser tab opens (the GAS
-  `OpenAs.FULL_SIZE` mode, `gas/addon.js:1093`). The Calendar sidebar
-  remains; on tab close it will reload via
-  `OnClose.RELOAD_ADD_ON` (`gas/addon.js:1094`).
+- **Surface.** A full-size browser tab opens from the footer's primary
+  `OpenLink` (`buildAuthFooter`, `gas/addon.js:170`). The Calendar
+  sidebar remains. The link carries `OnClose.RELOAD`, but per Google's
+  third-party-service guide that re-render is best-effort; the footer's
+  secondary button `"로그인을 마쳤어요"` is the guaranteed path.
 - **Backend / Google API call.**
-  1. `actionStartOAuth` (`gas/addon.js:1079-1096`) reads the
-     `OAUTH_AUTH_URL` Script Property and opens it
-     (`gas/addon.js:1087-1095`). The Script Property points at the
+  1. `oauthAuthUrl()` (`gas/addon.js:63`) reads the
+     `OAUTH_AUTH_URL` Script Property, and the primary button opens it.
+     The Script Property points at the
      Cloudflare Worker route `GET /oauth/google`.
   2. The Worker's handler (`src/routes/oauth.ts:18-30`) builds the
      Google authorization URL with base
@@ -214,11 +215,12 @@ and the §5.4 ownership-marker contract.
   (`gas/addon.js:1098-1105`) runs server-side: persists the bearer
   token to `UserProperties` via
   `AutoColorAuth.saveSessionToken(token)`
-  (`gas/addon.js:1101`), then renders the HTML output. No Google
+  (`gas/addon.js:1885`), then renders the HTML output. No Google
   API call.
-- **Observable outcome.** Tab auto-closes; the Calendar sidebar
-  reloads via `OnClose.RELOAD_ADD_ON` (`gas/addon.js:1094`),
-  triggering Step 6.
+- **Observable outcome.** The tab auto-closes. If the sidebar has not
+  re-rendered by itself, the reviewer taps `"로그인을 마쳤어요"` in the
+  footer — `actionCompleteSignIn` (`gas/addon.js:190`) reads the stored
+  token and navigates to Home. Either way, Step 6.
 
 ## 6. Post-OAuth Home card visible
 

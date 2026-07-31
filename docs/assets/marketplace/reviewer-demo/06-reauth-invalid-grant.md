@@ -125,14 +125,14 @@ Failure mode (e) for why.
   `actionSyncNow`'s catch at `gas/addon.js:288-293` matches
   `err.message === 'AUTH_EXPIRED'` and returns an `ActionResponse`
   with `setNavigation(...).popToRoot().updateCard(buildReconnectCard())`.
-  `buildReconnectCard` is defined at `gas/addon.js:1107`; it shows
-  title `"재연결 필요"` (`gas/addon.js:1111`), subtitle
-  `"권한 부족 또는 토큰 만료"` (`gas/addon.js:1112`), body
-  `"세션이 만료되었거나 권한이 부족합니다. 다시 연결해주세요."`
-  (`gas/addon.js:1116`), and a fixed-footer button labeled
-  `"OAuth 연동 (재로그인)"` (`gas/addon.js:1123`) bound to
-  `actionReconnectOAuth` (`gas/addon.js:1132-1135`, which delegates
-  to `actionStartOAuth`).
+  `buildReconnectCard` is defined at `gas/addon.js:1896`; it shows
+  title `"재연결 필요"`, subtitle `"권한 부족 또는 토큰 만료"`, body
+  `"세션이 만료되었거나 권한이 부족합니다. 다시 연결해주세요."`,
+  and the shared `buildAuthFooter` (`gas/addon.js:170`) — a primary
+  button labeled `"OAuth 연동 (재로그인)"` opening `oauthAuthUrl()`
+  (`gas/addon.js:63`), plus a secondary `"로그인을 마쳤어요"` button
+  (`actionCompleteSignIn`, `gas/addon.js:190`) that completes the
+  return trip when the add-on does not re-render on its own.
 - **Backend / Google API call.** When the reviewer taps the button,
   the full OAuth flow at `src/routes/oauth.ts` re-runs: redirect to
   Google's authorization endpoint → user re-grants the four backend

@@ -53,6 +53,19 @@ function missingBackendProperties() {
 }
 
 /**
+ * The Worker's `/oauth/google` entry point. Read at card-build time because
+ * the sign-in button carries an AuthorizationAction (a URL baked into the
+ * card), not an onClick callback that could resolve it later.
+ * `missingBackendProperties()` gates `buildAddOn` on this key, so the
+ * fallback only ever shows if a card is rebuilt after the property is
+ * cleared mid-session.
+ */
+function oauthAuthUrl() {
+  var scriptProps = PropertiesService.getScriptProperties();
+  return scriptProps.getProperty('OAUTH_AUTH_URL') || "https://api.example.com/oauth/google";
+}
+
+/**
  * Renders a blocking card instructing the operator to finish backend
  * configuration before end-users can reach the OAuth flow. Shown instead
  * of the welcome/home card when ScriptProperties are incomplete.
@@ -127,15 +140,64 @@ function buildWelcomeCard(L) {
       .setOpenLink(CardService.newOpenLink().setUrl(ACFC_CONFIG.PRIVACY_POLICY_URL))));
   builder.addSection(consentSection);
 
-  var fixedFooter = CardService.newFixedFooter()
-    .setPrimaryButton(CardService.newTextButton()
-      .setText(t('welcome.cta.login', null, L))
-      .setTextButtonStyle(CardService.TextButtonStyle.FILLED)
-      .setOnClickAction(CardService.newAction().setFunctionName("actionStartOAuth")));
-
-  builder.setFixedFooter(fixedFooter);
+  // Two-button footer, because the host's auto-reload is best-effort only —
+  // see `buildAuthFooter`.
+  builder.setFixedFooter(buildAuthFooter(t('welcome.cta.login', null, L), L));
 
   return builder.build();
+}
+
+/**
+ * The sign-in / reconnect footer, shared by buildWelcomeCard and
+ * buildReconnectCard.
+ *
+ * **The second button is not optional.** Google's own guide for connecting an
+ * add-on to a third-party service ends the flow with "the user is prompted to
+ * refresh the add-on" — automatic re-render after the OAuth window closes is
+ * NOT a guarantee for Calendar add-ons (only Chat gets it, via
+ * `completeRedirectUri`). Measured here: `OnClose.RELOAD_ADD_ON` is deprecated
+ * and never fired, and a button-level `AuthorizationAction` did not fire
+ * either; the user was left on an authenticated-but-stale card with no way
+ * forward except reloading the whole Calendar tab.
+ *
+ * So the primary button keeps the best-effort auto path (`OnClose.RELOAD`, the
+ * non-deprecated enum, the shape Google's own sample uses) and the secondary
+ * button is the deterministic one: it re-reads the session token that `doGet`
+ * already wrote to UserProperties and navigates to Home. Removing it puts the
+ * user back in the dead end. Both widget types are already load-bearing
+ * elsewhere in this file, so neither depends on an unverified API.
+ */
+function buildAuthFooter(primaryText, L) {
+  return CardService.newFixedFooter()
+    .setPrimaryButton(CardService.newTextButton()
+      .setText(primaryText)
+      .setTextButtonStyle(CardService.TextButtonStyle.FILLED)
+      .setOpenLink(CardService.newOpenLink()
+        .setUrl(oauthAuthUrl())
+        .setOpenAs(CardService.OpenAs.FULL_SIZE)
+        .setOnClose(CardService.OnClose.RELOAD)))
+    .setSecondaryButton(CardService.newTextButton()
+      .setText(t('auth.cta.continue', null, L))
+      .setOnClickAction(CardService.newAction().setFunctionName("actionCompleteSignIn")));
+}
+
+/**
+ * "I've signed in" — the deterministic half of the OAuth return path.
+ * `doGet` persisted the session token to UserProperties before the bounce-back
+ * page rendered, so by the time the user can press this the token is already
+ * there; this just re-renders against it.
+ */
+function actionCompleteSignIn(e) {
+  var L = pickLocale(e);
+  if (!AutoColorAuth.isAuthenticated()) {
+    return CardService.newActionResponseBuilder()
+      .setNotification(CardService.newNotification().setText(t('auth.toast.notYet', null, L)))
+      .build();
+  }
+  return CardService.newActionResponseBuilder()
+    .setNavigation(CardService.newNavigation().popToRoot().updateCard(buildHomeCard(L)))
+    .setNotification(CardService.newNotification().setText(t('auth.toast.loggedIn', null, L)))
+    .build();
 }
 
 
@@ -1954,26 +2016,6 @@ function actionConfirmDeleteAccount(e) {
     .build();
 }
 
-function actionStartOAuth(e) {
-  var L = pickLocale(e);
-  if (AutoColorAuth.isAuthenticated()) {
-    return CardService.newActionResponseBuilder()
-      .setNavigation(CardService.newNavigation().updateCard(buildHomeCard(L)))
-      .setNotification(CardService.newNotification().setText(t('auth.toast.loggedIn', null, L)))
-      .build();
-  }
-
-  var scriptProps = PropertiesService.getScriptProperties();
-  var authUrl = scriptProps.getProperty('OAUTH_AUTH_URL') || "https://api.example.com/oauth/google";
-
-  return CardService.newActionResponseBuilder()
-    .setOpenLink(CardService.newOpenLink()
-      .setUrl(authUrl)
-      .setOpenAs(CardService.OpenAs.FULL_SIZE)
-      .setOnClose(CardService.OnClose.RELOAD_ADD_ON))
-    .build();
-}
-
 /**
  * doGet renders the OAuth bounce-back HTML (callback success or error).
  * Locale comes from Session.getActiveUserLocale() since the bounce-back
@@ -2011,20 +2053,12 @@ function buildReconnectCard(errorMsg, L) {
 
   builder.addSection(msgSection);
 
-  var fixedFooter = CardService.newFixedFooter()
-    .setPrimaryButton(CardService.newTextButton()
-      .setText(t('reconnect.cta', null, L))
-      .setTextButtonStyle(CardService.TextButtonStyle.FILLED)
-      .setOnClickAction(CardService.newAction().setFunctionName("actionReconnectOAuth")));
-
-  builder.setFixedFooter(fixedFooter);
+  // Same footer contract as buildWelcomeCard — a re-auth that did not reload
+  // the add-on left the user on this card with no signal that the reconnect
+  // had already succeeded.
+  builder.setFixedFooter(buildAuthFooter(t('reconnect.cta', null, L), L));
 
   return builder.build();
-}
-
-function actionReconnectOAuth(e) {
-  // Reconnect logic delegates to normal OAuth flow
-  return actionStartOAuth(e);
 }
 
 /**
