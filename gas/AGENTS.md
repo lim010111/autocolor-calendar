@@ -108,9 +108,17 @@ Reviewer-walkthrough scripts under [../docs/assets/marketplace/reviewer-demo/](.
   primary `OpenLink` carrying the best-effort `OnClose.RELOAD` (non-deprecated,
   the shape Google's own sample uses) **plus** a secondary "로그인을 마쳤어요"
   button wired to `actionCompleteSignIn`, which re-reads the token `doGet`
-  already wrote and navigates Home. Deleting the secondary button restores the
-  dead end where an authenticated user is stuck on the Welcome card. The auth
-  URL's origin must stay inside `appsscript.json` `openLinkUrlPrefixes`.
+  already wrote, confirms the grant against `/me.needs_reauth`, and navigates
+  Home. Deleting the secondary button restores the dead end where an
+  authenticated user is stuck on the Welcome card. The auth URL's origin must
+  stay inside `appsscript.json` `openLinkUrlPrefixes`.
+  **The local token alone is not the gate.** The reconnect card is also
+  reachable with a valid session — `/sync/run` answers 503 `reauth_required`
+  (never 401) once `oauth_tokens.needs_reauth` is armed by a background sync,
+  so nothing clears the token. Gating on `isAuthenticated()` alone popped the
+  user to Home under a "signed in" toast with the account still broken.
+  Transient `/me` failures deliberately do NOT block (that would rebuild the
+  dead end from the other side). Pinned by `src/__tests__/gasCompleteSignIn.test.ts`.
 - **Removed on purpose (2026-07-29):** the settings card's `policy_settings`
   checkbox group (`prevent_overwrite` / `use_llm` / `use_description`) is
   gone. It had no `onChange`, no save handler, and no backing column — while

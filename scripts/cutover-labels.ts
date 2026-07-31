@@ -205,12 +205,21 @@ async function main(): Promise<void> {
       const result = await applyUserPlan(plan, {
         appendLabel: (input) => appendEventLabel(accessToken, CALENDAR_ID, input),
         linkCategory: async (categoryId, labelId, origin) => {
+          // The WHERE clause re-asserts the *entire* selection predicate, not
+          // just `label_id IS NULL`. A whole Google append round-trip happens
+          // per rule between the plan read and this write, and a rule the user
+          // tombstones inside that window must not come back linked — ADR-0008
+          // makes "a user-deleted rule never gets a label" a write-side
+          // invariant, and the read-side filter alone cannot hold it. A 0-row
+          // result is already accounted for: linkMissed for a planned link,
+          // an orphaned-label failure after an append (cutover-labels-core.ts).
           const updated = await sql`
             UPDATE categories
                SET label_id = ${labelId},
                    label_origin = ${origin},
                    updated_at = now()
             WHERE id = ${categoryId} AND user_id = ${user.id} AND label_id IS NULL
+              AND label_deleted_at IS NULL AND rule_deleted_at IS NULL
             RETURNING id
           `;
           return updated.length > 0;

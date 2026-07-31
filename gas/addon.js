@@ -186,10 +186,28 @@ function buildAuthFooter(primaryText, L) {
  * `doGet` persisted the session token to UserProperties before the bounce-back
  * page rendered, so by the time the user can press this the token is already
  * there; this just re-renders against it.
+ *
+ * **A local session token is not proof the Google grant is live.** The
+ * reconnect card is also reachable while the session token is perfectly
+ * valid: once `oauth_tokens.needs_reauth` is armed (flagged by a *background*
+ * sync, not by this user's foreground call), `/sync/run` answers 503
+ * `reauth_required` and never 401, so nothing clears the token. Trusting
+ * `isAuthenticated()` alone there would pop the user back to Home with a
+ * "signed in" toast while the account is still broken — the same dead end
+ * this button exists to prevent, only quieter. `/me.needs_reauth` is the
+ * authority. Transient `/me` failures are NOT treated as "not yet": the home
+ * card already renders its own error states, and blocking on a flaky fetch
+ * would re-create the dead end from the other side.
  */
 function actionCompleteSignIn(e) {
   var L = pickLocale(e);
   if (!AutoColorAuth.isAuthenticated()) {
+    return CardService.newActionResponseBuilder()
+      .setNotification(CardService.newNotification().setText(t('auth.toast.notYet', null, L)))
+      .build();
+  }
+  var me = fetchMeOrError();
+  if (me && (me.error === 'AUTH_EXPIRED' || me.needs_reauth === true)) {
     return CardService.newActionResponseBuilder()
       .setNotification(CardService.newNotification().setText(t('auth.toast.notYet', null, L)))
       .build();
