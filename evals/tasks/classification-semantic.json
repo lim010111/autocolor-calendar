@@ -153,7 +153,7 @@
         {"name": "개발", "keywords": ["개발"], "colorId": "9"},
         {"name": "운동", "keywords": ["운동"], "colorId": "5"}
       ],
-      "event": {"summary": "유플러스 요굼제 가입하기"},
+      "event": {"summary": "알뜰폰 요금제 알아보기"},
       "expected": {"category_name": "none"}
     },
     {
@@ -163,7 +163,7 @@
         {"name": "개발", "keywords": ["개발"], "colorId": "9"},
         {"name": "운동", "keywords": ["운동"], "colorId": "5"}
       ],
-      "event": {"summary": "책 읽기(커리어 스킬)"},
+      "event": {"summary": "책 읽기(자기계발)"},
       "expected": {"category_name": "none"}
     },
     {
@@ -173,7 +173,7 @@
         {"name": "개발", "keywords": ["개발"], "colorId": "9"},
         {"name": "운동", "keywords": ["운동"], "colorId": "5"}
       ],
-      "event": {"summary": "에스알포스트 지원"},
+      "event": {"summary": "한올물류 입사 지원"},
       "expected": {"category_name": "none"}
     },
     {
@@ -183,7 +183,7 @@
         {"name": "개발", "keywords": ["개발"], "colorId": "9"},
         {"name": "운동", "keywords": ["운동"], "colorId": "5"}
       ],
-      "event": {"summary": "내면소통 명상 수업"},
+      "event": {"summary": "호흡 명상 수업"},
       "expected": {"category_name": "none"}
     }
   ]
