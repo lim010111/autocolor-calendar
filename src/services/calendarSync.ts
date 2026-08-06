@@ -218,20 +218,60 @@ async function loadCategories(
   return await listRules(db, userId);
 }
 
+// §5.4 ownership-aware manual judgment (E1 gate predicate). Pure — shared by
+// processEvent's manual gate and embedPageTitles' target filter, so an event
+// that can never be painted is neither classified NOR title-embedded.
+// Version-gated probes:
+// - marker v2: ownership = stored `autocolor_label` still equals the
+//   event's current `eventLabelId` (the user hasn't re-labelled after us).
+// - marker v1 (transitional, until the #04 re-stamp): ownership = stored
+//   `autocolor_color` still equals the legacy `colorId` — the bridge keeps
+//   colorId stable for classic colors we wrote. Residual v1 blind spot
+//   (user label best-matching our marker color) is ADR-0006 잔여 리스크 ②,
+//   closed by the v2 re-stamp.
+// - unknown versions are opaque: skip rather than misinterpret.
+// Manual signal (native-labels #01): any label/color present without
+// ownership = user-manual — label presence alone is NOT manual (our own
+// writes carry the label / a bridged one). Label-less but legacy-colored
+// (pre-bridge relic / cleared-label event keeping a colorId): still
+// user-manual unless owned.
+function isUserManualEvent(event: CalendarEvent): boolean {
+  const currentLabel = event.eventLabelId ?? "";
+  const priv = event.extendedProperties?.private;
+  const markerVersion = priv?.[AUTOCOLOR_KEYS.version];
+  let appOwned = false;
+  if (markerVersion === AUTOCOLOR_MARKER_VERSION) {
+    const ownedLabel = priv?.[AUTOCOLOR_KEYS.label];
+    appOwned = ownedLabel !== undefined && ownedLabel === currentLabel;
+  } else if (markerVersion === AUTOCOLOR_MARKER_VERSION_V1) {
+    const ownedColor = priv?.[AUTOCOLOR_KEYS.color];
+    appOwned = ownedColor !== undefined && ownedColor === (event.colorId ?? "");
+  }
+  if (currentLabel !== "" && !appOwned) return true;
+  if ((event.colorId ?? "") !== "" && !appOwned) return true;
+  return false;
+}
+
 // ADR-0004 #02 AC #6 — per-page batch title embedding. One `env.AI.run` batch
 // per page (aligned to the `res.items` boundary of the existing streaming
 // paging loop). Vectors are transient (never stored) and consumed by Stage-1
-// kNN via the per-page `Map<eventId, vector>`. Cancelled events and empty
-// titles are skipped (they never reach Stage 1). A batch failure leaves the
-// map empty so every event this page degrades to Stage-2 LLM — the systemic
-// Workers-AI failure blast radius (#02 AC #9), bounded by the daily caps.
+// kNN via the per-page `Map<eventId, vector>`. Cancelled events, empty
+// titles, and user-manual events (E1 gate — `isUserManualEvent`) are skipped:
+// they never reach Stage 1, so embedding them would only ship raw titles to
+// Workers AI and burn a subrequest for a discarded result. A batch failure
+// leaves the map empty so every event this page degrades to Stage-2 LLM —
+// the systemic Workers-AI failure blast radius (#02 AC #9), bounded by the
+// daily caps.
 async function embedPageTitles(
   embed: EmbedTexts,
   items: CalendarEvent[],
 ): Promise<Map<string, number[]>> {
   const map = new Map<string, number[]>();
   const targets = items.filter(
-    (e) => e.status !== "cancelled" && (e.summary?.trim().length ?? 0) > 0,
+    (e) =>
+      e.status !== "cancelled" &&
+      (e.summary?.trim().length ?? 0) > 0 &&
+      !isUserManualEvent(e),
   );
   if (targets.length === 0) return map;
   try {
@@ -282,35 +322,9 @@ async function processEvent(
   // skipped_manual, not skipped_equal — without classifying we cannot know
   // "equal", and the event is semantically manual either way (no PATCH in
   // both readings).
-  // Version-gated probes:
-  // - marker v2: ownership = stored `autocolor_label` still equals the
-  //   event's current `eventLabelId` (the user hasn't re-labelled after us).
-  // - marker v1 (transitional, until the #04 re-stamp): ownership = stored
-  //   `autocolor_color` still equals the legacy `colorId` — the bridge keeps
-  //   colorId stable for classic colors we wrote. Residual v1 blind spot
-  //   (user label best-matching our marker color) is ADR-0006 잔여 리스크 ②,
-  //   closed by the v2 re-stamp.
-  // - unknown versions are opaque: skip rather than misinterpret.
-  // Manual signal (native-labels #01): any label/color present without
-  // ownership = user-manual — label presence alone is NOT manual (our own
-  // writes carry the label / a bridged one).
-  const priv = event.extendedProperties?.private;
-  const markerVersion = priv?.[AUTOCOLOR_KEYS.version];
-  let appOwned = false;
-  if (markerVersion === AUTOCOLOR_MARKER_VERSION) {
-    const ownedLabel = priv?.[AUTOCOLOR_KEYS.label];
-    appOwned = ownedLabel !== undefined && ownedLabel === currentLabel;
-  } else if (markerVersion === AUTOCOLOR_MARKER_VERSION_V1) {
-    const ownedColor = priv?.[AUTOCOLOR_KEYS.color];
-    appOwned = ownedColor !== undefined && ownedColor === (event.colorId ?? "");
-  }
-  if (currentLabel !== "" && !appOwned) {
-    summary.skipped_manual += 1;
-    return;
-  }
-  // Label-less but legacy-colored (pre-bridge relic / cleared-label event
-  // keeping a colorId): still user-manual unless owned.
-  if ((event.colorId ?? "") !== "" && !appOwned) {
+  // The version-gated ownership probes live in `isUserManualEvent` (shared
+  // with embedPageTitles' target filter — see its doc comment).
+  if (isUserManualEvent(event)) {
     summary.skipped_manual += 1;
     return;
   }

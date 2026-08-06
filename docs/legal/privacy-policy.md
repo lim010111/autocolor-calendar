@@ -137,9 +137,11 @@ Workers 메모리에서 폐기된다(§2.1).
 - `start`, `end`, `colorId`, `status`, `extendedProperties.private`(서비스의
   색상 소유권 마커 검증용)
 - `attendees`, `creator`, `organizer` — 백엔드에 일시 도달하나, LLM 분류
-  단계의 프롬프트는 `summary`/`description`/`location` 3개 필드만
-  whitelist 하므로 OpenAI 등 외부 LLM 처리자에게 전송되지 않는다. 이에
-  더해 각 필드의 이메일 값은 LLM 단계 진입 전에 제거된다.
+  단계의 프롬프트는 이벤트 필드 중 `summary`/`description`/`location`
+  3개만 whitelist 하므로 OpenAI 등 외부 LLM 처리자에게 전송되지 않는다
+  (프롬프트에는 이벤트 필드 외에 사용자 정의 카테고리 이름·키워드가 분류
+  선택지로 포함된다 — §4 표 참조). 이에 더해 각 필드의 이메일 값은 LLM
+  단계 진입 전에 제거된다.
 
 <!-- LEGAL-REVIEW: PIPA §3 1항(개인정보 최소수집 원칙) / GDPR Art. 5(1)(c)
 data minimisation 원칙에 정합. attendees/creator/organizer는 서비스 처리
@@ -483,10 +485,12 @@ redaction이 mandatory 적용된다(우회 경로 없음):
 - `attendees[].email`, `creator.email`, `organizer.email` 은 destructure-and-
   omit 으로 제거된다.
 
-나아가 prompt 빌더는 `summary` / `description` / `location` 3개 필드만
-whitelist 하므로, 참석자·주최자·생성자 정보는 이메일 제거 여부와 무관하게
-**구조적으로 LLM 에 도달하지 않는다**. 즉 이메일 제거는 1차 방어이고, 필드
-whitelist 가 최종 경계다.
+나아가 prompt 빌더는 이벤트 필드 중 `summary` / `description` / `location`
+3개만 whitelist 하므로, 참석자·주최자·생성자 정보는 이메일 제거 여부와
+무관하게 **구조적으로 LLM 에 도달하지 않는다**. 즉 이메일 제거는 1차
+방어이고, 이벤트 필드 whitelist 가 최종 경계다. 프롬프트의 나머지
+구성요소는 이벤트가 아니라 사용자 정의 카테고리 이름·키워드다(§4 표의
+OpenAI 처리 데이터 envelope 에 기재).
 
 §2.5 의 정정 예시 저장도 **동일한 마스킹을 저장 전에** 통과한다. 나아가
 마스킹 결과가 빈 문자열이거나 문자의 50% 이상이 마스킹 토큰인 제목은 저장
