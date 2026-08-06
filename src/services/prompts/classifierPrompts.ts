@@ -28,7 +28,12 @@ export type ClassifierPromptVersion =
   // v6 — ADR-0004 #05 (2026-07-17). v2 verbatim + one field-handling line
   // teaching the model the category `examples` field (user-confirmed past
   // titles from Instant Feedback, structured field in the user payload).
-  | "v6";
+  | "v6"
+  // v7 — ec#07 (2026-08-06). v6 verbatim + none-first membership
+  // strengthening: sparse category lists (1–3 rules) must not absorb
+  // unrelated events. Targets the prod 2026-07-28 Stage-2 over-assignment
+  // (52/56 hits on one category; 4 user-confirmed misclassifications).
+  | "v7";
 
 // Production default. v3 is gpt-5-nano-targeted; production runs on
 // gpt-5.4-nano against which v3 is unmeasured, so the default stays at v2
@@ -64,7 +69,7 @@ export const DEFAULT_CLASSIFIER_PROMPT_VERSION: ClassifierPromptVersion = "v2";
 //
 // Add a version here in the same PR that authors it, never later.
 const PROMPT_VERSIONS_WITH_EXAMPLES_FIELD: ReadonlySet<ClassifierPromptVersion> =
-  new Set<ClassifierPromptVersion>(["v6"]);
+  new Set<ClassifierPromptVersion>(["v6", "v7"]);
 
 export function promptVersionSendsExamples(
   version: ClassifierPromptVersion,

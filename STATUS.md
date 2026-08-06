@@ -96,7 +96,7 @@ eval-gate → #06 → ④ Marketplace. §2.5 저장 개시 2026-08-28.
 
 ## embedding-classifier
 
-`██████████████████░░░░` 69/84 acceptance criteria met (82%)
+`███████████████████░░░` 72/84 acceptance criteria met (86%)
 
 | # | Issue | Triage | Criteria | State | Blocked by |
 |---|-------|--------|----------|-------|-----------|
@@ -106,7 +106,7 @@ eval-gate → #06 → ④ Marketplace. §2.5 저장 개시 2026-08-28.
 | 04 | Rule editor redesign | `ready-for-human` | 5/6 | 🔵 in-progress | #03 |
 | 05 | Examples seeds instant feedback | `ready-for-human` | 18/19 | 🔵 in-progress | #03 |
 | 06 | History based rule suggestions | `ready-for-agent` | 0/8 | ⛔ blocked | #05 |
-| 07 | Llm leg over assignment | `ready-for-agent` | 1/6 | 🔵 in-progress | — |
+| 07 | Llm leg over assignment | `ready-for-agent` | 4/6 | 🔵 in-progress | — |
 
 ## native-labels
 
