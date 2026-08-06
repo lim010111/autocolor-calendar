@@ -271,38 +271,18 @@ async function processEvent(
   }
   summary.evaluated += 1;
 
-  // Outcome counters (no_match / llm_*) are now owned by `syncSummarySink`,
-  // composed into the chain in `runPagedList`. processEvent only handles
-  // lifecycle counters (seen / cancelled / evaluated / skipped_* / updated)
-  // that derive from §5.4 ownership marker checks + `patchEventColor`.
-  const outcome: ClassificationOutcome = await classify(event, classifyCtx);
-  // #02 budget guard — OpenAI fetches are counted post-hoc from the record
-  // every llm* outcome carries (`attempts` = actual fetch count; 0 for the
-  // quota-latched / disabled short-circuits that never fetched). Reading the
-  // record here keeps the counter wiring entirely out of classifierChain /
-  // llmClassifier.
-  if ("llmRecord" in outcome) fetches.used += outcome.llmRecord.attempts;
-  const hit = outcomeToRuleHit(outcome);
-  if (hit === null) return;
-
-  // ADR-0006 (native-labels #02) — classification output is a native label.
-  // A hit on a rule that has no label yet (pre-cutover row, labelId NULL)
-  // is skipped rather than guessed; the #04 cutover backfills `labelId` and
-  // re-syncs.
-  const target = hit.labelId ?? null;
-  if (target === null) {
-    summary.skipped_no_label += 1;
-    return;
-  }
   const currentLabel = event.eventLabelId ?? "";
-  // Invariant: the marker is stamped only on labels *this code actually
-  // wrote*. We never retro-claim ownership of a label that happens to match
-  // our target, even if the equality lets us short-circuit the PATCH below.
-  if (currentLabel === target) {
-    summary.skipped_equal += 1;
-    return;
-  }
-  // §5.4 ownership-aware skip, label world. Version-gated probes:
+  // §5.4 ownership-aware skip, label world. Runs BEFORE classification: an
+  // event that fails the manual gate can never be painted regardless of what
+  // the classifier says, so classifying it first burned a Stage-2 LLM call
+  // (and shipped the event to OpenAI) for a result that was always discarded.
+  // Measured live 2026-07-28: user-corrected events were re-classified on
+  // every sync only to land in skipped_manual. One consequence: a user-set
+  // label that happens to equal what we would have targeted now counts as
+  // skipped_manual, not skipped_equal — without classifying we cannot know
+  // "equal", and the event is semantically manual either way (no PATCH in
+  // both readings).
+  // Version-gated probes:
   // - marker v2: ownership = stored `autocolor_label` still equals the
   //   event's current `eventLabelId` (the user hasn't re-labelled after us).
   // - marker v1 (transitional, until the #04 re-stamp): ownership = stored
@@ -332,6 +312,39 @@ async function processEvent(
   // keeping a colorId): still user-manual unless owned.
   if ((event.colorId ?? "") !== "" && !appOwned) {
     summary.skipped_manual += 1;
+    return;
+  }
+
+  // Outcome counters (no_match / llm_*) are owned by `syncSummarySink`,
+  // composed into the chain in `runPagedList`. processEvent only handles
+  // lifecycle counters (seen / cancelled / evaluated / skipped_* / updated)
+  // that derive from §5.4 ownership marker checks + `patchEventLabel`.
+  const outcome: ClassificationOutcome = await classify(event, classifyCtx);
+  // #02 budget guard — OpenAI fetches are counted post-hoc from the record
+  // every llm* outcome carries (`attempts` = actual fetch count; 0 for the
+  // quota-latched / disabled short-circuits that never fetched). Reading the
+  // record here keeps the counter wiring entirely out of classifierChain /
+  // llmClassifier.
+  if ("llmRecord" in outcome) fetches.used += outcome.llmRecord.attempts;
+  const hit = outcomeToRuleHit(outcome);
+  if (hit === null) return;
+
+  // ADR-0006 (native-labels #02) — classification output is a native label.
+  // A hit on a rule that has no label yet (pre-cutover row, labelId NULL)
+  // is skipped rather than guessed; the #04 cutover backfills `labelId` and
+  // re-syncs.
+  const target = hit.labelId ?? null;
+  if (target === null) {
+    summary.skipped_no_label += 1;
+    return;
+  }
+  // Invariant: the marker is stamped only on labels *this code actually
+  // wrote*. We never retro-claim ownership of a label that happens to match
+  // our target, even if the equality lets us short-circuit the PATCH below.
+  // Reaching here means the event passed the manual gate (virgin or
+  // app-owned), so skipped_equal now means "app-owned and already correct".
+  if (currentLabel === target) {
+    summary.skipped_equal += 1;
     return;
   }
   // Counted before issuing — a PATCH that throws still consumed budget.

@@ -411,7 +411,23 @@ describe("calendarSync.runIncrementalSync", () => {
           items: [
             { id: "match", status: "confirmed", summary: "standup", colorId: "" },
             { id: "manual", status: "confirmed", summary: "standup", colorId: "7" },
-            { id: "already", status: "confirmed", summary: "standup", colorId: "", eventLabelId: TARGET_LABEL },
+            // App-owned marker so the equality short-circuit (not the E1
+            // manual gate) is what skips it — a label-without-marker event
+            // is skipped_manual since the manual gate moved before classify.
+            {
+              id: "already",
+              status: "confirmed",
+              summary: "standup",
+              colorId: "",
+              eventLabelId: TARGET_LABEL,
+              extendedProperties: {
+                private: {
+                  autocolor_v: "2",
+                  autocolor_label: TARGET_LABEL,
+                  autocolor_category: "cat-1",
+                },
+              },
+            },
           ],
           nextSyncToken: "fresh",
         }),
@@ -437,7 +453,7 @@ describe("calendarSync.runIncrementalSync", () => {
     if (!result.ok) return;
     expect(result.summary.updated).toBe(1);      // "match" patched
     expect(result.summary.skipped_manual).toBe(1); // "manual" (user set 7)
-    expect(result.summary.skipped_equal).toBe(1);  // "already" has colorId 3
+    expect(result.summary.skipped_equal).toBe(1);  // "already" app-owned + correct
     expect(patchUrls).toHaveLength(1);
     expect(patchUrls[0]).toContain("/events/match");
     const finalUpdate = updates[updates.length - 1]!;
@@ -714,11 +730,14 @@ describe("calendarSync — §5.4 ownership-aware color application", () => {
   });
 
   it("does not retro-claim user-set label matching target (no marker)", async () => {
-    // current label === target but no marker → skipped_equal (not updated).
-    // Critical invariant: we never PATCH, so we never stamp a marker on a
-    // label we didn't write. Otherwise we'd silently transfer ownership and
-    // the next rule change would re-label what is, semantically, a user-set
-    // event.
+    // current label === target but no marker → skipped_manual, and the
+    // classifier is never invoked (E1: the manual gate runs BEFORE
+    // classification — without classifying we cannot know "equal", and a
+    // label we didn't write is user-manual regardless of coincidence).
+    // Critical invariant preserved: we never PATCH, so we never stamp a
+    // marker on a label we didn't write. Otherwise we'd silently transfer
+    // ownership and the next rule change would re-label what is,
+    // semantically, a user-set event.
     const env = makeEnv();
     const tokenRow = await seedTokenRow(env);
     const { db } = makeDb({ nextSyncToken: "old", tokenRow });
@@ -732,17 +751,69 @@ describe("calendarSync — §5.4 ownership-aware color application", () => {
       },
     ]);
 
+    let classifyCalls = 0;
+    const countingClassify: ClassifyEventFn = async (event, ctx) => {
+      classifyCalls += 1;
+      return classifyToBlue(event, ctx);
+    };
     const result = await runIncrementalSync({
       db,
       env,
       userId: USER_ID,
       calendarId: CAL,
-      classifyEvent: classifyToBlue,
+      classifyEvent: countingClassify,
     });
     expect(result.ok).toBe(true);
     if (!result.ok) return;
-    expect(result.summary.skipped_equal).toBe(1);
+    expect(result.summary.skipped_manual).toBe(1);
+    expect(result.summary.skipped_equal).toBe(0);
     expect(result.summary.updated).toBe(0);
+    expect(classifyCalls).toBe(0);
+    expect(patches).toHaveLength(0);
+  });
+
+  it("E1: manual gate skips before classification (no LLM burn)", async () => {
+    // A user-corrected event (label present, marker mismatch) used to be
+    // re-classified on every sync — a Stage-2 LLM call whose result was
+    // always discarded by the manual gate below it. Measured live
+    // 2026-07-28: the user's four corrected events burned one LLM call
+    // each per sync. The gate now runs first; the classifier must not fire.
+    const env = makeEnv();
+    const tokenRow = await seedTokenRow(env);
+    const { db } = makeDb({ nextSyncToken: "old", tokenRow });
+    const { patches } = stubSyncWith([
+      {
+        id: "user-corrected",
+        status: "confirmed",
+        summary: "x",
+        colorId: "",
+        eventLabelId: "user-picked-label",
+        extendedProperties: {
+          private: {
+            autocolor_v: "2",
+            autocolor_label: TARGET_LABEL, // we wrote TARGET, user changed it
+            autocolor_category: "cat-1",
+          },
+        },
+      },
+    ]);
+
+    let classifyCalls = 0;
+    const countingClassify: ClassifyEventFn = async (event, ctx) => {
+      classifyCalls += 1;
+      return classifyToBlue(event, ctx);
+    };
+    const result = await runIncrementalSync({
+      db,
+      env,
+      userId: USER_ID,
+      calendarId: CAL,
+      classifyEvent: countingClassify,
+    });
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.summary.skipped_manual).toBe(1);
+    expect(classifyCalls).toBe(0);
     expect(patches).toHaveLength(0);
   });
 
