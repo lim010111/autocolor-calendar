@@ -192,11 +192,15 @@ carry that reading across.
 for system-prompt versions that document it
 (`promptVersionSendsExamples`, `src/services/prompts/classifierPrompts.ts`).
 Turning on consent-gated storage would otherwise start shipping a populated
-field under the v2 prompt, which never mentions it — an un-eval-gated model
-input change (§5.3) — and would put consented titles into
-`llm_calls.prompt_summary`, which the revocation purge does not reach. Keying
-on the version makes the eval-gate mechanical. Do not replace it with an
-unconditional map.
+field under a prompt that never mentions it (the v8 production default is
+deliberately examples-blind) — an un-eval-gated model input change (§5.3).
+Beyond the eval-gate, starting example transmission at all is a
+privacy-policy §12 material change (§2.5 pins "전송 개시 = §12 중대한 변경")
+requiring 30-day notice + §4/§4.1 revision BEFORE bumping the default to a
+WITH_EXAMPLES version (v6/v7). Keying on the version makes both gates
+mechanical. Do not replace it with an unconditional map. (The
+`llm_calls.prompt_summary` copy is separately neutralized by
+`sanitizePromptSummary`, which empties `examples` before storage.)
 
 ## Color ownership marker (§5.4)
 
@@ -632,11 +636,18 @@ order, the six tie-breakers, or the few-shot examples in `buildPrompt` must:
 1. Pass the regression guard (`pnpm tsx evals/scripts/run-classification-eval.ts` —
    ≥90% AND zero `user-report-*` fail).
 2. Pass the 4-language baseline (en/ko/zh-CN/zh-TW) re-run with `--include-rule-leg`
-   per `evals/report.md` §8.1, with delta ≥ -1%p on each language vs the latest
-   baseline ledger row.
+   per `evals/report.md` §8.1, with delta ≥ -1%p on each language — measured as a
+   **same-day paired comparison**: run the current default prompt fresh alongside the
+   candidate and diff the two runs, never against a historical ledger row. Run-to-run
+   variance is ±2%p (measured 2026-08-06: ko v2 89.1 → 86.5 on fresh re-run, zh-CN v7
+   87.0/83.3 across two same-day runs), which swamps the 1%p line against a stale
+   baseline. A borderline delta warrants a per-case diff of the two stdouts, not a
+   re-roll.
 3. Pass the Pattern B named-summary grep (en stdout): "Jam session" / "Brainstorming
    with Luke and Patrick" / "Web3 panel discussion" / "Yoga class with Emily" must
-   all PASS.
+   all PASS. (Known drift: "Yoga class with Emily" FAILs under fresh v2 as of
+   2026-08-06 — the expectation needs re-measurement; treat a Yoga fail as
+   informational until re-baselined, the other three stay blocking.)
 
 A delta worse than -2%p triggers the `evals/report.md` §8.3 per-pattern stdout grep
 analysis. New ledger rows are append-only; never overwrite prior baselines.

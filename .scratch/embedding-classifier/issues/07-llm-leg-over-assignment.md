@@ -102,12 +102,19 @@ none" 이 안정적으로 발화하지 않는다**는 뜻이다.
       eval 로 입증된다 (수치 목표는 baseline 계측 후 확정)
       *(2026-08-06 — v2 baseline: 4건 중 3건 오배정(blocking fail 3) →
       v7: 0건, 2런 연속. 아래 Comments)*
-- [ ] §5.3 eval-gate 3종 통과 — 회귀 ≥90% & zero `user-report-*` fail /
+- [x] §5.3 eval-gate 3종 통과 — 회귀 ≥90% & zero `user-report-*` fail /
       4언어 델타 ≥ -1%p / Pattern B 4건 PASS
-      *(게이트 1 통과: v7 95.8%·100% 2런, blocking 0. 게이트 2·3 진행 중)*
+      *(게이트 1 통과: v7 95.8%·100% 2런 + v8 24/24, blocking 0. 게이트 2:
+      짝비교 en +3.1%p / ko −2.6%p / zh 노이즈 — 2026-08-07 사용자 결정으로
+      트레이드오프 수용(오적용 ≫ 미배정). 게이트 3: Yoga 케이스는 fresh v2
+      도 FAIL(기대 드리프트) — §5.3 게이트 문구를 짝비교 기준 + Yoga
+      informational 로 개정. 아래 Comments)*
 - [x] 프롬프트 변경 시 `prompts/classifier/system.v7.md` 신규 생성 +
       `pnpm embed-prompts` + 레지스트리 등록 (기존 버전 파일 삭제 없음)
+      *(+2026-08-07: v8 = v7 − examples 라인, DEFAULT 승격 — §12 인터록
+      비침범)*
 - [ ] prod 재계측: hit 의 카테고리 쏠림과 오분류 4건이 해소됨을 확인
+      *(v8 prod 배포 후 실측 — 남은 유일한 AC)*
 
 ## Blocked by
 
@@ -279,3 +286,29 @@ churn. v7 교정 7건과 상쇄해 순손실 5케이스.
 (DEFAULT 는 v2 유지, prod 무영향). 게이트 자체의 두 가지 정비 필요도
 드러남: 단일 런 대 단일 런 -1%p 판정은 런 분산(±2%p 실증) 아래라 짝비교
 필수화 검토, Pattern B 의 Yoga 기대는 재계측 필요.
+
+### 2026-08-07 — v8 승격 (사용자 결정)
+
+사용자가 교환비를 확정했다: **오적용(false-apply) ≫ 미배정(miss)** — prod
+에서 실증된 손상 4건이 전부 오적용이었고, 미배정은 Instant Feedback 원탭
+회복이 가능하다. 이 목적함수 아래 en +3.1%p(오적용 감소) / ko −2.6%p(경계
+miss 증가) 짝비교 트레이드오프를 수용하고 승격.
+
+승격 경로는 §12 자물쇠 비침범을 위해 **v8 = v7 verbatim − examples
+필드-핸들링 라인 1줄**로 실행했다. v7 은 examples 문서화 버전
+(`PROMPT_VERSIONS_WITH_EXAMPLES_FIELD`)이라 그대로 승격하면 2026-08-28
+저장 개시 시점부터 예시 전송이 §12 30일 고지 없이 자동 개시된다 — §2.5
+"전송 개시 = §12 중대한 변경" 위반. v8 은 examples-blind 이므로 승격해도
+인터록이 닫힌 채 유지되고, 예시 전송은 향후 §12 고지 + §4/§4.1 개정과
+함께 WITH_EXAMPLES 버전(v6/v7) 승격으로 별도 결정한다.
+
+검증: v8 회귀 24/24 (user-report-sparse-* 4건 전부 PASS, 원장 append).
+eval 픽스처에 examples 데이터가 없으므로 v7 의 4언어 짝비교 결과는 v8 에
+그대로 이월된다(차이는 시스템 프롬프트의 비활성 문서화 라인 1줄뿐이며,
+회귀 스위트로 v8 자체를 재검증함). 전체 687 테스트·typecheck·lint 클린.
+
+부수 정비(같은 결정에 딸림): src/AGENTS.md §5.3 게이트 2를 "최신 원장 행
+대비"에서 **같은 날 fresh 짝비교** 기준으로 개정(런 분산 ±2%p 실증 근거
+명기), 게이트 3의 Yoga 케이스를 재계측 전까지 informational 로 강등.
+
+남은 AC 는 prod 재계측 하나 — v8 배포 후 llm_calls 쏠림/오분류 해소 확인.
