@@ -143,8 +143,10 @@ export function classifyInfraError(
 // (`POST /api/classify/preview`) as a single-row insert.
 //
 // PII contract: `promptSummary` carries the user-message JSON that already
-// passed `redactEventForLlm` (§5.3) — the same payload that was sent to
-// OpenAI. `rawResponse` is OpenAI's reply, which by structured-outputs
+// passed `redactEventForLlm` (§5.3) — the payload that was sent to OpenAI,
+// with every category's `examples` field zeroed by `sanitizePromptSummary`
+// (ADR-0007: the revocation purge cannot reach this column, so consented
+// titles must never be persisted here). `rawResponse` is OpenAI's reply, which by structured-outputs
 // constraint is a `{category_name: string}` echo of the closed enum
 // (`bad_response` is the one path where the model can return arbitrary
 // text, but the prompt provides redacted input only). Both columns inherit
@@ -223,9 +225,10 @@ export function buildPrompt(
   // once consent-gated storage went live, keying on the version is what keeps
   // a populated field from reaching the v2 prompt — which never mentions it —
   // without the §5.3 eval-gate. Do not "simplify" this back to an
-  // unconditional map: that ships an un-eval-gated model-input change, and it
-  // also puts consented titles into `llm_calls.prompt_summary`, which the
-  // consent-revocation purge does not reach.
+  // unconditional map: that ships an un-eval-gated model-input change. (The
+  // storage-side half of this hazard — consented titles landing in
+  // `llm_calls.prompt_summary`, which the revocation purge does not reach —
+  // is closed separately by `sanitizePromptSummary`.)
   const sendExamples = promptVersionSendsExamples(version);
   const categoryList = categories.slice(0, LLM_MAX_CATEGORIES).map((c) => ({
     name: c.name,
@@ -427,6 +430,27 @@ function extractUserMessage(messages: ChatMessage[]): string | undefined {
   return messages.find((m) => m.role === "user")?.content;
 }
 
+// ADR-0007 — the STORED copy of the user message zeroes every category's
+// `examples` field. Consented titles may lawfully ride the prompt to OpenAI
+// (version-gated by `promptVersionSendsExamples`), but persisting them in
+// `llm_calls.prompt_summary` would put revocable data in a column the
+// consent-revocation purge (`revokeExampleConsent`) does not reach. The
+// transmitted payload is untouched — this strips the persisted copy only,
+// so flipping the default prompt to an examples-bearing version can never
+// silently create an un-purgeable example copy. Under versions that send
+// `examples: []` (v2 default) the round-trip is byte-identical. Exported
+// for testing. Input is always `buildPrompt`'s own JSON.stringify output,
+// so the parse cannot throw.
+export function sanitizePromptSummary(userMessage: string): string {
+  const parsed = JSON.parse(userMessage) as {
+    categories?: { examples?: unknown }[];
+  };
+  for (const c of parsed.categories ?? []) {
+    if (c.examples !== undefined) c.examples = [];
+  }
+  return JSON.stringify(parsed);
+}
+
 // Pure, exported for testing and for the offline eval script
 // (`evals/scripts/run-classification-eval.ts`) which reuses the production
 // parser to keep parsing parity with the runtime path.
@@ -541,7 +565,9 @@ export async function classifyWithLlm(
   if (!reservation.ok) return finish({ kind: "quota_exceeded" });
 
   const messages = buildPrompt(event, categories);
-  promptSummary = extractUserMessage(messages);
+  const userMessage = extractUserMessage(messages);
+  promptSummary =
+    userMessage === undefined ? undefined : sanitizePromptSummary(userMessage);
 
   let lastOutcome: LlmOutcome = { kind: "bad_response" };
 

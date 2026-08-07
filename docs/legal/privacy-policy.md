@@ -137,9 +137,11 @@ Workers 메모리에서 폐기된다(§2.1).
 - `start`, `end`, `colorId`, `status`, `extendedProperties.private`(서비스의
   색상 소유권 마커 검증용)
 - `attendees`, `creator`, `organizer` — 백엔드에 일시 도달하나, LLM 분류
-  단계의 프롬프트는 `summary`/`description`/`location` 3개 필드만
-  whitelist 하므로 OpenAI 등 외부 LLM 처리자에게 전송되지 않는다. 이에
-  더해 각 필드의 이메일 값은 LLM 단계 진입 전에 제거된다.
+  단계의 프롬프트는 이벤트 필드 중 `summary`/`description`/`location`
+  3개만 whitelist 하므로 OpenAI 등 외부 LLM 처리자에게 전송되지 않는다
+  (프롬프트에는 이벤트 필드 외에 사용자 정의 카테고리 이름·키워드가 분류
+  선택지로 포함된다 — §4 표 참조). 이에 더해 각 필드의 이메일 값은 LLM
+  단계 진입 전에 제거된다.
 
 <!-- LEGAL-REVIEW: PIPA §3 1항(개인정보 최소수집 원칙) / GDPR Art. 5(1)(c)
 data minimisation 원칙에 정합. attendees/creator/organizer는 서비스 처리
@@ -209,7 +211,7 @@ GDPR Art. 9 / CCPA Sensitive PI 의 처리 미해당을 분명히 해 둔다. --
 | ----------------------------------------- | ----------------------------------------------- | ----------------------------------------------------------------------------------------------------- |
 | (1) 회원 인증 및 세션 관리                | `sub`, 이메일, 이름, 세션 토큰 해시             | PIPA §15①4호(계약 이행) / GDPR Art. 6(1)(b)                                                           |
 | (2) Google Calendar 이벤트 자동 색상 분류 | 이벤트 메타데이터(in-transit), 카테고리·키워드  | PIPA §15①4호(계약 이행) / GDPR Art. 6(1)(b)                                                           |
-| (3) LLM 기반 보조 분류 (규칙 매칭 실패 시) | PII 마스킹된 `summary`/`description`/`location` | PIPA §15①4호(계약 이행) / GDPR Art. 6(1)(b) — 2단계 분류는 서비스가 제공을 약속한 기능 자체 |
+| (3) LLM 기반 보조 분류 (규칙 매칭 실패 시) | PII 마스킹된 `summary`/`description`/`location` + 사용자 정의 카테고리 이름·키워드(분류 선택지로 프롬프트에 포함) | PIPA §15①4호(계약 이행) / GDPR Art. 6(1)(b) — 2단계 분류는 서비스가 제공을 약속한 기능 자체 |
 | (4) 서비스 안전성 확보 및 부정 사용 방지  | 동기화·LLM·롤백 카운터(집계)                    | PIPA §15①7호(정당한 이익) / GDPR Art. 6(1)(f)                                                         |
 | (5) LLM 오분류 진단 및 분류 품질 개선 | `llm_calls` 진단 컬럼(§5 마스킹을 거친 프롬프트·모델 응답·카테고리 이름·이벤트 ID) | PIPA §15①7호(정당한 이익 — 분류 정확도 확보) / GDPR Art. 6(1)(f) |
 | (6) 사용자 정정 예시 기반 분류 개인화 (선택) | PII 마스킹된 이벤트 제목 및 그 임베딩 벡터   | PIPA §15①1호(동의) / GDPR Art. 6(1)(a) — 사이드바 전용 동의 화면에서 1회 수집, 철회 시 즉시 파기(§2.5) |
@@ -263,8 +265,11 @@ Supabase PostgreSQL의 `oauth_tokens` 테이블에 저장된다. 키 회전 절�
   업데이트/스킵 카운터).
 - `llm_calls` — LLM 호출 1회당 결과 (outcome, latency, 카테고리 수, 시도 수,
   카테고리 이름). **LLM 오분류 진단을 위해 다음 4개 컬럼이 추가로 저장된다**:
-  `event_id`, `prompt_summary`(모델에 실제로 전달된 user 메시지 —
-  §5 의 PII 마스킹을 이미 거친 `summary`/`description`/`location`),
+  `event_id`, `prompt_summary`(모델에 전달된 user 메시지의 저장 사본 —
+  §5 의 PII 마스킹을 이미 거친 `summary`/`description`/`location` 과 사용자
+  정의 카테고리 이름·키워드. 단, §2.5 의 정정 예시 제목은 **저장 전에
+  구조적으로 제거**되어 이 컬럼에 남지 않는다 — 동의 철회 시 삭제가 §2.5
+  경로 전건에 대해 완결되도록 하기 위함),
   `raw_response`(모델 응답 본문), `available_categories`(사용자 카테고리 이름).
   즉 `prompt_summary` 는 **마스킹된 이벤트 메타데이터를 durable 저장**하며,
   이는 §2.1 원칙의 예외다. 보유 기간은 §6 표를 따른다.
@@ -313,6 +318,12 @@ Workers AI 가 수행한다(§4). 제목과 벡터는 **해당 정보주체 본�
 **거부 가능.** 본 동의는 선택이며, 동의하지 않아도 규칙 기반 분류와 자동
 색상 적용은 완전히 동일하게 동작한다.
 
+**전송 범위의 한계.** 본 절에 따라 저장된 정정 예시는 현재 **OpenAI 로
+전송되지 않는다** — §4 의 OpenAI 처리 데이터 envelope 에 포함되지 않는다.
+저장된 정정 예시를 LLM 분류 프롬프트에 포함(= OpenAI 전송 개시)하는 변경은
+본 정책의 **중대한 변경**으로서, §12 의 절차에 따라 §4/§4.1 표의 개정과
+사전 고지를 거친 뒤에만 시행한다.
+
 <!-- LEGAL-REVIEW: PIPA §15①1호 동의 기반 처리 + §22① 분리 동의(정정
 전송과 동의 수집을 별도 요청으로 분리) + §22③ 구분 공개 + §22⑤ 거부 시
 불이익 금지. 저장 전
@@ -356,8 +367,14 @@ Workers AI 가 수행한다(§4). 제목과 벡터는 **해당 정보주체 본�
 | Google LLC       | OAuth 인증, Calendar API, Workspace Add-on 런타임                                   | OAuth 동의 정보, 이벤트 메타                                                                   | 미국 외 글로벌                                                                                                                                          | 회원탈퇴 시까지                      |
 | Cloudflare, Inc. | 엣지 런타임(Workers) + DB 연결 broker(Hyperdrive) + 큐(Queues + DLQ) + 임베딩 추론(Workers AI) | in-transit 이벤트 페이로드 / DLQ는 Google API 에러 envelope만 / 임베딩 입력 텍스트(이벤트 제목 **원문** — 마스킹 미적용, 미보관 / §2.5 정정 예시는 마스킹 후) | 글로벌 엣지(미국 본사)                                                                                                                                  | 회원탈퇴 시까지                      |
 | Supabase, Inc.   | 관리형 PostgreSQL (OAuth 토큰 암호화 저장, 동기화 상태, 관측 카운터, 세션)          | 집계 카운터 / 동기화 상태 / 카테고리 / 암호화 refresh token / 에러 envelope / §2.5 동의 시 PII 마스킹된 정정 예시 제목 및 그 임베딩 벡터 / `llm_calls` 진단 컬럼(§2.3) | 일본 (Tokyo `ap-northeast-1`) — 모든 거주국 정보주체의 영구 저장 데이터가 본 region 에 저장됨 (한국 거주 정보주체에 대해서도 한국 → 일본 국외이전 발생) | 회원탈퇴 시까지                      |
-| OpenAI, L.L.C.   | LLM 보조 분류 (`gpt-5.4-nano`) — 규칙 매칭이 실패한 일정에 한해 호출                | PII 마스킹된 `summary`/`description`/`location` 3개 필드만                                     | 미국                                                                                                                                                    | 보관하지 않음 (요청 단위 in-transit) |
+| OpenAI, L.L.C.   | LLM 보조 분류 (`gpt-5.4-nano`) — 규칙 매칭이 실패한 일정에 한해 호출                | PII 마스킹된 `summary`/`description`/`location` 3개 필드 + 사용자 정의 카테고리 이름·키워드(분류 선택지) | 미국                                                                                                                                                    | 보관하지 않음 (요청 단위 in-transit) |
 
+<!-- LEGAL-REVIEW: (2026-08-06 정정) OpenAI 행의 처리 데이터 envelope 가
+"마스킹된 3개 필드만" 으로 기재되어 있었으나, LLM 분류 프롬프트에는 분류
+선택지로서 사용자 정의 카테고리 이름·키워드가 최초 출시 시점부터 포함되어
+왔다(구현: `src/services/llmClassifier.ts` buildPrompt). 처리 실태의 변경이
+아니라 기재 누락의 정정이므로 §12 의 "중대한 변경" 통지가 아닌 기재 정정으로
+처리한다. §1A (3)행·§4.1 이전 항목도 동일 취지로 정정. -->
 
 ### 4.1 국외이전 (Cross-border Transfer)
 
@@ -391,7 +408,7 @@ Workers AI 가 수행한다(§4). 제목과 벡터는 **해당 정보주체 본�
 | Google LLC       | 미국 외 글로벌                                                                                                                                               | OAuth 동의 시 / API 호출 시점에 TLS 1.2+ 네트워크 전송    | OAuth 동의 정보, 이벤트 메타                             | 인증 IdP, Calendar API | 회원탈퇴 시까지 | PIPA §28의8①3호(계약 이행 위탁 — 본 절 공개) / EU 적정성 결정(2023, EU-US Data Privacy Framework) / Google 표준 DPA |
 | Cloudflare, Inc. | 미국 (본사) + 글로벌 엣지                                                                                                                                    | 모든 요청 시점 / TLS 1.2+                                 | in-transit 이벤트 페이로드, 임베딩 입력 텍스트(이벤트 제목 원문 — 마스킹 미적용, 미보관) | 엣지 런타임 | 회원탈퇴 시까지 | PIPA §28의8①3호(계약 이행 위탁 — 본 절 공개) / EU 적정성 결정(EU-US DPF) / Cloudflare 표준 DPA + SCCs |
 | Supabase, Inc.   | 일본 (Tokyo `ap-northeast-1`) — 한국 거주 정보주체에 대해서는 한국 → 일본 국외이전에 해당, EU·미국 거주 정보주체에 대해서는 거주국 → 일본 으로의 이전에 해당 | 회원가입·이용 시점 / TLS 1.2+                             | 집계 카운터, 암호화 refresh token, 카테고리, 동기화 상태, §2.5 정정 예시 제목·벡터(동의 시), `llm_calls` 진단 컬럼 | 관리형 DB              | 회원탈퇴 시까지 | PIPA §28의8①3호(계약 이행 위탁·보관 — 본 절 공개) / EU 적정성 결정(2019, EU-Japan 상호 적정성) / Supabase 표준 DPA + SCCs |
-| OpenAI, L.L.C.   | 미국                                                                                                                                                         | 규칙 매칭 실패 이벤트 발생 시점에 TLS 1.2+ 전송           | PII 마스킹된 3개 필드                                    | LLM 보조 분류          | 보관하지 않음   | PIPA §28의8①3호(계약 이행 위탁 — 본 절 공개) / EU 적정성 결정(EU-US DPF) / OpenAI Enterprise DPA + SCCs |
+| OpenAI, L.L.C.   | 미국                                                                                                                                                         | 규칙 매칭 실패 이벤트 발생 시점에 TLS 1.2+ 전송           | PII 마스킹된 3개 필드 + 사용자 정의 카테고리 이름·키워드 | LLM 보조 분류          | 보관하지 않음   | PIPA §28의8①3호(계약 이행 위탁 — 본 절 공개) / EU 적정성 결정(EU-US DPF) / OpenAI Enterprise DPA + SCCs |
 
 #### 4.1.1 이전받는 자의 명칭 및 연락처 (PIPA §28의8②3호)
 
@@ -468,10 +485,12 @@ redaction이 mandatory 적용된다(우회 경로 없음):
 - `attendees[].email`, `creator.email`, `organizer.email` 은 destructure-and-
   omit 으로 제거된다.
 
-나아가 prompt 빌더는 `summary` / `description` / `location` 3개 필드만
-whitelist 하므로, 참석자·주최자·생성자 정보는 이메일 제거 여부와 무관하게
-**구조적으로 LLM 에 도달하지 않는다**. 즉 이메일 제거는 1차 방어이고, 필드
-whitelist 가 최종 경계다.
+나아가 prompt 빌더는 이벤트 필드 중 `summary` / `description` / `location`
+3개만 whitelist 하므로, 참석자·주최자·생성자 정보는 이메일 제거 여부와
+무관하게 **구조적으로 LLM 에 도달하지 않는다**. 즉 이메일 제거는 1차
+방어이고, 이벤트 필드 whitelist 가 최종 경계다. 프롬프트의 나머지
+구성요소는 이벤트가 아니라 사용자 정의 카테고리 이름·키워드다(§4 표의
+OpenAI 처리 데이터 envelope 에 기재).
 
 §2.5 의 정정 예시 저장도 **동일한 마스킹을 저장 전에** 통과한다. 나아가
 마스킹 결과가 빈 문자열이거나 문자의 50% 이상이 마스킹 토큰인 제목은 저장

@@ -145,6 +145,46 @@
       "categories": [{"name": "Meeting", "keywords": ["meeting", "sync"], "colorId": "9"}],
       "event": {"summary": "Sync with backend team"},
       "expected": {"category_name": "Meeting"}
+    },
+    {
+      "id": "user-report-sparse-telecom-plan",
+      "tag": "sparse-negative,flip,user-report-2026-07-28",
+      "categories": [
+        {"name": "개발", "keywords": ["개발"], "colorId": "9"},
+        {"name": "운동", "keywords": ["운동"], "colorId": "5"}
+      ],
+      "event": {"summary": "알뜰폰 요금제 알아보기"},
+      "expected": {"category_name": "none"}
+    },
+    {
+      "id": "user-report-sparse-career-book",
+      "tag": "sparse-negative,flip,user-report-2026-07-28",
+      "categories": [
+        {"name": "개발", "keywords": ["개발"], "colorId": "9"},
+        {"name": "운동", "keywords": ["운동"], "colorId": "5"}
+      ],
+      "event": {"summary": "책 읽기(자기계발)"},
+      "expected": {"category_name": "none"}
+    },
+    {
+      "id": "user-report-sparse-job-application",
+      "tag": "sparse-negative,user-report-2026-07-28",
+      "categories": [
+        {"name": "개발", "keywords": ["개발"], "colorId": "9"},
+        {"name": "운동", "keywords": ["운동"], "colorId": "5"}
+      ],
+      "event": {"summary": "한올물류 입사 지원"},
+      "expected": {"category_name": "none"}
+    },
+    {
+      "id": "user-report-sparse-meditation-class",
+      "tag": "sparse-negative,flip,user-report-2026-07-28",
+      "categories": [
+        {"name": "개발", "keywords": ["개발"], "colorId": "9"},
+        {"name": "운동", "keywords": ["운동"], "colorId": "5"}
+      ],
+      "event": {"summary": "호흡 명상 수업"},
+      "expected": {"category_name": "none"}
     }
   ]
 }

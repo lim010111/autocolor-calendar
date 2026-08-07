@@ -28,22 +28,37 @@ export type ClassifierPromptVersion =
   // v6 — ADR-0004 #05 (2026-07-17). v2 verbatim + one field-handling line
   // teaching the model the category `examples` field (user-confirmed past
   // titles from Instant Feedback, structured field in the user payload).
-  | "v6";
+  | "v6"
+  // v7 — ec#07 (2026-08-06). v6 verbatim + none-first membership
+  // strengthening: sparse category lists (1–3 rules) must not absorb
+  // unrelated events. Targets the prod 2026-07-28 Stage-2 over-assignment
+  // (52/56 hits on one category; 4 user-confirmed misclassifications).
+  | "v7"
+  // v8 — ec#07 promotion (2026-08-07). v7 verbatim MINUS the examples
+  // field-handling line, so promoting it does NOT document the category
+  // `examples` field and the §12/§2.5 examples-transmission interlock stays
+  // closed. Examples go live later via a WITH_EXAMPLES version + §12 notice.
+  | "v8";
 
-// Production default. v3 is gpt-5-nano-targeted; production runs on
-// gpt-5.4-nano against which v3 is unmeasured, so the default stays at v2
-// (verbatim of the inline literal that shipped 2026-05-10) until a follow-up
-// PR validates v3 on 5.4-nano or migrates the model. The eval runner can
-// override with `--prompt-version v3`.
+// Production default. v8 = the ec#07 none-first prompt (v7) minus the
+// examples field-handling line. Promoted 2026-08-07 by user decision
+// (objective function: false-apply ≫ miss — all 4 prod-confirmed
+// misclassifications were over-assignments; a missed color is one-tap
+// recoverable via Instant Feedback). Eval gates passed on v8 DIRECTLY:
+// regression 24/24 (all user-report-* blocking cases, synthetic-title
+// generalization verified) and the same-day paired 4-language run vs fresh
+// v2 — en +3.6%p (91.1%) / ko ±0.0 / zh-CN +2.6%p / zh-TW ±0.0, every
+// language ≥ −1%p, so the ko regression measured on v7 (−2.6%p) did not
+// reproduce on v8's own paired run.
 //
-// v6 (ADR-0004 #05 examples-field line) is authored and registered but NOT
-// yet the default: the src/AGENTS.md §5.3 rule is "bump only when the
-// eval-gate has passed", and the 3-gate run was blocked 2026-07-17 by an
-// invalid operator OPENAI_API_KEY (401). Flip to "v6" in the follow-up that
-// re-runs the gate. Until then production sends `examples: []` under the v2
-// system prompt — a no-op difference, since the dark build stores zero
-// examples.
-export const DEFAULT_CLASSIFIER_PROMPT_VERSION: ClassifierPromptVersion = "v2";
+// v8 deliberately stays OUT of PROMPT_VERSIONS_WITH_EXAMPLES_FIELD: bumping
+// the default to a WITH_EXAMPLES version (v6/v7) is what starts shipping
+// consented example titles to OpenAI, which privacy-policy §2.5 pins as a
+// §12 material change requiring 30-day notice + §4/§4.1 revision FIRST.
+//
+// v6 (ADR-0004 #05 examples-field line) remains registered but not default;
+// its promotion rides the future examples-transmission decision above.
+export const DEFAULT_CLASSIFIER_PROMPT_VERSION: ClassifierPromptVersion = "v8";
 
 // ADR-0004 #05 / ADR-0007 — which system prompts actually *document* the
 // category `examples` field. `buildPrompt` sends the field only for these
@@ -64,7 +79,7 @@ export const DEFAULT_CLASSIFIER_PROMPT_VERSION: ClassifierPromptVersion = "v2";
 //
 // Add a version here in the same PR that authors it, never later.
 const PROMPT_VERSIONS_WITH_EXAMPLES_FIELD: ReadonlySet<ClassifierPromptVersion> =
-  new Set<ClassifierPromptVersion>(["v6"]);
+  new Set<ClassifierPromptVersion>(["v6", "v7"]);
 
 export function promptVersionSendsExamples(
   version: ClassifierPromptVersion,

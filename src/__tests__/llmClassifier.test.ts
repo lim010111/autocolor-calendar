@@ -7,6 +7,7 @@ import {
   classifyWithLlm,
   mapCategoryNameToRuleRef,
   reserveLlmCall,
+  sanitizePromptSummary,
   type ReserveLlmCallFn,
 } from "../services/llmClassifier";
 import { redactEventForLlm, type RedactedEvent } from "../services/piiRedactor";
@@ -324,6 +325,44 @@ describe("buildPrompt — examples 구조화 필드 (ADR-0004 #05)", () => {
     const sys = msgs.find((m) => m.role === "system")!;
     expect(sys.content).toMatch(/`examples`/);
     expect(sys.content).toMatch(/confirmed as belonging/);
+  });
+});
+
+describe("sanitizePromptSummary — 저장 사본의 examples 제거 (ADR-0007)", () => {
+  const withExamples = () =>
+    cat({
+      seeds: [
+        ...synthesizeSeeds({ name: "회의", keywords: ["회의"] }),
+        { text: "주간 스탠드업", type: "example", grade: "verified" },
+      ],
+    });
+
+  const userMessageOf = (msgs: ReturnType<typeof buildPrompt>) =>
+    msgs.find((m) => m.role === "user")!.content;
+
+  it("examples 를 싣는 버전(v6)의 유저 메시지에서 저장 사본은 examples: []", () => {
+    // 전송 페이로드에는 동의된 제목이 실리지만(examples 문서화 버전),
+    // `llm_calls.prompt_summary` 로 가는 사본에는 절대 남지 않는다 —
+    // 철회 purge 가 이 컬럼에 닿지 않기 때문(ADR-0007).
+    const sent = userMessageOf(
+      buildPrompt(ev({ summary: "standup" }), [withExamples()], "v6"),
+    );
+    expect(sent).toContain("주간 스탠드업");
+    const stored = sanitizePromptSummary(sent);
+    expect(stored).not.toContain("주간 스탠드업");
+    const parsed = JSON.parse(stored) as {
+      categories: Array<{ name: string; examples: string[] }>;
+      event: { summary: string };
+    };
+    expect(parsed.categories[0]!.examples).toEqual([]);
+    // 이벤트 필드와 카테고리 이름은 그대로 — 디버깅 가치 보존.
+    expect(parsed.event.summary).toBe("standup");
+    expect(parsed.categories[0]!.name).toBe("회의");
+  });
+
+  it("examples 를 싣지 않는 기본(v2) 유저 메시지는 바이트 동일 왕복", () => {
+    const sent = userMessageOf(buildPrompt(ev({ summary: "standup" }), [withExamples()]));
+    expect(sanitizePromptSummary(sent)).toBe(sent);
   });
 });
 
