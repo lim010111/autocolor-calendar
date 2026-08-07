@@ -312,3 +312,28 @@ eval 픽스처에 examples 데이터가 없으므로 v7 의 4언어 짝비교 �
 명기), 게이트 3의 Yoga 케이스를 재계측 전까지 informational 로 강등.
 
 남은 AC 는 prod 재계측 하나 — v8 배포 후 llm_calls 쏠림/오분류 해소 확인.
+
+### 2026-08-07 — findings 패스: v8 직접 실측으로 게이트 전부 통과 (waiver 불요)
+
+승격 커밋(d1d6688)의 머지게이트 finding-0(medium, 비차단): "v8의 4언어
+수치는 v7 이월 추론이지 실측이 아니고, ko −2.6%p 는 게이트 기준 밖" —
+전자는 사실이므로 실측으로 응답. **v8 + fresh v2 같은 날 짝비교 8런**
+(4언어 × 2버전, --include-rule-leg, 원장 append):
+
+| 언어 | fresh v2 | v8 | Δ | 게이트(≥−1%p) |
+|---|---|---|---|---|
+| en | 87.5% | **91.1%** | **+3.6%p** | ✓ (원장 최고 경신) |
+| ko | 87.5% | 87.5% | ±0.0 | ✓ |
+| zh-CN | 81.8% | 84.4% | +2.6%p | ✓ |
+| zh-TW | 85.9% | 85.9% | ±0.0 | ✓ |
+
+**v7 에서 측정된 ko −2.6%p 가 v8 짝비교에서 재현되지 않았다** — 4언어
+전부 게이트 정상 통과, 사용자 결정 waiver 를 명문화할 필요가 없어짐
+(교환비 결정 자체는 유효하게 기록 유지). 게이트 3(Pattern B): Jam
+session·Brainstorming·Web3 PASS, Yoga 는 v2·v8 동반 FAIL(기대 드리프트
+재확인, informational) — 단 v8 은 none(미배정), v2 는 Home Wellness
+(오적용)로 실패 모드가 목적함수 방향과 일치. 부수 관찰: jam session
+paraphrase 변형 1건(var-5124d442)이 v8 에서 FAIL — 비차단, churn 범위.
+
+finding-0 처리: 실측으로 해소(우려한 회귀가 v8 실측에 없음),
+classifierPrompts.ts 승격 주석을 실측 수치로 갱신. 별도 코드 수정 없음.

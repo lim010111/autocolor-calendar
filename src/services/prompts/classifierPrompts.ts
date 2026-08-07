@@ -41,13 +41,15 @@ export type ClassifierPromptVersion =
   | "v8";
 
 // Production default. v8 = the ec#07 none-first prompt (v7) minus the
-// examples field-handling line. Promoted 2026-08-07 by user decision:
-// regression gate passed (24/24 incl. all user-report-* blocking cases,
-// synthetic-title generalization verified), and the 4-language paired
-// tradeoff (en +3.1%p / ko −2.6%p vs same-day fresh v2) was explicitly
-// accepted — false-apply is the costlier error in prod (all 4 user-confirmed
+// examples field-handling line. Promoted 2026-08-07 by user decision
+// (objective function: false-apply ≫ miss — all 4 prod-confirmed
 // misclassifications were over-assignments; a missed color is one-tap
-// recoverable via Instant Feedback).
+// recoverable via Instant Feedback). Eval gates passed on v8 DIRECTLY:
+// regression 24/24 (all user-report-* blocking cases, synthetic-title
+// generalization verified) and the same-day paired 4-language run vs fresh
+// v2 — en +3.6%p (91.1%) / ko ±0.0 / zh-CN +2.6%p / zh-TW ±0.0, every
+// language ≥ −1%p, so the ko regression measured on v7 (−2.6%p) did not
+// reproduce on v8's own paired run.
 //
 // v8 deliberately stays OUT of PROMPT_VERSIONS_WITH_EXAMPLES_FIELD: bumping
 // the default to a WITH_EXAMPLES version (v6/v7) is what starts shipping
