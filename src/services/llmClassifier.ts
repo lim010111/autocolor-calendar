@@ -10,6 +10,7 @@ import {
   DEFAULT_CLASSIFIER_PROMPT_VERSION,
   loadClassifierPrompt,
   promptVersionSendsExamples,
+  promptVersionSendsRuleDescriptions,
   type ClassifierPromptVersion,
 } from "./prompts/classifierPrompts";
 
@@ -211,6 +212,14 @@ export function buildPrompt(
   redactedEvent: RedactedEvent,
   categories: Rule[],
   version: ClassifierPromptVersion = DEFAULT_CLASSIFIER_PROMPT_VERSION,
+  opts?: {
+    // Eval-harness opt-in ONLY (see `Rule.description` in `ruleService.ts`).
+    // Overrides the `promptVersionSendsRuleDescriptions` version gate so
+    // `evals/scripts/run-classification-eval.ts` can reproduce description
+    // experiments against any prompt version. Production callers must never
+    // pass this — the version gate is the ADR-0007 eval-gate interlock.
+    sendRuleDescriptions?: boolean;
+  },
 ): ChatMessage[] {
   // ADR-0004 #05 — `examples` is a structured field (not prose): the
   // user-confirmed past titles merged into `Rule.seeds` by `listRules`
@@ -230,12 +239,20 @@ export function buildPrompt(
   // `llm_calls.prompt_summary`, which the revocation purge does not reach —
   // is closed separately by `sanitizePromptSummary`.)
   const sendExamples = promptVersionSendsExamples(version);
+  const sendDescriptions =
+    opts?.sendRuleDescriptions ?? promptVersionSendsRuleDescriptions(version);
   const categoryList = categories.slice(0, LLM_MAX_CATEGORIES).map((c) => ({
     name: c.name,
     keywords: c.keywords,
-    // Eval-only field (see `Rule.description`) — absent from every prod rule,
-    // so this spread is a no-op outside the arch-judgment eval harness.
-    ...(c.description !== undefined ? { description: c.description } : {}),
+    // ADR-0007 — `description` follows the same version-gate discipline as
+    // `examples` below (`promptVersionSendsRuleDescriptions`; currently no
+    // version documents the field, so the gate is false everywhere). The
+    // eval harness opts in explicitly via `opts.sendRuleDescriptions` to
+    // run description experiments; prod rules never carry the field anyway
+    // (see `Rule.description` in `ruleService.ts`).
+    ...(sendDescriptions && c.description !== undefined
+      ? { description: c.description }
+      : {}),
     examples: sendExamples
       ? c.seeds.filter((s) => s.type === "example").map((s) => s.text)
       : [],

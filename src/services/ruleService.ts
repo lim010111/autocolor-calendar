@@ -48,9 +48,12 @@ export type Rule = {
   // listed to the editor with a "라벨 삭제됨" badge. Never auto-cleared.
   labelDeletedAt: Date | null;
   seeds: Seed[];
-  // Eval-only (arch-judgment wave 3): a one-line user-authored intent note
-  // forwarded to the LLM prompt when present. No DB column backs this —
-  // `listRules` never sets it, so the prod prompt payload is unchanged.
+  // Eval-only (arch-judgment wave 3): a one-line user-authored intent note.
+  // No DB column backs this — `listRules` never sets it. `buildPrompt`
+  // additionally version-gates the field (`promptVersionSendsRuleDescriptions`,
+  // ADR-0007 mirror of the `examples` interlock; currently false for every
+  // version), so even a populated Rule cannot leak it into a prod prompt —
+  // only the eval runner's explicit `sendRuleDescriptions` opt-in sends it.
   // Promoting it to a real feature needs schema + editor UI + eval-gate.
   description?: string;
   createdAt: Date;

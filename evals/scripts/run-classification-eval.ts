@@ -809,7 +809,13 @@ async function runCase(
   // §5.2: buildPrompt requires `RedactedEvent`. Mirror the production LLM
   // leg by redacting first — the redactor is idempotent so prompt bytes
   // are identical to the pre-brand call shape.
-  const messages = buildPrompt(redactEventForLlm(event), cats, opts.promptVersion);
+  // `sendRuleDescriptions: true` is the eval-only opt-in past the
+  // `promptVersionSendsRuleDescriptions` version gate (ADR-0007), so
+  // description-carrying fixtures (arch-judgment) reach the prompt here.
+  // No-op for fixtures without a `description`.
+  const messages = buildPrompt(redactEventForLlm(event), cats, opts.promptVersion, {
+    sendRuleDescriptions: true,
+  });
   if (opts.systemBodyOverride !== null && messages[0]) {
     messages[0].content = opts.systemBodyOverride;
   }

@@ -87,6 +87,24 @@ export function promptVersionSendsExamples(
   return PROMPT_VERSIONS_WITH_EXAMPLES_FIELD.has(version);
 }
 
+// ADR-0007 — mirror of the `examples` interlock above, for the category
+// `description` field. NO current version (v2..v8) documents a category
+// `description` field, so the set is empty and `buildPrompt` strips the
+// field for every version. When a future system prompt documents the field
+// AND passes the §5.3 eval-gate, list that version here in the same PR that
+// authors it — never earlier, never later. (The eval harness reproduces
+// description experiments via `buildPrompt`'s explicit
+// `sendRuleDescriptions` opt-in, so this set stays about production
+// defaults only.)
+const PROMPT_VERSIONS_WITH_RULE_DESCRIPTIONS_FIELD: ReadonlySet<ClassifierPromptVersion> =
+  new Set<ClassifierPromptVersion>([]);
+
+export function promptVersionSendsRuleDescriptions(
+  version: ClassifierPromptVersion,
+): boolean {
+  return PROMPT_VERSIONS_WITH_RULE_DESCRIPTIONS_FIELD.has(version);
+}
+
 export function loadClassifierPrompt(
   version: ClassifierPromptVersion = DEFAULT_CLASSIFIER_PROMPT_VERSION,
 ): string {
