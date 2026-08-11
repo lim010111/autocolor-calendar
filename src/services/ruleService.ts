@@ -48,6 +48,11 @@ export type Rule = {
   // listed to the editor with a "라벨 삭제됨" badge. Never auto-cleared.
   labelDeletedAt: Date | null;
   seeds: Seed[];
+  // Eval-only (arch-judgment wave 3): a one-line user-authored intent note
+  // forwarded to the LLM prompt when present. No DB column backs this —
+  // `listRules` never sets it, so the prod prompt payload is unchanged.
+  // Promoting it to a real feature needs schema + editor UI + eval-gate.
+  description?: string;
   createdAt: Date;
   updatedAt: Date;
 };

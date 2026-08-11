@@ -85,7 +85,14 @@ loadEnv({ path: path.join(ROOT, ".dev.vars") });
 type EvalCase = {
   id: string;
   tag: string;
-  categories: Array<{ name: string; keywords: string[]; colorId: string }>;
+  categories: Array<{
+    name: string;
+    keywords: string[];
+    colorId: string;
+    // Eval-only rule-intent note (arch-judgment wave 3) — forwarded to
+    // `buildPrompt` via `Rule.description` when present in the fixture.
+    description?: string;
+  }>;
   event: { summary?: string; description?: string; location?: string };
   expected: { category_name: string };
 };
@@ -108,6 +115,8 @@ type CliArgs = {
   model: string;
   promptVersion: ClassifierPromptVersion;
   promptSource: PromptSource;
+  perCaseOut: string | null;
+  noLedger: boolean;
 };
 
 function parseArgs(argv: string[]): CliArgs {
@@ -119,6 +128,8 @@ function parseArgs(argv: string[]): CliArgs {
     model: PRODUCTION_MODEL,
     promptVersion: DEFAULT_CLASSIFIER_PROMPT_VERSION,
     promptSource: "file",
+    perCaseOut: null,
+    noLedger: false,
   };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
@@ -160,12 +171,18 @@ function parseArgs(argv: string[]): CliArgs {
         );
       }
       out.promptSource = next as PromptSource;
+    } else if (a === "--per-case-out") {
+      const next = argv[++i];
+      if (!next) throw new Error("--per-case-out requires a path");
+      out.perCaseOut = path.isAbsolute(next) ? next : path.resolve(process.cwd(), next);
+    } else if (a === "--no-ledger") {
+      out.noLedger = true;
     } else if (a === "--help" || a === "-h") {
       console.log(
         "Usage: run-classification-eval.ts [--task-file <path>] [--include-rule-leg] " +
           "[--reasoning-effort <value>] [--max-completion-tokens <n>] " +
           "[--model <id>] [--prompt-version v2|v3|v5-L1|…] " +
-          "[--prompt-source file|langfuse]",
+          "[--prompt-source file|langfuse] [--per-case-out <path>] [--no-ledger]",
       );
       process.exit(0);
     } else {
@@ -636,6 +653,7 @@ function buildCategory(
     labelId: null,
     labelDeletedAt: null,
     seeds: synthesizeSeeds({ name: c.name, keywords: c.keywords }),
+    ...(c.description !== undefined ? { description: c.description } : {}),
     createdAt: now,
     updatedAt: now,
   };
@@ -1075,19 +1093,51 @@ async function main(): Promise<void> {
     }
   }
 
-  await appendLedgerRow(
-    suite,
-    args.taskFile,
-    results,
-    blockingFails.length,
-    ruleStats,
-    args.reasoningEffort,
-    args.maxCompletionTokens,
-    args.model,
-    args.promptVersion,
-    args.promptSource,
-  );
-  console.log(`\nLedger row appended: ${RESULTS_FILE}`);
+  if (args.perCaseOut) {
+    // Per-case dump for offline synthesis (arch-judgment scoring). Titles and
+    // model bodies are omitted — the fixture file already maps id → title, so
+    // this stays joinable without duplicating PII-bearing text.
+    const dump = {
+      task: suite.task,
+      lang: suite.lang ?? null,
+      taskFile: path.relative(ROOT, args.taskFile),
+      model: args.model,
+      promptVersion: args.promptVersion,
+      timestamp: new Date().toISOString(),
+      cases: results.map((r) => ({
+        id: r.id,
+        tag: r.tag,
+        expected: r.expected,
+        got: r.got,
+        pass: r.pass,
+        latencyMs: r.latencyMs,
+        httpStatus: r.httpStatus,
+        reasoningTokens: r.reasoningTokens,
+        completionTokens: r.completionTokens,
+      })),
+    };
+    await fs.mkdir(path.dirname(args.perCaseOut), { recursive: true });
+    await fs.writeFile(args.perCaseOut, JSON.stringify(dump, null, 1) + "\n");
+    console.log(`\nPer-case results written: ${args.perCaseOut}`);
+  }
+
+  if (args.noLedger) {
+    console.log("\nLedger append skipped (--no-ledger)");
+  } else {
+    await appendLedgerRow(
+      suite,
+      args.taskFile,
+      results,
+      blockingFails.length,
+      ruleStats,
+      args.reasoningEffort,
+      args.maxCompletionTokens,
+      args.model,
+      args.promptVersion,
+      args.promptSource,
+    );
+    console.log(`\nLedger row appended: ${RESULTS_FILE}`);
+  }
 
   const langfuseUrl = await langfuseSink.finalize();
   if (langfuseUrl) console.log(`Langfuse run: ${langfuseUrl}`);

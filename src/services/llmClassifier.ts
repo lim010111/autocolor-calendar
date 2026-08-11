@@ -233,6 +233,9 @@ export function buildPrompt(
   const categoryList = categories.slice(0, LLM_MAX_CATEGORIES).map((c) => ({
     name: c.name,
     keywords: c.keywords,
+    // Eval-only field (see `Rule.description`) — absent from every prod rule,
+    // so this spread is a no-op outside the arch-judgment eval harness.
+    ...(c.description !== undefined ? { description: c.description } : {}),
     examples: sendExamples
       ? c.seeds.filter((s) => s.type === "example").map((s) => s.text)
       : [],
