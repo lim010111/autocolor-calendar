@@ -32,20 +32,20 @@ Accepted·캐시 키 과소명세·cold resync 쿼터·min(0) 과대주장·veri
 hard 슬라이스(권고안 +0.353/16.5% vs 현행 +0.044/29.2%) + 3자 리뷰 반영 +
 wave-4(min(0) 완화 안전 실측, keyword↔desc 병합 비채택 — 분리 유지 확정).
 판정 기록: `.scratch/arch-judgment/2026-08-08-verdict-draft.md`, 리뷰 원문:
-`.scratch/arch-judgment/third-party-review-2026-08-11/`. 다음은 구현
-트랙(스키마·캐시·2표·verified 마스킹 수정) 이슈 파일링.
+`.scratch/arch-judgment/third-party-review-2026-08-11/`. **구현 트랙은
+ec#08~#12 로 파일링 완료** — 배포 순서: #09 캐시 → #11 2표(+쿼터 설계
+전제), #10 declared 오프·verified flag 와 #08 description·#12 min(0) 은
+독립 착수 가능.
 
 **출시 로드맵:** ~~① publish~~ → ② full resync → PR-B → ③ #07 프롬프트 +
 eval-gate → #06 → ④ Marketplace. §2.5 저장 개시 2026-08-28.
 
 ## Start here next session
 
-- **에이전트 — ADR-0008 구현 이슈 파일링 (능동)**: 채택 4묶음을 구현
-  이슈로 분해(`categories.description` 스키마+편집기, 판정 캐시(해시
-  키·targeted 무효화·§12), declared 오프 + verified 마스킹 수정·flag,
-  2표 재확인 — 배포 순서 캐시→2표, min(0) 완화는 GAS/Worker 조율 포함).
-  커밋 완료 후 푸시 시 머지게이트 findings 패스(`--base-ref origin/main`,
-  `--no-verify` 푸시).
+- **에이전트 — ADR-0008 구현 착수 (능동)**: ec#08(description 필드)·
+  #09(판정 캐시)·#10(declared 오프+verified flag)·#12(min(0)) 중 택1 로
+  시작 — #09 가 배포 순서상 최우선(#11 2표의 블로커). 각 이슈에 설계
+  노트·AC 완비, `ready-for-agent`.
 - **사람 — nl#03 (능동, 스크린샷 블로커)**: 규칙 편집기 카드를 en/ko/zh-CN/zh-TW
   **각 1장** 캡처. 홍보용이 아니라 i18n 증거다(색 이름 팔레트 제거 + Google
   안내 문구가 4개 번들 모두에서 렌더되는지). 언어는 Calendar 설정을 따른다
@@ -80,12 +80,6 @@ eval-gate → #06 → ④ Marketplace. §2.5 저장 개시 2026-08-28.
   호스트 갱신 API 부재 확인. 토스트 안내로 대응 — 추가 대응 미결. 미확인:
   이미 열린 탭에서 클라이언트가 모르는 라벨이 칠해진 이벤트의 렌더 결과
   (부차 경로인지 본체 문제인지 가른다 — 스크린샷 세션에서 같이 볼 것).
-- **#04 keyword optional ↔ `keywords.min(1)`** — ADR-0008 이 min(0) 완화
-  근거 성립을 판정(description 도입 시 `[name]` 폴백 존재 이유 소멸).
-  완화 시점과 GAS 폴백 제거·Worker Zod 완화의 배포 순서 조율이 미결.
-- **판정 캐시 키 설계** — 캐시에 원문 제목을 durable 저장하면 §12 동의
-  표면 재생성 + 철회 purge 미도달 사본(ADR-0008 Consequences). 해시 키
-  vs §12 검토 경유, 구현 전 결정 필요.
 - 벡터 차원 **동결** 미확정(잠정 gemma 768). declared 배정은 ADR-0008 로
   오프 확정 — 임계 상수의 잔여 의미는 verified `T=0.30`(휴면)뿐이며
   §12 저장 개시 후 실측 재판정 트리거가 걸려 있다.
@@ -120,7 +114,7 @@ eval-gate → #06 → ④ Marketplace. §2.5 저장 개시 2026-08-28.
 
 ## embedding-classifier
 
-`███████████████████░░░` 73/84 acceptance criteria met (87%)
+`███████████████░░░░░░░` 73/108 acceptance criteria met (68%)
 
 | # | Issue | Triage | Criteria | State | Blocked by |
 |---|-------|--------|----------|-------|-----------|
@@ -131,6 +125,11 @@ eval-gate → #06 → ④ Marketplace. §2.5 저장 개시 2026-08-28.
 | 05 | Examples seeds instant feedback | `ready-for-human` | 18/19 | 🔵 in-progress | #03 |
 | 06 | History based rule suggestions | `ready-for-agent` | 0/8 | ⛔ blocked | #05 |
 | 07 | Llm leg over assignment | `ready-for-agent` | 5/6 | 🔵 in-progress | — |
+| 08 | Rule description field | `ready-for-agent` | 0/5 | ⬜ todo | — |
+| 09 | Judgment cache | `ready-for-agent` | 0/5 | ⬜ todo | — |
+| 10 | Declared off verified flag | `ready-for-agent` | 0/5 | ⬜ todo | — |
+| 11 | Paint recheck 2vote | `ready-for-agent` | 0/5 | ⛔ blocked | #09 |
+| 12 | Keywords min0 | `ready-for-agent` | 0/4 | ⬜ todo | — |
 
 ## native-labels
 
