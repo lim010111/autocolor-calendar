@@ -231,7 +231,7 @@ CI 도입 자체에는 mutation이 없다 (코드는 추가만, 외부 시스템
 
 - `docs/marketplace-readiness.md` §5 row 261 (CI/CD pipeline) status
   `미작성` → `완료`(Step 1-4 완결 후).
-- `TODO.md:131` 체크박스 `[ ]` → `[x]`.
+- `TODO.md:134` 체크박스 `[ ]` → `[x]`.
 - §6.1 E2E 테스트(`TODO.md:110`) unblock — CI에 e2e job을 추가할 토대가
   생긴다.
 

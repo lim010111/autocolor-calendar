@@ -2,7 +2,7 @@
 
 > 이 runbook은 [`TODO.md` §1 line 8](../../TODO.md) "운영용 도메인 확보 및
 > Google Search Console 소유권 인증"의 정본 절차다. 무엇을 unblock하는지:
-> prod Watch API (`TODO.md:52`), Workspace Marketplace 제출의 Support URL /
+> prod Watch API (`TODO.md:54`), Workspace Marketplace 제출의 Support URL /
 > App home URL / Privacy URL / ToS URL (모두 같은 도메인 호스팅 권장),
 > OAuth Consent Screen verification.
 >
@@ -111,7 +111,7 @@ dig +short TXT <chosen>.app
 - **Publishing status**:
   - dev는 "Testing" 모드 (test 사용자 추가) 가정.
   - prod 활성화 시점에 "In production"으로 publish — 단 Marketplace 상장 전
-    이라면 Restricted Scope 검수(`TODO.md:133`) 통과 후. **이 단계가 G6
+    이라면 Restricted Scope 검수(`TODO.md:136`) 통과 후. **이 단계가 G6
     (OAuth Consent Screen 검수) 신청의 prerequisite**, 검수 신청 자체는
     G4 (Privacy / ToS 호스팅) 완료 후 §7로.
 
@@ -123,7 +123,7 @@ status는 일단 "Testing" 유지.
 Calendar Push Notifications (Watch API)는 **verified custom domain이 필수**다
 — `*.workers.dev`는 거부된다. `WEBHOOK_BASE_URL` 환경변수가 비어 있으면
 prod Worker는 watch 채널 등록을 skip한다 (`src/services/watch/core.ts`,
-`TODO.md:52`). 이 step은 도메인이 GSC verified 후에만 의미 있다.
+`TODO.md:54`). 이 step은 도메인이 GSC verified 후에만 의미 있다.
 
 ## Step 7 — 코드 사이드 갱신
 
@@ -164,7 +164,7 @@ GAS prod 배포 /exec URL은 변경 불필요 (Google domains이라 사용자 �
   `support@<chosen>.app` 사용 가능.
 - §2 row 120 (App home page URL) unblock — `<chosen>.app` 그대로.
 - §2 row 123 (Authorized domains) — Step 5에서 추가 완료.
-- §4 후속 (`TODO.md:52`) prod Watch API 활성화 prerequisite 충족.
+- §4 후속 (`TODO.md:54`) prod Watch API 활성화 prerequisite 충족.
 
 ## Cross-references
 

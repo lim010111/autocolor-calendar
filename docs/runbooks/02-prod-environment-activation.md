@@ -301,7 +301,7 @@ curl -X POST https://<prod-domain>/api/account/delete \
 
 ## Step 13 — 세션 GC pg_cron 활성화
 
-`TODO.md:38` "세션 GC". prod 활성화 직후 묶어 처리하는 것이 깔끔하다 (Retention
+`TODO.md:40` "세션 GC". prod 활성화 직후 묶어 처리하는 것이 깔끔하다 (Retention
 정책의 prerequisite — `marketplace-readiness.md` row 178).
 
 - Supabase Dashboard → Database → Extensions → `pg_cron` enable.

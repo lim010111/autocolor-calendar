@@ -53,6 +53,15 @@ Out of scope (intentionally):
 
 ## §1 — `https://www.googleapis.com/auth/calendar` (Restricted)
 
+> **분류 주석 (2026-07-30).** 이 제목의 `(Restricted)` 는 2026-05-09
+> 제출본의 문구를 그대로 보존한 것이다. 2026-07-28 GCP Console 실측에서
+> 이 앱의 "Your restricted scopes" 는 0행이고 `calendar` 는 sensitive 로
+> 분류돼 있다 — 현재 분류의 정본은
+> [`docs/marketplace-readiness.md`](../../marketplace-readiness.md) §2
+> canonical pointers 다. 아래 본문의 "Restricted scope" 표현도 같은
+> 이력 문구이며, 정당화 논지(왜 이 스코프가 필요한가) 자체는 분류와
+> 무관하게 유효하다.
+
 **Why we request.** Incremental sync (`events.list` with `syncToken` per
 calendar) and watch-channel management (`channels.watch` + `channels.stop`
 for the webhook lifecycle) require this Restricted scope. The narrower

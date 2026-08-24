@@ -12,7 +12,7 @@
 
 ---
 
-## 게이트 진행 상황 (2026-05-06 기준)
+## 게이트 진행 상황 (2026-07-30 기준)
 
 | 게이트                       | 상태             | 비고                                                    |
 | ---------------------------- | ---------------- | ------------------------------------------------------- |
@@ -23,7 +23,7 @@
 | G5 — Listing assets          | ⏳ 대기          | description·아이콘·데모 영상 완료. **스크린샷 4장은 존재하나 무효** — 2026-05-09 촬영분이라 native-labels #03 편집기 개편(07-28)·legal clickwrap(07-29) 이전 UI 다. 재촬영 필요 (작업 ④) |
 | G6 — OAuth 검수              | ✅ 완료          | 2026-07-24 승인 — `script.external_request` / `calendar` / `calendar.events` 3종. 데모 영상·Submit 모두 종료. 재검수 트리거는 신규 스코프 또는 consent screen **설정** 변경뿐 |
 | G7 — 백업/복구               | ⚠️ 후퇴함        | Pro 결제 2026-05-06 → **2026-07-01 billing 중단으로 prod 가 임시 Free** (pause → Restore). Free 는 **백업 0 + 7일 무활동 자동 pause** 라 G7 은 사실상 미충족이다. PITR 은 애초에 보류 결정(2026-05-06). 실트래픽 전 Pro 복구 필요 — 접속기록 1년 보관(처리방침 §8.2 후속)의 Audit Log Drain 도 Pro 애드온이라 같은 결제에 묶인다 |
-| G8 — Marketplace publish     | ⏳ G6 의존       | 마지막 단계, 검수 1-3주                                 |
+| G8 — Marketplace publish     | ⏳ G5·G7 의존    | G6 은 07-24 로 해제됐다. 남은 선행조건은 **G5 스크린샷 재촬영**과 **G7 Pro 복구** 둘뿐. 마지막 단계, 검수 1-3주 |
 
 ---
 
@@ -41,14 +41,23 @@
 - **Claude 도움**: 절차서 `docs/runbooks/03-cicd-pipeline.md` Step 3 참조
 - [x] 룰 추가 완료 (4 status check + PR review 1명 + force-push/delete 차단)
 
-### ② Supabase Pro 업그레이드 + PITR (15분, $25/월) — ⚠️ Pro 결제 ✅ / PITR 토글 ⏳
+### ② Supabase Pro **재결제** (15분, $25/월) — ⚠️ 후퇴, 재실행 필요
+
+> **PITR 은 하지 않는다.** 2026-05-06 에 보류 결정됐고(월 $115+ 추가,
+> pre-revenue 부적합 — `07-backup-and-recovery.md` Step 1) 그 결정은 지금도
+> 유효하다. 이 항목이 요구하는 것은 **Pro plan 자체**다: daily snapshot 7일
+> 보존과 Audit Log Drain(접속기록 1년 보관)이 둘 다 Pro 에 묶여 있다.
 
 - **어디서**: supabase.com → 프로젝트 → Settings → Billing → **Upgrade to Pro**
-- **그 다음**: Database → Backups → **Point in Time Recovery 토글 ON**
+- **왜 다시**: 2026-05-06 결제분이 2026-07-01 billing 중단으로 끊겨 prod 가
+  임시 Free 다(pause → Restore). Free 는 **백업 0 + 7일 무활동 자동 pause** —
+  실사용자가 들어오는 publish 직후를 이 상태로 맞을 수는 없다.
 - **왜 사용자만**: 결제 카드 + Supabase 계정 owner
 - **Claude 도움**: `docs/runbooks/07-backup-and-recovery.md` Step 1-2
-- [x] Pro plan 결제 (2026-05-06)
-- [ ] PITR 활성화 확인 (Backups 탭에 PITR 옵션 표시)
+- [x] ~~Pro plan 결제 (2026-05-06)~~ → 2026-07-01 중단, 무효
+- [ ] Pro plan 재결제 + Backups 탭에 daily snapshot 재생성 확인
+- [ ] daily snapshot 기반 복구 리허설 1회 (`07` runbook Step 3B)
+- [ ] Audit Log Drain 가동 — 접속기록 1년 보관(처리방침 §8.2)
 
 ---
 
@@ -231,6 +240,11 @@
 > 끝났고, 4-6주 외부 시계도 함께 닫혔다. 지금 남은 critical path 는
 > **④ 스크린샷 재촬영 → G5 → ⑨ G8 Submit** 이며, 4-6주짜리 대기는 G8
 > 검수 하나뿐이다.
+>
+> **(2026-07-30 보강)** 위 순서의 ②는 "Pro + PITR" 이 아니라 **Pro 재결제**
+> 로 읽어야 한다(PITR 은 보류 결정 유지). ④와 ②는 서로 의존하지 않으므로
+> 병렬로 돌리고, ⑨ 앞에서 둘 다 닫혀 있어야 한다 — G8 Submit 의 선행조건은
+> 이제 이 둘뿐이다.
 
 **핵심 1건만 고른다면 → ④ 스크린샷 재촬영**. G5 를 막고 있는 유일한 항목이고,
 native-labels #03 의 마지막 AC 와 같은 화면이라 한자리에서 둘 다 닫힌다.
