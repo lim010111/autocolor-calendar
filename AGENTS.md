@@ -97,7 +97,7 @@ Multi-context — [CONTEXT-MAP.md](CONTEXT-MAP.md) at the root points at the cro
 
 ### Merge gate
 
-머지 게이트 in-scope 변경을 푸시한 뒤에는 **findings 한 패스를 돌릴 것** — `/handle-merge-findings` (consumer-side reproduce-or-refute 루프, ADR-0027): 어드바이저리 findings 를 재현해 증명되면 고치고 하나로 묶어 푸시한 뒤 핸드오프. pass 2 이후는 사람이 게이트한다.
+요청한 로컬 리뷰의 findings는 `/handle-merge-findings`로 확인·처리할 수 있다. 정확한 base/tip과 근거를 확인하고 요청 범위의 수정·검증을 완료한다.
 
 ## See also
 

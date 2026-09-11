@@ -36,9 +36,8 @@ issue, edit the markdown file and re-run the sync.
 ## Status harness contract
 
 `STATUS.md` at the repo root is regenerated from these issue files by the
-status harness (`scripts/status.py`, vendored into the repo; the global
-`Stop` hook also runs `~/.claude/scripts/status.py` so the board stays
-fresh between commits). The harness parses each issue *structurally* — so
+status generator (`scripts/status.py`, vendored into the repo), when explicitly
+refreshed or run by the existing project CI. The harness parses each issue *structurally* — so
 the following elements are a contract. Renaming a heading or changing the
 bullet shape silently breaks the generated table; nothing errors.
 
@@ -67,7 +66,7 @@ any of the common forms above rather than requiring one exact spelling.
 
 - **Mechanical sections** — the issue table, progress bar, and any
   banners. Generated every run by the status harness (`scripts/status.py`,
-  re-run by the global `Stop` hook). Never hand-edit; your changes will
+  run on request or by existing project CI). Never hand-edit; your changes will
   be wiped on the next regeneration.
 - **Narrative block** — the section between `<!-- narrative:start -->`
   and `<!-- narrative:end -->`. Owned by a human (or the `/status`
