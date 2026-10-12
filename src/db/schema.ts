@@ -197,7 +197,7 @@ export const categories = pgTable(
 // separately (no centroid/concat — a Rule can be multi-modal). This slice
 // (#02) writes `seed_type='name'` rows only; keyword (#03) and example (#05)
 // rows arrive later. The DB table is `categories` for legacy reasons but the
-// domain term is `Rule` (see CONTEXT.md "Flagged ambiguities").
+// domain term is `Rule` (see GLOSSARY.md "Flagged ambiguities").
 //
 // Trust grade is DERIVED from `seed_type`, never stored: name/keyword =
 // declared, example = verified (ADR-0004 trust grades + `synthesizeSeeds`).

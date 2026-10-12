@@ -4,7 +4,7 @@ How the engineering skills should consume this repo's domain documentation when 
 
 ## Before exploring, read these
 
-- **`CONTEXT-MAP.md`** at the repo root — points at the cross-cutting glossary (root `CONTEXT.md`) and any per-module `CONTEXT.md` files. Read the entries relevant to the topic.
+- **`GLOSSARY-MAP.md`** at the repo root — points at the cross-cutting glossary (root `GLOSSARY.md`) and any per-module `GLOSSARY.md` files. Read the entries relevant to the topic.
 - **`docs/adr/`** — read ADRs that touch the area you're about to work in.
 - Per-module ADRs, if/when added, live at `<module>/docs/adr/`.
 
@@ -14,23 +14,23 @@ If any of these files don't exist, **proceed silently**. Don't flag their absenc
 
 ```
 /
-├── CONTEXT-MAP.md                ← entry point — lists every CONTEXT.md
-├── CONTEXT.md                    ← cross-cutting glossary (Rule / Keyword / Example / Classifier / Instant Feedback)
+├── GLOSSARY-MAP.md                ← entry point — lists every GLOSSARY.md
+├── GLOSSARY.md                    ← cross-cutting glossary (Rule / Keyword / Example / Classifier / Instant Feedback)
 ├── docs/adr/                     ← system-wide ADRs (0001-…, 0002-…)
 ├── src/
-│   ├── CONTEXT.md                ← (lazy) Worker-side domain language
+│   ├── GLOSSARY.md                ← (lazy) Worker-side domain language
 │   └── docs/adr/                 ← (lazy) Worker-scoped ADRs
 ├── gas/
-│   └── CONTEXT.md                ← (lazy) Add-on UI domain language
+│   └── GLOSSARY.md                ← (lazy) Add-on UI domain language
 └── drizzle/
-    └── CONTEXT.md                ← (lazy) schema/data domain language
+    └── GLOSSARY.md                ← (lazy) schema/data domain language
 ```
 
 Items marked "(lazy)" are created on demand by `/grill-with-docs`; their absence is not a problem.
 
 ## Use the glossary's vocabulary
 
-When your output names a domain concept (in an issue title, a refactor proposal, a hypothesis, a test name), use the term as defined in `CONTEXT.md`. Don't drift to synonyms the glossary explicitly avoids (see the "Flagged ambiguities" section).
+When your output names a domain concept (in an issue title, a refactor proposal, a hypothesis, a test name), use the term as defined in `GLOSSARY.md`. Don't drift to synonyms the glossary explicitly avoids (see the "Flagged ambiguities" section).
 
 If the concept you need isn't in the glossary yet, that's a signal — either you're inventing language the project doesn't use (reconsider) or there's a real gap (note it for `/grill-with-docs`).
 

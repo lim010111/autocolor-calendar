@@ -10,7 +10,7 @@ import type { ConsentedExample } from "./piiRedactor";
 // Rule aggregate module — single source of truth for the user-defined
 // classification rule. The DB table is still named `categories` (and the
 // public URL `/api/categories` likewise), but the domain language is `Rule`
-// everywhere else (see `CONTEXT.md` "Flagged ambiguities").
+// everywhere else (see `GLOSSARY.md` "Flagged ambiguities").
 //
 // ADR-0004 (`docs/adr/0004-embedding-classifier.md`) replaces the Stage 1
 // substring matcher with an embedding kNN classifier. This module is the
@@ -699,7 +699,7 @@ export type AddExampleResult =
 //      rows anywhere in the tenant (`user_id` + `seed_type='example'` +
 //      `seed_text`, excluding the just-minted id — RLS is bypassed on the
 //      Worker path, src/AGENTS.md "Tenant isolation"), so a title is at
-//      most one rule's example (CONTEXT.md). Inserting FIRST means a DB
+//      most one rule's example (GLOSSARY.md). Inserting FIRST means a DB
 //      failure between the statements degrades to a benign transient
 //      DUPLICATE — over-inclusive, self-heals on the next same-title write,
 //      and a same-title duplicate across rules merely degrades Stage 1 to
