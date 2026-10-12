@@ -25,7 +25,7 @@ import { getValidAccessToken, ReauthRequiredError } from "../services/tokenRefre
 // Thin Hono adapter over `ruleService`. The URL path `/api/categories` and
 // the wire JSON shape (`{ id, name, colorId, keywords, priority, createdAt,
 // updatedAt }`) are preserved for GAS Add-on compatibility — see
-// `CONTEXT.md` "Flagged ambiguities" for why the DB/wire stays
+// `GLOSSARY.md` "Flagged ambiguities" for why the DB/wire stays
 // `categories` while the domain language is `Rule`.
 
 export const categoriesRoutes = new Hono<HonoEnv>();

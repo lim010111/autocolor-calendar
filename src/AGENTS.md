@@ -531,7 +531,7 @@ Stage-2 LLM leg below.
   the failure mode differs: an embed failure returns `embed_failed` to the
   caller (direct user action — the Instant Feedback UI must surface "your
   correction did not stick"), NOT the fan-out warn-only-silent model.
-  Exact-title direct-hit shortcut (CONTEXT.md "완전일치 shortcut") is **not
+  Exact-title direct-hit shortcut (GLOSSARY.md "완전일치 shortcut") is **not
   implemented** — #05 treats examples as embedding seeds only; the shortcut is
   a deferred follow-up issue.
 - **Two-tier decision (`decideStage1`, unit-tested).** `score(best) < bar` →

@@ -93,7 +93,7 @@ Canonical role strings (`needs-triage` / `needs-info` / `ready-for-agent` / `rea
 
 ### Domain docs
 
-Multi-context — [CONTEXT-MAP.md](CONTEXT-MAP.md) at the root points at the cross-cutting glossary and any per-module `CONTEXT.md` files. ADRs at [docs/adr/](docs/adr/). See [docs/agents/domain.md](docs/agents/domain.md).
+Multi-context — [GLOSSARY-MAP.md](GLOSSARY-MAP.md) at the root points at the cross-cutting glossary and any per-module `GLOSSARY.md` files. ADRs at [docs/adr/](docs/adr/). See [docs/agents/domain.md](docs/agents/domain.md).
 
 ### Merge gate
 

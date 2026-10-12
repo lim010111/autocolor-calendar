@@ -106,7 +106,7 @@
   - **examples 생애주기.** Rule 당 example 캡 = **10개**, **FIFO eviction**
     (오래된 것부터 밀려나 staleness 자동 처리). Instant Feedback 시 다른
     Rule 에 같은 제목 example 이 있으면 제거한다 — **last-write-wins**,
-    한 제목은 한 Rule 의 example 만 된다 (CONTEXT.md "Relationships" 참조).
+    한 제목은 한 Rule 의 example 만 된다 (GLOSSARY.md "Relationships" 참조).
 
   - **범위 — 이 ADR 은 결정의 외부화이며 production 코드 변경 0 줄이다.**
     구현은 `/to-issues` 가 분해하는 tracer-bullet 수직 슬라이스로 들어간다.
@@ -153,14 +153,14 @@
     넘긴다. 사용자가 Instant Feedback 으로 example 을 쌓을수록 Verified
     씨앗이 늘어 Stage 1 적중률이 올라간다.
   - **DB 레거시 명칭.** 테이블/타입은 여전히 `categories`/`Category` 지만
-    (CONTEXT.md "Flagged ambiguities"), 신규 테이블은 도메인 용어를 따라
+    (GLOSSARY.md "Flagged ambiguities"), 신규 테이블은 도메인 용어를 따라
     `rule_seeds` 로 명명한다 — 신규 코드/문서는 `Rule` 을 쓴다.
   - **임베딩 모델 eval 미완료 = 스키마 차원 미확정.** `rule_seeds.embedding`
     의 `vector(N)` 차원은 모델 선정 eval 이 끝나야 못 박힌다. 그전까지
     스키마 작업은 `embeddinggemma-300m` 의 768 을 잠정값으로 진행한다.
 
 - References:
-  - `CONTEXT.md` (리포 루트) — 도메인 용어 사전 (Rule / Keyword / Example /
+  - `GLOSSARY.md` (리포 루트) — 도메인 용어 사전 (Rule / Keyword / Example /
     Classifier / Instant Feedback). 이 ADR 의 용어 출처.
   - `docs/architecture-guidelines.md` "Hybrid Classification Engine" —
     이 ADR 로 대체 → lockstep 갱신 대상.

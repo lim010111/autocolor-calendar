@@ -1244,7 +1244,7 @@ function buildRuleManagementCard(e, categoriesSnapshot) {
 
   builder.addSection(createSection);
 
-  // Keywords are optional intent phrases (CONTEXT.md "Keyword") — embedded into
+  // Keywords are optional intent phrases (GLOSSARY.md "Keyword") — embedded into
   // the rule's meaning, never string-matched. Collapsed by default to reduce
   // card clutter. (examples 묶음 collapse는 #05 소관 — examples UI 가 거기서
   // 처음 렌더된다.)
@@ -1426,7 +1426,7 @@ function actionAddRule(e) {
   }
   var name = nameRaw.trim();
 
-  // Keywords are optional intent-phrase seeds (CONTEXT.md "Keyword"; §5.1) —
+  // Keywords are optional intent-phrase seeds (GLOSSARY.md "Keyword"; §5.1) —
   // embedded into the rule's meaning, no longer substring needles, so a comma
   // just separates independent seeds. Empty is allowed: the rule name is itself
   // a seed (#02 name create-or-replace), so we fall back to [name] to satisfy
